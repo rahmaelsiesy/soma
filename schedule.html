@@ -1,0 +1,1036 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Schedule — Quest Board</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    /* ── Page shell ── */
+    html, body { margin:0; padding:0; min-height:100vh; font-family:'Plus Jakarta Sans',sans-serif; background:var(--bg); color:var(--text-primary); }
+
+    .sched-header {
+      background:var(--surface-1); border-bottom:1px solid var(--border);
+      padding:0 20px; height:52px; display:flex; align-items:center;
+      justify-content:space-between; position:sticky; top:0; z-index:100;
+    }
+    .sched-header-left { display:flex; align-items:center; gap:12px; }
+    .sched-back {
+      display:flex; align-items:center; gap:6px; color:var(--text-muted); font-size:13px;
+      text-decoration:none; font-weight:600; padding:5px 10px; border-radius:8px;
+      transition:background .2s;
+    }
+    .sched-back:hover { background:rgba(255,255,255,.06); color:var(--text-primary); }
+    .sched-title {
+      font-family:'Fredoka',sans-serif; font-size:18px; font-weight:700;
+      background:linear-gradient(135deg,#a78bfa,#06b6d4);
+      -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+    }
+    .sched-hdr-actions { display:flex; align-items:center; gap:8px; }
+    .btn-plan-week {
+      background:linear-gradient(135deg,#a78bfa,#06b6d4);
+      color:#fff; border:none; border-radius:9px; padding:7px 15px;
+      font-size:13px; font-weight:700; cursor:pointer; transition:opacity .2s;
+    }
+    .btn-plan-week:hover { opacity:.85; }
+    .btn-daily-triage {
+      background:rgba(249,115,22,.15); border:1px solid rgba(249,115,22,.35);
+      color:#f97316; border-radius:9px; padding:7px 14px; font-size:13px;
+      font-weight:700; cursor:pointer; transition:background .2s;
+    }
+    .btn-daily-triage:hover { background:rgba(249,115,22,.25); }
+
+    /* ── Main layout ── */
+    .sched-body { max-width:1300px; margin:0 auto; padding:20px 16px 80px; }
+
+    /* ── Today header ── */
+    .today-hdr {
+      background:var(--surface-2); border:1px solid var(--border); border-radius:16px;
+      padding:18px 20px; margin-bottom:20px;
+    }
+    .today-hdr-row1 {
+      display:flex; align-items:center; justify-content:space-between;
+      flex-wrap:wrap; gap:10px; margin-bottom:12px;
+    }
+    .today-date-label {
+      font-family:'Fredoka',sans-serif; font-size:22px; font-weight:700;
+      color:var(--text-primary);
+    }
+    .today-threshold-pill {
+      padding:4px 14px; border-radius:99px; font-size:13px; font-weight:700;
+      border:2px solid;
+    }
+    .today-threshold-pill.gray   { background:rgba(107,114,128,.12); border-color:rgba(107,114,128,.3); color:#9ca3af; }
+    .today-threshold-pill.green  { background:rgba(16,185,129,.12);  border-color:rgba(16,185,129,.4);  color:#10b981; }
+    .today-threshold-pill.gold   { background:rgba(245,158,11,.12);  border-color:rgba(245,158,11,.4);  color:#f59e0b; }
+    .today-threshold-pill.fire   { background:rgba(249,115,22,.12);  border-color:rgba(249,115,22,.4);  color:#f97316; }
+    .today-hdr-row2 {
+      display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+    }
+    .today-block-counter { font-size:15px; font-weight:700; color:var(--text-muted); }
+    .block-dots-row { display:flex; gap:6px; align-items:center; }
+    .bdot {
+      width:13px; height:13px; border-radius:50%;
+      background:rgba(255,255,255,.1); border:2px solid rgba(255,255,255,.15);
+      transition:background .3s, transform .3s;
+    }
+    .bdot.done   { background:#10b981; border-color:#10b981; transform:scale(1.1); }
+    .bdot.active { background:#f97316; border-color:#f97316; animation:pulse-dot 1.5s ease-in-out infinite; }
+    @keyframes pulse-dot { 0%,100%{transform:scale(1)} 50%{transform:scale(1.3)} }
+    .today-carry-note { font-size:12px; color:#a78bfa; font-weight:600; }
+
+    /* ── Lead time warning ── */
+    .leadtime-banner {
+      border-radius:10px; padding:10px 14px; font-size:13px;
+      display:flex; align-items:center; gap:8px; margin-bottom:16px;
+    }
+    .leadtime-banner.yellow { background:rgba(245,158,11,.1); border:1px solid rgba(245,158,11,.3); color:#f59e0b; }
+    .leadtime-banner.red    { background:rgba(239,68,68,.1);  border:1px solid rgba(239,68,68,.3);  color:#ef4444; }
+    .leadtime-banner .lb-dismiss {
+      margin-left:auto; background:none; border:none; color:inherit;
+      opacity:.6; cursor:pointer; font-size:16px; padding:0 4px;
+    }
+
+    /* ── Main columns ── */
+    .sched-columns { display:grid; grid-template-columns:1fr 320px; gap:20px; align-items:start; }
+    @media(max-width:900px){ .sched-columns{grid-template-columns:1fr;} }
+
+    /* ── Queue section ── */
+    .sched-section-title {
+      font-family:'Fredoka',sans-serif; font-size:16px; font-weight:600;
+      color:var(--text-primary); margin:0 0 12px; display:flex; align-items:center; gap:8px;
+    }
+    .queue-list-wrap { display:flex; flex-direction:column; gap:8px; margin-bottom:10px; }
+    .qblock {
+      background:var(--surface-2); border:1px solid var(--border); border-radius:13px;
+      padding:12px 14px; display:flex; align-items:center; gap:11px;
+      transition:border-color .2s, transform .15s;
+    }
+    .qblock:hover { border-color:rgba(167,139,250,.45); transform:translateX(2px); }
+    .qblock.done  { opacity:.45; border-color:rgba(16,185,129,.4); }
+    .qblock-num {
+      width:26px; height:26px; border-radius:50%;
+      background:rgba(255,255,255,.06); display:flex; align-items:center; justify-content:center;
+      font-size:12px; font-weight:700; color:var(--text-muted); flex-shrink:0;
+    }
+    .qblock-cog {
+      width:24px; height:24px; border-radius:50%; flex-shrink:0;
+      display:flex; align-items:center; justify-content:center; font-size:12px;
+    }
+    .qblock-info { flex:1; min-width:0; }
+    .qblock-title {
+      font-size:13px; font-weight:600; color:var(--text-primary);
+      white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+    }
+    .qblock-meta { font-size:11px; color:var(--text-muted); display:flex; gap:6px; align-items:center; margin-top:2px; }
+    .qblock-actions { display:flex; gap:5px; flex-shrink:0; }
+    .qbtn-focus {
+      background:var(--c-flagship); color:#fff; border:none; border-radius:7px;
+      padding:5px 11px; font-size:12px; font-weight:700; cursor:pointer; transition:opacity .2s;
+    }
+    .qbtn-focus:hover { opacity:.85; }
+    .qbtn-carry, .qbtn-del {
+      background:transparent; border:1px solid var(--border); color:var(--text-muted);
+      border-radius:7px; padding:4px 8px; font-size:11px; cursor:pointer; transition:all .2s;
+    }
+    .qbtn-carry:hover { border-color:var(--c-flagship); color:var(--c-flagship); }
+    .qbtn-del:hover   { border-color:#6b7280; color:#9ca3af; }
+    .queue-empty {
+      border:1.5px dashed var(--border); border-radius:13px; padding:28px;
+      text-align:center; color:var(--text-muted); font-size:13px;
+    }
+    .btn-add-block {
+      width:100%; background:transparent; border:2px dashed var(--border);
+      border-radius:13px; padding:12px; color:var(--text-muted); font-size:13px;
+      cursor:pointer; text-align:center; transition:border-color .2s;
+    }
+    .btn-add-block:hover { border-color:rgba(167,139,250,.5); color:var(--text-primary); }
+
+    /* ── Week at a glance ── */
+    .week-grid-7 { display:grid; grid-template-columns:repeat(7,1fr); gap:7px; margin-bottom:20px; }
+    @media(max-width:600px){ .week-grid-7{grid-template-columns:repeat(7,1fr); gap:4px;} }
+    .wday {
+      background:var(--surface-2); border:1px solid var(--border); border-radius:11px;
+      padding:10px 6px; text-align:center; cursor:pointer; transition:border-color .2s;
+      position:relative; user-select:none;
+    }
+    .wday.today  { border-color:var(--c-flagship); background:rgba(249,115,22,.06); }
+    .wday.t-green{ border-color:#10b981; }
+    .wday.t-gold { border-color:#f59e0b; }
+    .wday.t-fire { border-color:#ef4444; border-width:2px; }
+    .wday-name { font-size:10px; font-weight:700; text-transform:uppercase; color:var(--text-muted); margin-bottom:3px; }
+    .wday-date { font-size:12px; font-weight:600; color:var(--text-primary); margin-bottom:6px; }
+    .wday-blocks { font-size:18px; font-weight:700; line-height:1; margin-bottom:2px; }
+    .wday-label  { font-size:10px; color:var(--text-muted); }
+    .wday-lab    { font-size:9px; background:rgba(59,130,246,.2); color:#3b82f6; padding:1px 4px; border-radius:4px; margin-top:4px; display:inline-block; }
+    .wday-carry  { font-size:9px; color:#a78bfa; margin-top:3px; }
+    .lab-toggle  { display:flex; align-items:center; justify-content:center; gap:3px; margin-top:6px; font-size:9px; color:var(--text-muted); cursor:pointer; }
+    .lab-toggle input { width:10px; height:10px; accent-color:var(--cog-lab,#3b82f6); cursor:pointer; }
+
+    /* ── Block chart ── */
+    .chart-card {
+      background:var(--surface-2); border:1px solid var(--border); border-radius:14px;
+      padding:16px; margin-bottom:16px;
+    }
+    .chart-title { font-size:11px; font-weight:700; text-transform:uppercase; color:var(--text-muted); margin-bottom:10px; letter-spacing:.06em; }
+    #blockChartCanvas { display:block; width:100%; height:80px; }
+
+    /* ── Weekly sidebar ── */
+    .sidebar-card {
+      background:var(--surface-2); border:1px solid var(--border); border-radius:14px;
+      padding:14px; max-height:340px; overflow-y:auto;
+    }
+    .sidebar-day-grp { margin-bottom:14px; }
+    .sidebar-day-hdr { font-size:10px; font-weight:700; text-transform:uppercase; color:var(--text-muted); margin-bottom:5px; }
+    .sidebar-item {
+      background:rgba(255,255,255,.04); border-radius:8px; padding:7px 10px;
+      margin-bottom:3px; font-size:12px; cursor:pointer; transition:background .15s;
+      display:flex; align-items:center; gap:8px;
+    }
+    .sidebar-item:hover { background:rgba(167,139,250,.1); }
+
+    /* ── Modals shared ── */
+    .modal-overlay {
+      position:fixed; inset:0; background:rgba(0,0,0,.75); z-index:9000;
+      display:none; align-items:center; justify-content:center; padding:16px;
+    }
+    .modal-overlay.open { display:flex; }
+    .modal-box {
+      background:var(--surface-1); border:1px solid var(--border); border-radius:18px;
+      padding:24px; max-width:600px; width:100%; max-height:90vh; overflow-y:auto;
+    }
+    .modal-title { font-family:'Fredoka',sans-serif; font-size:20px; font-weight:700; margin:0 0 4px; }
+    .modal-sub   { font-size:13px; color:var(--text-muted); margin-bottom:20px; }
+    .modal-hdr   { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:0; }
+    .modal-close { background:none; border:none; color:var(--text-muted); font-size:22px; cursor:pointer; padding:0; line-height:1; }
+    .form-label  { font-size:11px; font-weight:700; text-transform:uppercase; color:var(--text-muted); margin-bottom:6px; display:block; letter-spacing:.07em; }
+    .form-group  { margin-bottom:18px; }
+    .slider-row  { display:flex; align-items:center; gap:12px; }
+    .slider-val  { font-size:28px; font-weight:700; color:var(--c-flagship); min-width:42px; text-align:center; }
+    .slider-per  { font-size:13px; color:var(--text-muted); }
+    input[type=range].styled { flex:1; accent-color:var(--c-flagship); }
+    .day-toggles { display:grid; grid-template-columns:repeat(7,1fr); gap:5px; }
+    .day-tog-btn {
+      padding:7px 4px; border-radius:8px; border:1px solid var(--border);
+      background:transparent; color:var(--text-muted); font-size:11px; font-weight:700;
+      cursor:pointer; text-align:center; transition:all .15s;
+    }
+    .day-tog-btn.on { background:rgba(59,130,246,.15); border-color:#3b82f6; color:#3b82f6; }
+    .task-pool    { max-height:220px; overflow-y:auto; border:1px solid var(--border); border-radius:11px; padding:6px; }
+    .task-row     { display:flex; align-items:center; gap:10px; padding:8px; border-radius:8px; cursor:pointer; transition:background .15s; }
+    .task-row:hover { background:rgba(255,255,255,.04); }
+    .task-check   { width:18px; height:18px; border-radius:4px; border:2px solid var(--border); display:flex; align-items:center; justify-content:center; font-size:11px; flex-shrink:0; }
+    .task-row.sel .task-check { background:var(--c-flagship); border-color:var(--c-flagship); color:#fff; }
+    .flex-display { display:flex; align-items:center; gap:12px; background:rgba(167,139,250,.07); border:1px solid rgba(167,139,250,.2); border-radius:11px; padding:12px 14px; }
+    .flex-dots    { display:flex; gap:5px; }
+    .flex-dot     { width:18px; height:18px; border-radius:4px; background:rgba(167,139,250,.3); }
+    .flex-dot.used{ background:rgba(107,114,128,.25); }
+    .btn-save-plan { width:100%; background:linear-gradient(135deg,#a78bfa,#06b6d4); color:#fff; border:none; border-radius:11px; padding:13px; font-size:15px; font-weight:700; cursor:pointer; margin-top:4px; transition:opacity .2s; }
+    .btn-save-plan:hover { opacity:.88; }
+
+    /* ── Daily Triage Modal ── */
+    .triage-list { display:flex; flex-direction:column; gap:7px; max-height:320px; overflow-y:auto; }
+    .tri-item {
+      display:flex; align-items:center; gap:10px; padding:10px 12px;
+      background:var(--surface-2); border:1px solid var(--border); border-radius:11px;
+      cursor:pointer; transition:border-color .15s;
+    }
+    .tri-item:hover { border-color:rgba(167,139,250,.5); }
+    .tri-item.sel   { border-color:var(--c-flagship); background:rgba(249,115,22,.06); }
+    .tri-item-check { width:20px; height:20px; border-radius:50%; border:2px solid var(--border); display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700; flex-shrink:0; }
+    .tri-item.sel .tri-item-check { background:var(--c-flagship); border-color:var(--c-flagship); color:#fff; }
+    .tri-item-info { flex:1; min-width:0; }
+    .tri-item-title { font-size:13px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .tri-item-sub   { font-size:11px; color:var(--text-muted); }
+    .btn-confirm-triage { width:100%; margin-top:14px; background:var(--c-flagship); color:#fff; border:none; border-radius:11px; padding:13px; font-size:14px; font-weight:700; cursor:pointer; }
+
+    /* ── Add block modal ── */
+    .search-input {
+      width:100%; background:var(--surface-2); border:1px solid var(--border);
+      border-radius:8px; padding:8px 12px; color:var(--text-primary); font-size:14px;
+      margin-bottom:10px; box-sizing:border-box;
+    }
+    .search-input:focus { outline:none; border-color:rgba(167,139,250,.5); }
+    .pool-list { max-height:340px; overflow-y:auto; display:flex; flex-direction:column; gap:5px; }
+
+    /* ── Toast ── */
+    .sched-toast {
+      position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(20px);
+      background:var(--surface-1); border:1px solid var(--border); border-radius:11px;
+      padding:10px 18px; font-size:13px; font-weight:600; color:var(--text-primary);
+      box-shadow:0 8px 32px rgba(0,0,0,.4); opacity:0; transition:opacity .3s, transform .3s;
+      z-index:9999; white-space:nowrap;
+    }
+    .sched-toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+  </style>
+</head>
+<body>
+
+<!-- ──────────────────────────────────── HEADER ── -->
+<header class="sched-header">
+  <div class="sched-header-left">
+    <a href="index.html" class="sched-back">← Board</a>
+    <span class="sched-title">📅 Schedule</span>
+  </div>
+  <div class="sched-hdr-actions">
+    <button class="btn-daily-triage" onclick="openDailyTriage()">⚡ Daily Triage</button>
+    <button class="btn-plan-week"    onclick="openPlanModal()">✦ Plan Week</button>
+  </div>
+</header>
+
+<!-- ──────────────────────────────── MAIN BODY ── -->
+<main class="sched-body">
+
+  <!-- ── TODAY HEADER ── -->
+  <div class="today-hdr">
+    <div class="today-hdr-row1">
+      <div class="today-date-label" id="todayDateLabel"></div>
+      <div class="today-threshold-pill gray" id="todayThreshPill">Loading…</div>
+    </div>
+    <div class="today-hdr-row2">
+      <span class="today-block-counter" id="todayBlockCounter">Block 0 of 3</span>
+      <div class="block-dots-row" id="todayBlockDots"></div>
+      <span class="today-carry-note" id="todayCarryNote"></span>
+    </div>
+  </div>
+
+  <!-- ── LEAD TIME BANNER ── -->
+  <div id="leadtimeBannerWrap"></div>
+
+  <!-- ── WEEK AT A GLANCE ── -->
+  <div class="sched-section-title">📆 Week at a Glance</div>
+  <div class="week-grid-7" id="weekGrid"></div>
+
+  <!-- ── COLUMNS: Queue + Sidebar ── -->
+  <div class="sched-columns">
+    <!-- Left: queue -->
+    <div>
+      <div class="sched-section-title">⚡ Today's Block Queue</div>
+      <div class="queue-list-wrap" id="queueListWrap"></div>
+      <button class="btn-add-block" onclick="openAddBlockModal()">＋ Add block to today</button>
+    </div>
+
+    <!-- Right: chart + sidebar -->
+    <div>
+      <div class="chart-card">
+        <div class="chart-title">Deep Work — Past 3 Weeks</div>
+        <canvas id="blockChartCanvas"></canvas>
+      </div>
+      <div class="sidebar-card">
+        <div class="sched-section-title" style="margin-bottom:8px">Rest of Week</div>
+        <div id="weeklySidebar"></div>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<!-- ──────────────────────── WEEKLY PLAN MODAL ── -->
+<div class="modal-overlay" id="planModalOverlay">
+  <div class="modal-box">
+    <div class="modal-hdr">
+      <div>
+        <div class="modal-title">✦ Plan This Week</div>
+        <div class="modal-sub">Set a realistic floor. You win every day you hit it.</div>
+      </div>
+      <button class="modal-close" onclick="closePlanModal()">✕</button>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Step 1 — Realistic deep blocks this week?</label>
+      <div class="slider-row">
+        <input type="range" min="7" max="28" value="14" class="styled" id="planSlider" oninput="updatePlanSlider(this.value)">
+        <div class="slider-val" id="planSliderVal">14</div>
+        <span class="slider-per">≈ <span id="planSliderPer">2</span>/day</span>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Step 2 — Lab days this week? (caps deep blocks at 2)</label>
+      <div class="day-toggles" id="planLabDayBtns"></div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Step 3 — Top tasks to work on this week</label>
+      <div class="task-pool" id="planTaskPool"></div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Step 4 — Your 2 flex blocks (absorb overflow automatically)</label>
+      <div class="flex-display">
+        <div class="flex-dots" id="planFlexDots"></div>
+        <div>
+          <div style="font-size:13px;font-weight:600">Flex buffer</div>
+          <div style="font-size:12px;color:var(--text-muted)"><span id="planFlexUsed">0</span> of 2 used this week</div>
+        </div>
+      </div>
+    </div>
+
+    <button class="btn-save-plan" onclick="savePlan()">Save Plan →</button>
+  </div>
+</div>
+
+<!-- ──────────────────────── DAILY TRIAGE MODAL ── -->
+<div class="modal-overlay" id="triageModalOv">
+  <div class="modal-box" style="max-width:480px">
+    <div class="modal-hdr">
+      <div>
+        <div class="modal-title">⚡ Daily Triage</div>
+        <div class="modal-sub">Pick your top 3 blocks for today — that's it. Go.</div>
+      </div>
+      <button class="modal-close" onclick="closeTriageModal2()">✕</button>
+    </div>
+    <div class="triage-list" id="trList"></div>
+    <button class="btn-confirm-triage" onclick="confirmTriage()">Set Today's Queue →</button>
+  </div>
+</div>
+
+<!-- ──────────────────────── ADD BLOCK MODAL ── -->
+<div class="modal-overlay" id="addBlockModalOv">
+  <div class="modal-box" style="max-width:500px">
+    <div class="modal-hdr" style="margin-bottom:12px">
+      <div class="modal-title">＋ Add Block</div>
+      <button class="modal-close" onclick="closeAddBlockModal()">✕</button>
+    </div>
+    <input type="text" class="search-input" id="blockSearch" placeholder="Search tasks…" oninput="filterPool(this.value)">
+    <div class="pool-list" id="poolList"></div>
+  </div>
+</div>
+
+<!-- ──────────────────────── TOAST ── -->
+<div class="sched-toast" id="schedToast"></div>
+
+<script src="protocol_data.js"></script>
+<script src="data.js"></script>
+<script src="app.js"></script>
+<script src="triage.js"></script>
+<script>
+'use strict';
+// ══════════════════════════════════════════
+//  SCHEDULE PAGE CONTROLLER
+// ══════════════════════════════════════════
+
+const DAY_ABBR = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+const DAY_FULL = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+
+const DAILY_THRESHOLD = {
+  0: { msg:'Rest day — 1 block carries forward', color:'gray',  icon:'→' },
+  1: { msg:'Carry 1 block forward',              color:'gray',  icon:'↗' },
+  2: { msg:'Solid day ✓',                        color:'green', icon:'✓', isSuccess:true },
+  3: { msg:'Great day ★',                        color:'gold',  icon:'★', animation:'star_burst' },
+  4: { msg:'Beast mode 🔥',                      color:'fire',  icon:'🔥', animation:'confetti' },
+};
+
+const COG_EMOJI = { deep:'🔴', medium:'🟡', admin:'🟢', lab:'🔵', delegated:'⬜' };
+const COG_LABEL = { deep:'Deep Work', medium:'Medium', admin:'Admin', lab:'Bench', delegated:'Delegated' };
+
+/* ── Helpers ── */
+function todayISO() { return new Date().toISOString().split('T')[0]; }
+
+function getWeekMonSun() {
+  const d = new Date(), dow = d.getDay();
+  const mon = new Date(d);
+  mon.setDate(d.getDate() - (dow === 0 ? 6 : dow - 1));
+  return Array.from({length:7},(_,i)=>{
+    const dd=new Date(mon); dd.setDate(mon.getDate()+i);
+    return dd.toISOString().split('T')[0];
+  });
+}
+
+/* ── Schedule state (localStorage key: schedule_state_v2) ── */
+function getSchedState() {
+  try { return JSON.parse(localStorage.getItem('schedule_state_v2')||'{}'); } catch(e){return{};}
+}
+function saveSchedState(s) { localStorage.setItem('schedule_state_v2',JSON.stringify(s)); }
+
+function getDayState(date) {
+  const s = getSchedState();
+  if (!s[date]) {
+    const yesterday = new Date(date); yesterday.setDate(yesterday.getDate()-1);
+    const yd = getDayState(yesterday.toISOString().split('T')[0]);
+    const deficit = Math.max(0, (yd.target_deep||3)-(yd.completed_deep||0));
+    const flex = getWeeklyFlexState();
+    const absorbed = Math.min(deficit, flex.flex_remaining||0);
+    const carried = Math.min(deficit-absorbed, 1); // max 1 carry-in
+    s[date] = {
+      completed_deep:0, completed_medium:0, completed_lab:0,
+      carried_in: carried, carried_out:0,
+      target_deep: 3, is_lab_day:false,
+      completed_step_ids:[],
+    };
+    if (date !== '1970-01-01') saveSchedState(s);
+  }
+  return s[date];
+}
+
+function saveDayState(date, data) {
+  const s = getSchedState();
+  s[date] = { ...(s[date]||{}), ...data };
+  saveSchedState(s);
+  archiveDayState(date, s[date]);
+}
+
+function archiveDayState(date, data) {
+  try {
+    const hist = JSON.parse(localStorage.getItem('block_history_v1')||'[]');
+    const idx = hist.findIndex(h=>h.date===date);
+    const entry = { date, completed_blocks: data.completed_deep||0, ...data };
+    if (idx>=0) hist[idx]=entry; else hist.push(entry);
+    if (hist.length>90) hist.splice(0,hist.length-90);
+    localStorage.setItem('block_history_v1',JSON.stringify(hist));
+  } catch(e){}
+}
+
+function getWeeklyFlexState() {
+  const sunday = getWeekMonSun()[6]; // Sunday
+  try {
+    const f = JSON.parse(localStorage.getItem('weekly_flex_v1')||'{}');
+    if (f.week_of===sunday) return f;
+  } catch(e){}
+  const fresh = { week_of:sunday, flex_remaining:2 };
+  localStorage.setItem('weekly_flex_v1',JSON.stringify(fresh));
+  return fresh;
+}
+
+function getWeekScheduleState() {
+  try { return JSON.parse(localStorage.getItem('week_schedule_v1')||'{}'); } catch(e){return{};}
+}
+function saveWeekScheduleState(s) { localStorage.setItem('week_schedule_v1',JSON.stringify(s)); }
+
+/* ── Today queue ── */
+function getDailyQueue() {
+  const today = todayISO();
+  try {
+    const s = JSON.parse(localStorage.getItem('daily_priorities')||'null');
+    if (s&&s.date===today) return s.items||[];
+  } catch(e){}
+  return autoQueue();
+}
+function saveDailyQueue(items) {
+  localStorage.setItem('daily_priorities',JSON.stringify({date:todayISO(),items}));
+}
+
+function autoQueue() {
+  if (typeof getAllBlockItems!=='function') return [];
+  const items = getAllBlockItems().filter(i=>i.cogType==='deep'||i.cogType==='medium');
+  return items.slice(0,4).map(i=>({
+    stepId:i.step.id, milestoneId:i.milestone.id,
+    title:i.step.title, cogType:i.cogType, quadrant:i.quadrant||'Q3'
+  }));
+}
+
+/* ── Block history ── */
+function getBlockHistory(days) {
+  try { return JSON.parse(localStorage.getItem('block_history_v1')||'[]').slice(-days); } catch(e){return[];}
+}
+
+/* ── Threshold ── */
+function getThreshold(n) {
+  const t = DAILY_THRESHOLD;
+  if (n>=4) return t[4];
+  if (n===3) return t[3];
+  if (n===2) return t[2];
+  if (n===1) return t[1];
+  return t[0];
+}
+
+// ══════════════════════════════════════════
+//  RENDER FUNCTIONS
+// ══════════════════════════════════════════
+
+function renderTodayHeader() {
+  const today = todayISO();
+  const ds = getDayState(today);
+  const done = ds.completed_deep||0;
+  const target = ds.target_deep||3;
+  const thresh = getThreshold(done);
+
+  // Date label
+  const el = document.getElementById('todayDateLabel');
+  if (el) {
+    const d = new Date();
+    el.textContent = d.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'});
+  }
+
+  // Threshold pill
+  const pill = document.getElementById('todayThreshPill');
+  if (pill) {
+    pill.textContent = thresh.icon ? thresh.icon+' '+thresh.msg : thresh.msg;
+    pill.className = 'today-threshold-pill '+(thresh.color==='fire'?'fire':thresh.color==='gold'?'gold':thresh.color==='green'?'green':'gray');
+  }
+
+  // Counter
+  const ctr = document.getElementById('todayBlockCounter');
+  if (ctr) ctr.textContent = `Block ${done} of ${target}`;
+
+  // Dots
+  const dotsEl = document.getElementById('todayBlockDots');
+  if (dotsEl) {
+    const total = Math.max(done, target);
+    dotsEl.innerHTML = Array.from({length:total},(_,i)=>{
+      const cls = i<done?'done':i===done&&done<total?'active':'';
+      return `<div class="bdot ${cls}"></div>`;
+    }).join('');
+  }
+
+  // Carry note
+  const cn = document.getElementById('todayCarryNote');
+  if (cn && ds.carried_in>0) cn.textContent = `↗ +${ds.carried_in} carried in`;
+  else if (cn) cn.textContent='';
+}
+
+function renderLeadTimeBanner() {
+  const wrap = document.getElementById('leadtimeBannerWrap');
+  if (!wrap) return;
+  const warnings = typeof getAllLeadTimeWarnings==='function' ? getAllLeadTimeWarnings() : [];
+  if (!warnings.length) { wrap.innerHTML=''; return; }
+  const top = warnings.find(w=>w.warn.level==='red')||warnings[0];
+  wrap.innerHTML = `
+    <div class="leadtime-banner ${top.warn.level}" id="leadtimeBannerEl">
+      ${top.warn.level==='red'?'🚨':'⚠️'}
+      <strong>${top.step.title}</strong> — ${top.warn.message}
+      <a href="focus.html?stepId=${encodeURIComponent(top.step.id)}&milestoneId=${encodeURIComponent(top.milestone.id)}"
+         style="color:inherit;font-weight:700;text-decoration:underline;margin-left:6px">Start →</a>
+      ${warnings.length>1?`<span style="opacity:.65;margin-left:6px">+${warnings.length-1} more</span>`:''}
+      <button class="lb-dismiss" onclick="this.parentElement.remove()" title="Dismiss">✕</button>
+    </div>`;
+}
+
+function renderWeekGrid() {
+  const grid = document.getElementById('weekGrid');
+  if (!grid) return;
+  const today = todayISO();
+  const days  = getWeekMonSun();
+  const wSched = getWeekScheduleState();
+
+  grid.innerHTML = days.map((date,i)=>{
+    const isToday = date===today;
+    const hist = !isToday ? getBlockHistory(30).find(h=>h.date===date) : null;
+    const ds   = isToday ? getDayState(today) : null;
+    const done = isToday ? (ds.completed_deep||0) : (hist?hist.completed_blocks||0:null);
+    const target = isToday ? (ds.target_deep||3) : 3;
+    const isLab = (wSched.lab_days||[]).includes(date);
+    const isFuture = date>today;
+    const thresh = done!=null ? getThreshold(done) : null;
+    const thClass = thresh ? 't-'+thresh.color : '';
+    const carriedIn = ds?.carried_in||0;
+
+    return `
+      <div class="wday ${isToday?'today':''} ${thClass}" onclick="onDayClick('${date}')" data-date="${date}">
+        <div class="wday-name">${DAY_ABBR[i]}</div>
+        <div class="wday-date">${new Date(date+'T12:00').getDate()}</div>
+        <div class="wday-blocks">${isFuture?'<span style="color:var(--text-muted);font-size:14px">?</span>':(done!==null?done:0)}<span style="color:var(--text-muted);font-size:11px">/${target}</span></div>
+        <div class="wday-label">${isFuture?'planned':(done===null?'—':done>=2?'done ✓':done===1?'1 block':'rest')}</div>
+        ${isLab?'<div class="wday-lab">LAB</div>':''}
+        ${carriedIn>0?`<div class="wday-carry">↗ +${carriedIn}</div>`:''}
+        <label class="lab-toggle" onclick="event.stopPropagation()">
+          <input type="checkbox" ${isLab?'checked':''} onchange="toggleLabDay('${date}',this.checked)">Lab
+        </label>
+      </div>`;
+  }).join('');
+}
+
+function renderQueueList() {
+  const wrap = document.getElementById('queueListWrap');
+  if (!wrap) return;
+  const today = todayISO();
+  const ds = getDayState(today);
+  const doneIds = new Set(ds.completed_step_ids||[]);
+  const queue = getDailyQueue();
+
+  if (!queue.length) {
+    wrap.innerHTML = `<div class="queue-empty">
+      <div style="font-size:26px;margin-bottom:8px">📭</div>
+      No blocks queued — use Daily Triage or click "Add block" to build your day.
+    </div>`;
+    return;
+  }
+
+  wrap.innerHTML = queue.map((item,i)=>{
+    const done = doneIds.has(item.stepId);
+    const cog  = item.cogType||'deep';
+    const qLabel = item.quadrant||'Q3';
+    return `
+      <div class="qblock ${done?'done':''}" id="qb-${item.stepId}">
+        <div class="qblock-num">${done?'✓':(i+1)}</div>
+        <div class="qblock-cog" style="background:var(--cog-${cog},#ef4444)">${COG_EMOJI[cog]||'🔴'}</div>
+        <div class="qblock-info">
+          <div class="qblock-title">${item.title}</div>
+          <div class="qblock-meta">
+            <span class="cog-type-pill ${cog}" style="font-size:10px;padding:1px 6px">${COG_LABEL[cog]||cog}</span>
+            <span style="background:rgba(255,255,255,.07);border-radius:4px;padding:1px 5px;font-size:10px">${qLabel}</span>
+            ${done?'<span style="color:#10b981;font-weight:700">✓ Done</span>':''}
+          </div>
+        </div>
+        <div class="qblock-actions">
+          ${!done?`<button class="qbtn-focus" onclick="startFocus('${item.stepId}','${item.milestoneId}')">▶ Focus</button>`:''}
+          ${!done?`<button class="qbtn-carry" onclick="carryBlock('${item.stepId}')" title="Carry to tomorrow">↗</button>`:''}
+          ${!done?`<button class="qbtn-del" onclick="delegateBlock('${item.stepId}','${item.milestoneId}')" title="Delegate">⬜</button>`:''}
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function renderBlockChart() {
+  const canvas = document.getElementById('blockChartCanvas');
+  if (!canvas) return;
+  const W = canvas.offsetWidth||280, H=80;
+  canvas.width=W; canvas.height=H;
+  const ctx = canvas.getContext('2d');
+
+  const today = todayISO();
+  const ds = getDayState(today);
+  const hist = getBlockHistory(20);
+  const todayEntry = { date:today, completed_blocks: ds.completed_deep||0 };
+  const days = [...hist.filter(h=>h.date!==today), todayEntry].slice(-21);
+  const maxVal = Math.max(4,...days.map(d=>d.completed_blocks||0));
+  const target = 3;
+  const bW = Math.max(4, Math.floor((W-4)/days.length)-2);
+
+  ctx.clearRect(0,0,W,H);
+
+  // Target line
+  const tY = H - Math.round((target/maxVal)*(H-12))-2;
+  ctx.strokeStyle='rgba(255,255,255,.18)'; ctx.setLineDash([4,4]);
+  ctx.beginPath(); ctx.moveTo(0,tY); ctx.lineTo(W,tY); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle='rgba(255,255,255,.3)'; ctx.font='8px Plus Jakarta Sans';
+  ctx.textAlign='right'; ctx.fillText('target',W-2,tY-2);
+
+  // Bars
+  days.forEach((day,i)=>{
+    const n = day.completed_blocks||0;
+    const bH = Math.max(3, Math.round((n/maxVal)*(H-14)));
+    const x = i*(bW+2)+2, y=H-bH-2;
+    const isToday = day.date===today;
+    const th = getThreshold(n);
+    ctx.fillStyle = isToday?'rgba(249,115,22,.85)':
+      th.color==='fire'?'rgba(249,115,22,.65)':
+      th.color==='gold'?'rgba(245,158,11,.65)':
+      th.color==='green'?'rgba(16,185,129,.55)':
+      'rgba(167,139,250,.35)';
+    ctx.beginPath();
+    const r=3;
+    ctx.moveTo(x+r,y); ctx.lineTo(x+bW-r,y); ctx.arcTo(x+bW,y,x+bW,y+r,r);
+    ctx.lineTo(x+bW,y+bH); ctx.lineTo(x,y+bH); ctx.lineTo(x,y+r);
+    ctx.arcTo(x,y,x+r,y,r); ctx.closePath(); ctx.fill();
+  });
+}
+
+function renderWeeklySidebar() {
+  const el = document.getElementById('weeklySidebar');
+  if (!el) return;
+  const today = todayISO();
+  const futureDays = getWeekMonSun().filter(d=>d>today);
+  if (!futureDays.length) { el.innerHTML='<div style="color:var(--text-muted);font-size:13px">End of week!</div>'; return; }
+  const items = typeof getAllBlockItems==='function' ? getAllBlockItems().filter(i=>i.cogType==='deep') : [];
+  el.innerHTML = futureDays.slice(0,5).map((date,i)=>{
+    const dayName = DAY_FULL[getWeekMonSun().indexOf(date)];
+    const chunk = items.slice(i*2,i*2+2);
+    return `<div class="sidebar-day-grp">
+      <div class="sidebar-day-hdr">${dayName}</div>
+      ${chunk.length?chunk.map(item=>`
+        <div class="sidebar-item" onclick="startFocus('${item.step.id}','${item.milestone.id}')">
+          <span style="width:14px;height:14px;border-radius:50%;background:var(--cog-${item.cogType||'deep'});display:inline-block;flex-shrink:0"></span>
+          <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1">${item.step.title}</span>
+        </div>`).join(''):'<div style="color:var(--text-muted);font-size:12px;padding:4px 8px">—</div>'}
+    </div>`;
+  }).join('');
+}
+
+// ══════════════════════════════════════════
+//  ACTIONS
+// ══════════════════════════════════════════
+
+function startFocus(stepId, milestoneId) {
+  window.location.href=`focus.html?stepId=${encodeURIComponent(stepId)}&milestoneId=${encodeURIComponent(milestoneId)}`;
+}
+
+function carryBlock(stepId) {
+  const q = getDailyQueue();
+  saveDailyQueue(q.filter(b=>b.stepId!==stepId));
+  toast('↗ Carried to tomorrow — no stress');
+  renderQueueList();
+}
+
+function delegateBlock(stepId, milestoneId) {
+  if (typeof saveStepTriageData==='function') saveStepTriageData(milestoneId, stepId, {delegated:true, phd_critical:false});
+  const q = getDailyQueue();
+  saveDailyQueue(q.filter(b=>b.stepId!==stepId));
+  toast('⬜ Delegated — removed from queue');
+  renderQueueList();
+}
+
+function toggleLabDay(date, isLab) {
+  const s = getWeekScheduleState();
+  if (!s.lab_days) s.lab_days=[];
+  s.lab_days = isLab ? [...new Set([...s.lab_days,date])] : s.lab_days.filter(d=>d!==date);
+  saveWeekScheduleState(s);
+  if (date===todayISO()) {
+    const ds = getDayState(date);
+    saveDayState(date,{...ds, is_lab_day:isLab, target_deep:isLab?2:3});
+    renderTodayHeader();
+  }
+  renderWeekGrid();
+}
+
+function onDayClick(date) {
+  document.querySelectorAll('.wday').forEach(c=>c.style.outline='');
+  const card = document.querySelector(`[data-date="${date}"]`);
+  if(card) card.style.outline='2px solid var(--c-flagship)';
+}
+
+// ══════════════════════════════════════════
+//  DAILY TRIAGE MODAL
+// ══════════════════════════════════════════
+let _triageSelected = [];
+
+function openDailyTriage() {
+  const overlay = document.getElementById('triageModalOv');
+  if (!overlay) return;
+  _triageSelected = getDailyQueue().map(q=>q.stepId);
+  const items = typeof getAllBlockItems==='function' ? getAllBlockItems().filter(i=>i.cogType==='deep'||i.cogType==='medium').slice(0,12) : [];
+  const list  = document.getElementById('trList');
+  if (list) {
+    list.innerHTML = items.map(item=>{
+      const sel = _triageSelected.includes(item.step.id);
+      return `<div class="tri-item ${sel?'sel':''}" onclick="toggleTriageItem(this,'${item.step.id}','${item.milestone.id}','${item.step.title.replace(/'/g,"\\'")}','${item.cogType||'deep'}','${item.quadrant||'Q3'}')"
+               data-sid="${item.step.id}">
+        <div class="tri-item-check">${sel?'✓':''}</div>
+        <div class="tri-item-info">
+          <div class="tri-item-title">${item.step.title}</div>
+          <div class="tri-item-sub">${COG_EMOJI[item.cogType]||'🔴'} ${COG_LABEL[item.cogType]||'Deep'} · ${item.milestone.title}</div>
+        </div>
+      </div>`;
+    }).join('') || '<div style="color:var(--text-muted);padding:16px;text-align:center">No tasks found</div>';
+  }
+  overlay.classList.add('open');
+  document.body.style.overflow='hidden';
+}
+
+function toggleTriageItem(el, stepId, milestoneId, title, cogType, quadrant) {
+  if (_triageSelected.includes(stepId)) {
+    _triageSelected = _triageSelected.filter(s=>s!==stepId);
+    el.classList.remove('sel');
+    el.querySelector('.tri-item-check').textContent='';
+  } else {
+    if (_triageSelected.length>=4) { toast('4 blocks is your max — protect the list'); return; }
+    _triageSelected.push(stepId);
+    el.classList.add('sel');
+    el.querySelector('.tri-item-check').textContent='✓';
+    el.dataset.milestoneId=milestoneId; el.dataset.title=title;
+    el.dataset.cogType=cogType; el.dataset.quadrant=quadrant;
+  }
+}
+
+function confirmTriage() {
+  const items = typeof getAllBlockItems==='function' ? getAllBlockItems() : [];
+  const queue = _triageSelected.map(sid=>{
+    const item = items.find(i=>i.step.id===sid);
+    if (!item) {
+      const el = document.querySelector(`[data-sid="${sid}"]`);
+      if (el) return { stepId:sid, milestoneId:el.dataset.milestoneId||'', title:el.dataset.title||sid, cogType:el.dataset.cogType||'deep', quadrant:el.dataset.quadrant||'Q3' };
+      return null;
+    }
+    return { stepId:item.step.id, milestoneId:item.milestone.id, title:item.step.title, cogType:item.cogType, quadrant:item.quadrant||'Q3' };
+  }).filter(Boolean);
+  saveDailyQueue(queue);
+  closeTriageModal2();
+  renderAll();
+  toast(`✓ Today's queue set — ${queue.length} block${queue.length!==1?'s':''}`);
+}
+
+function closeTriageModal2() {
+  document.getElementById('triageModalOv')?.classList.remove('open');
+  document.body.style.overflow='';
+}
+
+// ══════════════════════════════════════════
+//  WEEKLY PLAN MODAL
+// ══════════════════════════════════════════
+let _planLabDays = [];
+let _planSelected = new Set();
+
+function openPlanModal() {
+  const overlay = document.getElementById('planModalOverlay');
+  if (!overlay) return;
+  const sched = getWeekScheduleState();
+  _planLabDays = [...(sched.lab_days||[])];
+  _planSelected = new Set();
+  renderPlanLabDays();
+  renderPlanTaskPool();
+  renderPlanFlex();
+  const sl = document.getElementById('planSlider');
+  if (sl) { sl.value=sched.planned_blocks||14; updatePlanSlider(sl.value); }
+  overlay.classList.add('open');
+  document.body.style.overflow='hidden';
+}
+
+function closePlanModal() {
+  document.getElementById('planModalOverlay')?.classList.remove('open');
+  document.body.style.overflow='';
+}
+
+function updatePlanSlider(v) {
+  document.getElementById('planSliderVal').textContent=v;
+  document.getElementById('planSliderPer').textContent=Math.round(v/7*10)/10;
+}
+
+function renderPlanLabDays() {
+  const cont = document.getElementById('planLabDayBtns');
+  if (!cont) return;
+  const days = getWeekMonSun();
+  cont.innerHTML = days.map((d,i)=>`<button class="day-tog-btn ${_planLabDays.includes(d)?'on':''}" onclick="togglePlanLab('${d}',this)">${DAY_ABBR[i]}</button>`).join('');
+}
+
+function togglePlanLab(date, btn) {
+  _planLabDays = _planLabDays.includes(date) ? _planLabDays.filter(d=>d!==date) : [..._planLabDays,date];
+  btn.classList.toggle('on');
+}
+
+function renderPlanTaskPool() {
+  const pool = document.getElementById('planTaskPool');
+  if (!pool) return;
+  const items = typeof getAllBlockItems==='function' ? getAllBlockItems().filter(i=>i.cogType==='deep').slice(0,15) : [];
+  if (!items.length) { pool.innerHTML='<div style="color:var(--text-muted);font-size:13px;padding:8px">No deep tasks yet</div>'; return; }
+  pool.innerHTML = items.map(item=>{
+    const sel = _planSelected.has(item.step.id);
+    return `<div class="task-row ${sel?'sel':''}" onclick="togglePlanTask('${item.step.id}',this)">
+      <div class="task-check">${sel?'✓':''}</div>
+      <div>
+        <div style="font-size:13px;font-weight:600">${item.step.title}</div>
+        <div style="font-size:11px;color:var(--text-muted)">${item.milestone.emoji||''} ${item.milestone.title} · ${item.quadrant||'Q3'}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function togglePlanTask(id, row) {
+  if (_planSelected.has(id)) { _planSelected.delete(id); row.classList.remove('sel'); row.querySelector('.task-check').textContent=''; }
+  else { _planSelected.add(id); row.classList.add('sel'); row.querySelector('.task-check').textContent='✓'; }
+}
+
+function renderPlanFlex() {
+  const flex = typeof getWeeklyFlexState==='function' ? getWeeklyFlexState() : {flex_remaining:2};
+  const used = 2-(flex.flex_remaining||0);
+  const dots = document.getElementById('planFlexDots');
+  const usedEl = document.getElementById('planFlexUsed');
+  if (dots) dots.innerHTML=Array.from({length:2},(_,i)=>`<div class="flex-dot ${i<used?'used':''}"></div>`).join('');
+  if (usedEl) usedEl.textContent=used;
+}
+
+function savePlan() {
+  const sl = document.getElementById('planSlider');
+  const planned = sl ? parseInt(sl.value) : 14;
+  const sched = getWeekScheduleState();
+  sched.planned_blocks=planned; sched.lab_days=_planLabDays;
+  saveWeekScheduleState(sched);
+  // Push selected tasks to daily queue
+  if (_planSelected.size>0) {
+    const items = typeof getAllBlockItems==='function' ? getAllBlockItems() : [];
+    const queue = [..._planSelected].map(sid=>{
+      const item=items.find(i=>i.step.id===sid);
+      if(!item) return null;
+      return {stepId:item.step.id,milestoneId:item.milestone.id,title:item.step.title,cogType:item.cogType,quadrant:item.quadrant||'Q3'};
+    }).filter(Boolean);
+    saveDailyQueue(queue);
+  }
+  closePlanModal();
+  renderAll();
+  toast('✓ Week plan saved');
+}
+
+// ══════════════════════════════════════════
+//  ADD BLOCK MODAL
+// ══════════════════════════════════════════
+function openAddBlockModal() {
+  const ov = document.getElementById('addBlockModalOv');
+  if (!ov) return;
+  const inp = document.getElementById('blockSearch');
+  if (inp) inp.value='';
+  filterPool('');
+  ov.classList.add('open');
+  document.body.style.overflow='hidden';
+  inp?.focus();
+}
+
+function closeAddBlockModal() {
+  document.getElementById('addBlockModalOv')?.classList.remove('open');
+  document.body.style.overflow='';
+}
+
+function filterPool(q) {
+  const list = document.getElementById('poolList');
+  if (!list) return;
+  const all = typeof getAllBlockItems==='function' ? getAllBlockItems() : [];
+  const filtered = q ? all.filter(i=>i.step.title.toLowerCase().includes(q.toLowerCase())) : all;
+  const existing = new Set(getDailyQueue().map(d=>d.stepId));
+  list.innerHTML = filtered.slice(0,20).map(item=>{
+    const inQ = existing.has(item.step.id);
+    return `<div class="qblock" style="cursor:pointer" onclick="addToQueue('${item.step.id}','${item.milestone.id}','${item.step.title.replace(/'/g,"\\'")}','${item.cogType||"deep"}','${item.quadrant||"Q3"}')">
+      <div class="qblock-cog" style="background:var(--cog-${item.cogType||'deep'})">${COG_EMOJI[item.cogType||'deep']}</div>
+      <div class="qblock-info">
+        <div class="qblock-title">${item.step.title}</div>
+        <div class="qblock-meta">${item.milestone.emoji||''} ${item.milestone.title}</div>
+      </div>
+      <div style="font-size:12px;color:${inQ?'#10b981':'var(--text-muted)'}">${inQ?'In queue':'+ Add'}</div>
+    </div>`;
+  }).join('') || '<div style="color:var(--text-muted);text-align:center;padding:20px">Nothing found</div>';
+}
+
+function addToQueue(stepId, milestoneId, title, cogType, quadrant) {
+  const q = getDailyQueue();
+  if (!q.find(b=>b.stepId===stepId)) { q.push({stepId,milestoneId,title,cogType,quadrant}); saveDailyQueue(q); }
+  closeAddBlockModal();
+  renderAll();
+  toast('+ Block added to today');
+}
+
+// ══════════════════════════════════════════
+//  TOAST
+// ══════════════════════════════════════════
+function toast(msg) {
+  const el = document.getElementById('schedToast');
+  if (!el) return;
+  el.textContent=msg; el.classList.add('show');
+  setTimeout(()=>el.classList.remove('show'),3200);
+}
+
+// ══════════════════════════════════════════
+//  INIT
+// ══════════════════════════════════════════
+function renderAll() {
+  renderTodayHeader();
+  renderLeadTimeBanner();
+  renderWeekGrid();
+  renderQueueList();
+  renderBlockChart();
+  renderWeeklySidebar();
+}
+
+document.addEventListener('DOMContentLoaded', ()=>{
+  renderAll();
+
+  // Modal backdrop closes
+  ['planModalOverlay','triageModalOv','addBlockModalOv'].forEach(id=>{
+    document.getElementById(id)?.addEventListener('click',e=>{
+      if(e.target.id===id) {
+        document.getElementById(id).classList.remove('open');
+        document.body.style.overflow='';
+      }
+    });
+  });
+
+  // Auto-open triage on Sunday if not done today
+  if (new Date().getDay()===0) {
+    const key='last_plan_date';
+    if (localStorage.getItem(key)!==todayISO()) {
+      setTimeout(()=>{ openPlanModal(); localStorage.setItem(key,todayISO()); },800);
+    }
+  }
+});
+</script>
+</body>
+</html>

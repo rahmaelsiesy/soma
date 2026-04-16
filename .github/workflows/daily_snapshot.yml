@@ -1,0 +1,32 @@
+name: Daily State Snapshot
+on:
+  schedule:
+    - cron: '0 14 * * *'  # 6am PDT (UTC-8) every day
+  workflow_dispatch:
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create daily snapshot
+        run: |
+          DATE=$(date +%Y-%m-%d)
+          mkdir -p snapshots
+          cat > snapshots/snapshot_${DATE}.json << SNAP
+          {
+            "date": "${DATE}",
+            "note": "Daily checkpoint — export progress from Quest Board and paste here",
+            "url": "https://rahmaelsiesy.github.io/neuro-atlas/",
+            "instructions": "Open the Quest Board, click Export JSON, paste the contents here and commit."
+          }
+          SNAP
+      - name: Commit snapshot
+        run: |
+          git config user.name "Quest Board Bot"
+          git config user.email "bot@questboard.local"
+          git add snapshots/
+          git diff --staged --quiet || git commit -m "snapshot: $(date +%Y-%m-%d) daily checkpoint"
+          git push

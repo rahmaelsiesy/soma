@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Misc & Triage — Rahma's Quest Board</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body style="min-height:100dvh;background:var(--bg);">
+
+<!-- HEADER -->
+<header class="site-header">
+  <div class="header-inner">
+    <a href="index.html" class="back-btn">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+      Quest Board
+    </a>
+    <div style="flex:1;font-family:var(--font-display);font-size:1.1rem;font-weight:700;color:var(--text)">📌 Misc &amp; Triage</div>
+
+    <!-- Daily cap indicator -->
+    <div id="miscCapBadge" class="triage-status-badge triage-ok" style="flex-shrink:0"></div>
+
+    <button class="theme-toggle" data-theme-toggle aria-label="Toggle theme">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+    </button>
+  </div>
+</header>
+
+<main style="max-width:900px;margin:0 auto;padding:32px 24px 96px">
+
+  <!-- DAILY CONTEXT STRIP -->
+  <div class="misc-daily-strip" id="miscDailyStrip">
+    <div class="misc-daily-label">PhD Board — Today's urgent tasks</div>
+    <div id="miscDailyItems" class="misc-daily-items"></div>
+  </div>
+
+  <!-- WEEKLY REVIEW PROMPT (Monday) -->
+  <div id="weeklyReviewBanner" class="weekly-review-banner" style="display:none">
+    <div class="weekly-review-emoji">📅</div>
+    <div>
+      <div class="weekly-review-title">Weekly Review — It's Monday!</div>
+      <div class="weekly-review-sub">Scroll through your Q4 tasks below. Which ones can you drop entirely?</div>
+    </div>
+    <button class="btn-cancel" onclick="dismissWeeklyReview()">Dismiss</button>
+  </div>
+
+  <!-- Q2 SECTION — Time-sensitive, non-PhD -->
+  <div class="misc-section">
+    <div class="misc-section-header">
+      <div>
+        <span class="quadrant-pill q2-pill">Q2 — Delegate or Block</span>
+        <span class="misc-section-sub">Time-sensitive but not on the PhD critical path</span>
+      </div>
+      <button class="tracker-action-btn primary" id="addMiscQ2Btn">+ Add</button>
+    </div>
+    <div id="q2List" class="misc-task-list"></div>
+    <div id="q2Empty" class="misc-empty" style="display:none">No Q2 tasks. ✓</div>
+  </div>
+
+  <!-- Q4 SECTION — Neither urgent nor PhD -->
+  <div class="misc-section">
+    <div class="misc-section-header">
+      <div>
+        <span class="quadrant-pill q4-pill">Q4 — Drop or Defer</span>
+        <span class="misc-section-sub">Neither time-sensitive nor on the PhD path — trim regularly</span>
+      </div>
+      <button class="tracker-action-btn" id="addMiscQ4Btn">+ Add</button>
+    </div>
+    <div id="q4List" class="misc-task-list"></div>
+    <div id="q4Empty" class="misc-empty" style="display:none">No Q4 tasks. ✓</div>
+  </div>
+
+  <!-- DONE SECTION (collapsible) -->
+  <details class="misc-done-section" id="miscDoneSection">
+    <summary class="misc-done-summary">✓ Completed misc tasks (<span id="doneCount">0</span>)</summary>
+    <div id="doneList" class="misc-task-list" style="margin-top:12px"></div>
+  </details>
+
+</main>
+
+<!-- ADD MISC TASK MODAL -->
+<div class="add-project-modal-overlay" id="addMiscOverlay">
+  <div class="add-project-modal-card">
+    <h3 class="add-project-modal-title">+ Add Misc Task</h3>
+    <input type="hidden" id="newMiscQuadrant" value="Q2" />
+
+    <div class="modal-field-group">
+      <label class="modal-field-label" for="miscTaskName">Task</label>
+      <input type="text" id="miscTaskName" class="modal-input" placeholder="What needs to happen?" />
+    </div>
+    <div class="modal-field-group">
+      <label class="triage-toggle-label">
+        <input type="checkbox" id="miscTimeSensitive" />
+        <span class="triage-toggle-switch"></span>
+        Time-sensitive (external deadline)
+      </label>
+      <span class="triage-field-hint" style="display:block;margin-top:4px">If checked → Q2. If unchecked → Q4.</span>
+    </div>
+    <div class="modal-field-group" id="miscDueDateGroup" style="display:none">
+      <label class="modal-field-label" for="miscDueDate">Due Date</label>
+      <input type="date" id="miscDueDate" class="modal-input triage-date-input" />
+    </div>
+    <div class="modal-field-group">
+      <label class="triage-toggle-label">
+        <input type="checkbox" id="miscCanDelegate" />
+        <span class="triage-toggle-switch"></span>
+        Can be delegated
+      </label>
+    </div>
+    <div class="modal-field-group">
+      <label class="modal-field-label" for="miscDelegate">Delegate to (optional)</label>
+      <input type="text" id="miscDelegate" class="modal-input" placeholder="e.g. lab manager, labmate" />
+    </div>
+    <div class="modal-field-group">
+      <label class="modal-field-label" for="miscNotes">Notes</label>
+      <input type="text" id="miscNotes" class="modal-input" placeholder="Any context…" />
+    </div>
+    <div class="modal-btn-row">
+      <button class="btn-cancel" id="cancelAddMisc">Cancel</button>
+      <button class="btn-create" id="confirmAddMisc">Add Task</button>
+    </div>
+  </div>
+</div>
+
+<script src="data.js"></script>
+<script src="app.js"></script>
+<script src="triage.js"></script>
+<script>
+// ============================================================
+// MISC PAGE — Q2/Q4 kanban
+// ============================================================
+
+function renderMiscCapBadge() {
+  const badge = document.getElementById('miscCapBadge');
+  if (!badge) return;
+  const daily = getDailyPriorities();
+  const n = daily.length;
+  badge.textContent = `${n}/3 PhD urgent tasks today`;
+  badge.className = 'triage-status-badge ' + (n >= 3 ? 'triage-full' : n > 0 ? 'triage-some' : 'triage-ok');
+}
+
+function renderDailyStrip() {
+  const strip = document.getElementById('miscDailyStrip');
+  const itemsDiv = document.getElementById('miscDailyItems');
+  const daily = getDailyPriorities();
+  if (!daily.length) { strip.style.display = 'none'; return; }
+  strip.style.display = '';
+  itemsDiv.innerHTML = daily.map(d =>
+    `<a href="focus.html?stepId=${encodeURIComponent(d.stepId)}&milestoneId=${encodeURIComponent(d.milestoneId)}" class="urgent-strip-item">
+      <span class="urgent-item-dot"></span>
+      <span class="urgent-item-text">${d.title}</span>
+      <span class="urgent-item-arrow">→</span>
+    </a>`
+  ).join('');
+}
+
+function renderMiscLists() {
+  const tasks = getMiscTasks();
+  const q2 = tasks.filter(t => getMiscTaskQuadrant(t) === 'Q2' && t.status !== 'done');
+  const q4 = tasks.filter(t => getMiscTaskQuadrant(t) === 'Q4' && t.status !== 'done');
+  const done = tasks.filter(t => t.status === 'done');
+
+  renderMiscTaskList('q2List', q2, 'Q2');
+  renderMiscTaskList('q4List', q4, 'Q4');
+  renderMiscDoneList('doneList', done);
+
+  document.getElementById('q2Empty').style.display = q2.length ? 'none' : '';
+  document.getElementById('q4Empty').style.display = q4.length ? 'none' : '';
+  document.getElementById('doneCount').textContent = done.length;
+  document.getElementById('miscDoneSection').style.display = done.length ? '' : 'none';
+}
+
+function renderMiscTaskList(containerId, tasks, quadrant) {
+  const div = document.getElementById(containerId);
+  if (!tasks.length) { div.innerHTML = ''; return; }
+  div.innerHTML = tasks.map(task => `
+    <div class="misc-task-card ${quadrant === 'Q2' ? 'misc-q2' : 'misc-q4'}" data-id="${task.id}">
+      <div class="misc-task-main">
+        <div class="misc-task-name">${task.name}</div>
+        <div class="misc-task-meta">
+          ${task.due_date ? `<span class="misc-tag misc-tag-due">📅 Due ${formatDate(task.due_date)}</span>` : ''}
+          ${task.can_delegate ? `<span class="misc-tag misc-tag-delegate">→ ${task.delegate_to || 'Delegate'}</span>` : ''}
+          ${task.notes ? `<span class="misc-task-notes">${task.notes}</span>` : ''}
+        </div>
+      </div>
+      <div class="misc-task-actions">
+        <button class="misc-action-btn misc-done-btn" data-id="${task.id}" title="Mark done">✓</button>
+        <button class="misc-action-btn misc-delete-btn" data-id="${task.id}" title="Delete">×</button>
+      </div>
+      ${checkLeadWarnForMisc(task)}
+    </div>
+  `).join('');
+
+  div.querySelectorAll('.misc-done-btn').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      updateMiscTaskStatus(btn.dataset.id, 'done');
+      renderMiscLists();
+    });
+  });
+  div.querySelectorAll('.misc-delete-btn').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      if (confirm('Drop this task permanently?')) {
+        deleteMiscTask(btn.dataset.id);
+        renderMiscLists();
+      }
+    });
+  });
+}
+
+function checkLeadWarnForMisc(task) {
+  if (!task.compute_lead_hrs || !task.due_date) return '';
+  const warn = getLeadTimeWarning({ compute_lead_hrs: task.compute_lead_hrs, due_date: task.due_date });
+  if (!warn) return '';
+  return `<div class="misc-lead-warn ${warn.level === 'red' ? 'misc-warn-red' : 'misc-warn-yellow'}">${warn.level === 'red' ? '🚨' : '⚠️'} ${warn.message}</div>`;
+}
+
+function renderMiscDoneList(containerId, tasks) {
+  const div = document.getElementById(containerId);
+  if (!tasks.length) { div.innerHTML = ''; return; }
+  div.innerHTML = tasks.map(task => `
+    <div class="misc-task-card misc-done-card" data-id="${task.id}">
+      <div class="misc-task-name" style="text-decoration:line-through;opacity:0.5">${task.name}</div>
+      <button class="misc-action-btn misc-delete-btn" data-id="${task.id}" title="Remove">×</button>
+    </div>
+  `).join('');
+  div.querySelectorAll('.misc-delete-btn').forEach(btn => {
+    btn.addEventListener('click', () => { deleteMiscTask(btn.dataset.id); renderMiscLists(); });
+  });
+}
+
+function formatDate(iso) {
+  if (!iso) return '';
+  return new Date(iso + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+// ---- ADD MISC TASK ----
+let addingQuadrant = 'Q2';
+
+function openAddMiscModal(quadrant) {
+  addingQuadrant = quadrant;
+  document.getElementById('newMiscQuadrant').value = quadrant;
+  // Set time-sensitive toggle
+  const ts = document.getElementById('miscTimeSensitive');
+  ts.checked = quadrant === 'Q2';
+  document.getElementById('miscDueDateGroup').style.display = ts.checked ? '' : 'none';
+  document.getElementById('addMiscOverlay').classList.add('open');
+  document.body.style.overflow = 'hidden';
+  document.getElementById('miscTaskName').focus();
+}
+
+document.getElementById('addMiscQ2Btn').addEventListener('click', () => openAddMiscModal('Q2'));
+document.getElementById('addMiscQ4Btn').addEventListener('click', () => openAddMiscModal('Q4'));
+document.getElementById('cancelAddMisc').addEventListener('click', () => {
+  document.getElementById('addMiscOverlay').classList.remove('open');
+  document.body.style.overflow = '';
+});
+document.getElementById('addMiscOverlay').addEventListener('click', e => {
+  if (e.target === document.getElementById('addMiscOverlay')) {
+    document.getElementById('addMiscOverlay').classList.remove('open');
+    document.body.style.overflow = '';
+  }
+});
+
+// Toggle due date field
+document.getElementById('miscTimeSensitive').addEventListener('change', e => {
+  document.getElementById('miscDueDateGroup').style.display = e.target.checked ? '' : 'none';
+});
+
+document.getElementById('confirmAddMisc').addEventListener('click', () => {
+  const name = document.getElementById('miscTaskName').value.trim();
+  if (!name) { document.getElementById('miscTaskName').focus(); return; }
+
+  const ts = document.getElementById('miscTimeSensitive').checked;
+  const due = document.getElementById('miscDueDate').value || null;
+  const canDel = document.getElementById('miscCanDelegate').checked;
+  const delTo = document.getElementById('miscDelegate').value.trim();
+  const notes = document.getElementById('miscNotes').value.trim();
+
+  addMiscTask({ name, due_date: due, can_delegate: canDel, delegate_to: delTo, notes, status: 'open' });
+  renderMiscLists();
+  document.getElementById('addMiscOverlay').classList.remove('open');
+  document.body.style.overflow = '';
+  // Reset form
+  ['miscTaskName','miscDueDate','miscDelegate','miscNotes'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  document.getElementById('miscTimeSensitive').checked = false;
+  document.getElementById('miscCanDelegate').checked = false;
+  document.getElementById('miscDueDateGroup').style.display = 'none';
+});
+
+// ---- WEEKLY REVIEW ----
+function checkWeeklyReview() {
+  const now = new Date();
+  if (now.getDay() !== 1) return; // Monday only
+  const lastCheck = localStorage.getItem('weekly_review_misc');
+  const today = now.toISOString().split('T')[0];
+  if (lastCheck === today) return;
+  document.getElementById('weeklyReviewBanner').style.display = '';
+}
+function dismissWeeklyReview() {
+  document.getElementById('weeklyReviewBanner').style.display = 'none';
+  localStorage.setItem('weekly_review_misc', new Date().toISOString().split('T')[0]);
+}
+
+// ---- THEME TOGGLE ----
+document.querySelector('[data-theme-toggle]').addEventListener('click', () => {
+  const curr = document.documentElement.getAttribute('data-theme');
+  const next = curr === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', next);
+  localStorage.setItem('theme', next);
+});
+
+// ---- INIT ----
+document.addEventListener('DOMContentLoaded', () => {
+  document.documentElement.setAttribute('data-theme', localStorage.getItem('theme') || 'dark');
+  loadState();
+  renderMiscCapBadge();
+  renderDailyStrip();
+  renderMiscLists();
+  checkWeeklyReview();
+});
+</script>
+</body>
+</html>

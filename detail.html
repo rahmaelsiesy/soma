@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Quest Path — Rahma's Quest Board</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body class="detail-page">
+
+<!-- HEADER -->
+<header class="detail-header">
+  <div class="detail-header-inner">
+    <a href="index.html" class="back-btn">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+      Quest Board
+    </a>
+    <div class="detail-milestone-title" id="detailTitle">Loading…</div>
+    <div class="xp-progress-badge" id="xpProgressBadge">0 / 0 XP</div>
+    <button class="focus-mode-btn" id="detailFocusBtn" style="flex-shrink:0">⏱ Focus</button>
+    <!-- Lead time warning (inline) -->
+    <div id="detailLeadWarn" class="lead-time-badge" style="display:none"></div>
+  </div>
+</header>
+
+<!-- CANDY LAND PATH -->
+<div class="candy-path-container">
+  <div class="candy-path" id="candyPath">
+    <!-- Rendered by JS -->
+  </div>
+</div>
+
+<!-- STEP DETAIL DRAWER -->
+<div class="step-drawer-overlay" id="stepDrawerOverlay">
+  <div class="step-drawer" id="stepDrawer" role="dialog" aria-modal="true">
+    <div class="step-drawer-handle"></div>
+    <div class="step-drawer-header">
+      <div>
+        <div id="drawerTypeBadge" class="step-type-badge type-code" style="margin-bottom:8px"></div>
+        <h3 class="step-drawer-title" id="drawerTitle">Step title</h3>
+      </div>
+      <button class="step-drawer-close" id="drawerClose" aria-label="Close">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+
+    <p class="step-drawer-desc" id="drawerDesc"></p>
+
+    <!-- Gate criteria (shown for gate steps) -->
+    <div id="drawerGateBox" class="gate-criteria-box" style="display:none">
+      <div class="gate-criteria-title">🛡 Robustness Gate Criteria</div>
+      <div id="drawerGateItems"></div>
+    </div>
+
+    <!-- Checklist -->
+    <div id="drawerChecklistSection" style="display:none">
+      <div class="checklist-section-title">Checklist</div>
+      <div id="drawerChecklist"></div>
+    </div>
+
+    <!-- TRIAGE FIELDS IN STEP DRAWER -->
+    <div class="triage-fields-section" style="margin-top:20px">
+      <div class="triage-fields-title">Priority & Triage</div>
+      <div class="triage-field-row">
+        <label class="triage-toggle-label">
+          <input type="checkbox" id="drawerPhdCritical" checked />
+          <span class="triage-toggle-switch"></span>
+          PhD Critical Path
+        </label>
+        <span class="triage-field-hint">On the path to graduation/publication?</span>
+      </div>
+      <div class="triage-field-row">
+        <label class="modal-field-label" for="drawerDueDate">Due Date</label>
+        <input type="date" id="drawerDueDate" class="modal-input triage-date-input" />
+        <span class="triage-field-hint">External deadlines only</span>
+      </div>
+      <div class="triage-field-row">
+        <label class="modal-field-label" for="drawerComputeLead">Compute/wet-lab lead time (hours)</label>
+        <input type="number" id="drawerComputeLead" class="modal-input triage-number-input" placeholder="e.g. 24, 72" min="0" />
+        <span class="triage-field-hint">e.g. 24 for decoder run, 72 for IF protocol</span>
+      </div>
+    </div>
+
+    <div class="drawer-actions" id="drawerActions">
+      <button class="focus-session-btn" id="drawerFocusBtn">⏱ Start 90-min Focus Session</button>
+      <button class="mark-done-btn" id="drawerMarkDone">✓ Mark Step Complete</button>
+    </div>
+
+    <!-- Session count -->
+    <div class="session-dots-area" id="drawerSessionArea" style="margin-top:16px">
+      <div class="session-dots-label">Focus Sessions</div>
+      <div class="session-dots" id="drawerSessionDots"></div>
+    </div>
+  </div>
+</div>
+
+<!-- CONFETTI -->
+<canvas id="confettiCanvas" aria-hidden="true"></canvas>
+
+<script src="data.js"></script>
+<script src="app.js"></script>
+<script src="triage.js"></script>
+<script>
+// ============================================================
+// DETAIL PAGE — Candy Land path renderer
+// ============================================================
+
+const STEPS_PER_ROW = 4;
+const TYPE_CLASS = {
+  code: 'type-code', figure: 'type-figure', wetlab: 'type-wetlab',
+  learning: 'type-learning', validation: 'type-validation',
+  writing: 'type-writing', setup: 'type-setup',
+};
+const TYPE_LABEL = {
+  code: 'CODE', figure: 'FIGURE', wetlab: 'WET LAB',
+  learning: 'LEARN', validation: 'VALIDATE', writing: 'WRITING', setup: 'SETUP',
+};
+
+let currentMilestone = null;
+let currentStep = null;
+let allFlatSteps = []; // [{step, milestoneId, isGate, isReward}, ...]
+
+// Parse URL param
+function getMilestoneId() {
+  return new URLSearchParams(window.location.search).get('id');
+}
+
+function findMilestone(id) {
+  for (const trackId of TRACK_ORDER) {
+    for (const m of (QUEST_DATA[trackId] || [])) {
+      if (m.id === id) return m;
+    }
+  }
+  // Custom projects
+  for (const proj of loadCustomProjects()) {
+    for (const m of (proj.milestones || [])) {
+      if (m.id === id) return m;
+    }
+  }
+  return null;
+}
+
+function getAccentVar(category) {
+  const map = {
+    flagship:'var(--c-flagship)', methods:'var(--c-methods)', network:'var(--c-network)',
+    package:'var(--c-package)', cursor:'var(--c-cursor)', learning:'var(--c-learning)', career:'var(--c-career)',
+  };
+  return map[category] || 'var(--c-flagship)';
+}
+
+// Build flat steps list including gate + reward sentinel
+function buildFlatSteps(milestone) {
+  const flat = [];
+  (milestone.steps || []).forEach(step => {
+    flat.push({ step, milestoneId: milestone.id, isGate: false, isReward: false });
+  });
+  if (milestone.gate) {
+    flat.push({
+      step: { id: milestone.id + '-gate', title: milestone.gate.title, type: 'gate', xp: 0 },
+      milestoneId: milestone.id, isGate: true, isReward: false, gate: milestone.gate,
+    });
+  }
+  flat.push({
+    step: { id: milestone.id + '-reward', title: milestone.reward || '🏆 Milestone Complete!', type: 'reward', xp: 0 },
+    milestoneId: milestone.id, isGate: false, isReward: true,
+  });
+  return flat;
+}
+
+function getStepStatus(milestoneId, stepId, idx, flatSteps) {
+  // Gate/reward use special keys
+  const ss = getStepState(milestoneId, stepId);
+  if (ss.status === 'done') return 'done';
+  // Determine if unlocked: step 0 always unlocked, otherwise prev must be done
+  if (idx === 0) return ss.status === 'inprogress' ? 'active' : 'active'; // first step always active
+  const prevEntry = flatSteps[idx - 1];
+  if (!prevEntry) return 'locked';
+  const prevState = getStepState(milestoneId, prevEntry.step.id);
+  if (prevState.status === 'done') {
+    return ss.status === 'inprogress' ? 'active' : 'active';
+  }
+  return 'locked';
+}
+
+function computeStepStatuses(milestoneId, flatSteps) {
+  // Walk through, determine each step's effective display state
+  const statuses = [];
+  let foundActive = false;
+  for (let i = 0; i < flatSteps.length; i++) {
+    const entry = flatSteps[i];
+    const ss = getStepState(milestoneId, entry.step.id);
+    if (ss.status === 'done') {
+      statuses.push('done');
+    } else if (!foundActive) {
+      // First non-done step = active
+      foundActive = true;
+      statuses.push('active');
+    } else {
+      statuses.push('locked');
+    }
+  }
+  return statuses;
+}
+
+// SVG avatar — little researcher
+const AVATAR_SVG = `<svg width="32" height="36" viewBox="0 0 32 36" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="You are here">
+  <circle cx="16" cy="8" r="6" fill="#a78bfa"/>
+  <path d="M6 28c0-5.523 4.477-10 10-10s10 4.477 10 10" fill="#a78bfa" opacity="0.85"/>
+  <rect x="11" y="18" width="10" height="11" rx="2" fill="#06b6d4" opacity="0.9"/>
+  <circle cx="16" cy="8" r="3.5" fill="white" opacity="0.3"/>
+  <circle cx="14.5" cy="7.5" r="1" fill="white"/>
+  <circle cx="17.5" cy="7.5" r="1" fill="white"/>
+  <path d="M14 10 Q16 11.5 18 10" stroke="white" stroke-width="1" stroke-linecap="round" fill="none"/>
+  <ellipse cx="16" cy="36" rx="8" ry="3" fill="#a78bfa" opacity="0.18"/>
+</svg>`;
+
+function renderPath(milestone) {
+  const container = document.getElementById('candyPath');
+  container.innerHTML = '';
+  const accent = getAccentVar(milestone.category);
+  document.documentElement.style.setProperty('--detail-accent', accent);
+
+  const flatSteps = buildFlatSteps(milestone);
+  allFlatSteps = flatSteps;
+  const statuses = computeStepStatuses(milestone.id, flatSteps);
+  const activeIdx = statuses.indexOf('active');
+
+  // Chunk into rows of STEPS_PER_ROW
+  let idx = 0;
+  let rowNum = 0;
+  while (idx < flatSteps.length) {
+    const rowEntries = flatSteps.slice(idx, idx + STEPS_PER_ROW);
+    const rowStatuses = statuses.slice(idx, idx + STEPS_PER_ROW);
+    const isReverse = rowNum % 2 === 1;
+    const isLastRow = idx + STEPS_PER_ROW >= flatSteps.length;
+
+    const rowDiv = document.createElement('div');
+    rowDiv.className = 'path-row' + (isReverse ? ' reverse' : '');
+
+    rowEntries.forEach((entry, ri) => {
+      const globalIdx = idx + ri;
+      const status = rowStatuses[ri];
+      const step = entry.step;
+
+      // Step card
+      const card = document.createElement('div');
+      const isActive = status === 'active';
+      const isDone = status === 'done';
+      const isLocked = status === 'locked';
+      let cardClass = 'step-card';
+      if (entry.isGate) cardClass += ' gate-card';
+      else if (entry.isReward) cardClass += ' reward-card';
+      else if (isDone) cardClass += ' done';
+      else if (isActive) cardClass += ' active';
+      else if (isLocked) cardClass += ' locked';
+      card.className = cardClass;
+      card.dataset.stepIdx = globalIdx;
+      card.setAttribute('tabindex', isLocked ? '-1' : '0');
+
+      // Avatar on active step
+      if (isActive) {
+        const avatarWrap = document.createElement('div');
+        avatarWrap.className = 'user-avatar-wrap';
+        avatarWrap.setAttribute('aria-label', 'You are here');
+        avatarWrap.innerHTML = AVATAR_SVG;
+        card.appendChild(avatarWrap);
+      }
+
+      // Step number / icon
+      const numDiv = document.createElement('div');
+      numDiv.className = 'step-num';
+      if (entry.isGate) numDiv.textContent = '🛡';
+      else if (entry.isReward) numDiv.textContent = '🏆';
+      else numDiv.textContent = (globalIdx + 1).toString();
+      card.appendChild(numDiv);
+
+      // Type badge
+      const badge = document.createElement('div');
+      const typeKey = step.type || 'code';
+      badge.className = 'step-type-badge ' + (TYPE_CLASS[typeKey] || 'type-code');
+      badge.textContent = entry.isGate ? 'GATE' : entry.isReward ? 'REWARD' : (TYPE_LABEL[typeKey] || typeKey.toUpperCase());
+      card.appendChild(badge);
+
+      // Title
+      const titleDiv = document.createElement('div');
+      titleDiv.className = 'step-title';
+      titleDiv.textContent = step.title;
+      card.appendChild(titleDiv);
+
+      // XP
+      if (step.xp && !entry.isGate && !entry.isReward) {
+        const xpDiv = document.createElement('div');
+        xpDiv.className = 'step-xp';
+        xpDiv.textContent = '+' + step.xp + ' XP';
+        card.appendChild(xpDiv);
+      }
+
+      // Overlay icons
+      if (isDone) {
+        const chk = document.createElement('div');
+        chk.className = 'step-done-check';
+        chk.textContent = '✓';
+        card.appendChild(chk);
+      } else if (isLocked) {
+        const lck = document.createElement('div');
+        lck.className = 'step-lock-icon';
+        lck.textContent = '🔒';
+        card.appendChild(lck);
+      }
+
+      // Lead time badge on step card
+      const triageData = getStepTriageData(milestone.id, step.id);
+      if (triageData && triageData.compute_lead_hrs && triageData.due_date && !isDone) {
+        const warn = getLeadTimeWarning(triageData);
+        if (warn) {
+          const badge2 = document.createElement('div');
+          badge2.className = 'step-lead-badge ' + (warn.level === 'red' ? 'lead-red' : 'lead-yellow');
+          badge2.textContent = '⏰';
+          badge2.title = warn.message;
+          card.appendChild(badge2);
+        }
+      }
+
+      // Quadrant badge
+      if (!entry.isGate && !entry.isReward) {
+        const q = getStepQuadrant(milestone.id, step.id, step);
+        if (q === 'Q1') {
+          const qb = document.createElement('div');
+          qb.className = 'step-quadrant-badge q1-badge';
+          qb.textContent = 'Q1';
+          card.appendChild(qb);
+        } else if (q === 'Q3') {
+          const qb = document.createElement('div');
+          qb.className = 'step-quadrant-badge q3-badge';
+          qb.textContent = 'Q3';
+          card.appendChild(qb);
+        }
+      }
+
+      // Click handler
+      if (!isLocked || entry.isReward) {
+        card.addEventListener('click', () => openStepDrawer(globalIdx));
+        card.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') openStepDrawer(globalIdx); });
+      }
+
+      rowDiv.appendChild(card);
+
+      // Connector between cards
+      if (ri < rowEntries.length - 1) {
+        const conn = document.createElement('div');
+        conn.className = 'connector';
+        conn.setAttribute('aria-hidden', 'true');
+        conn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" opacity="0.3"><path d="M5 12h14M12 5l7 7-7 7"/></svg>';
+        rowDiv.appendChild(conn);
+      }
+    });
+
+    container.appendChild(rowDiv);
+
+    // Curved connector between rows (not after last)
+    if (!isLastRow) {
+      const connRow = document.createElement('div');
+      connRow.className = 'path-row-connector' + (isReverse ? ' reverse' : '');
+      connRow.setAttribute('aria-hidden', 'true');
+      // A curved arrow suggesting the path turns
+      connRow.innerHTML = isReverse
+        ? `<svg width="48" height="40" viewBox="0 0 48 40" fill="none" stroke="currentColor" stroke-width="2" opacity="0.45"><path d="M44 4 C44 24 4 16 4 36" stroke-dasharray="4 3" stroke-linecap="round"/><path d="M4 30 L4 36 L10 36"/></svg>`
+        : `<svg width="48" height="40" viewBox="0 0 48 40" fill="none" stroke="currentColor" stroke-width="2" opacity="0.45"><path d="M4 4 C4 24 44 16 44 36" stroke-dasharray="4 3" stroke-linecap="round"/><path d="M44 30 L44 36 L38 36"/></svg>`;
+      container.appendChild(connRow);
+    }
+
+    idx += STEPS_PER_ROW;
+    rowNum++;
+  }
+}
+
+function updateXPBadge(milestone) {
+  const badge = document.getElementById('xpProgressBadge');
+  let earned = 0;
+  let total = 0;
+  (milestone.steps || []).forEach(step => {
+    total += (step.xp || 0);
+    if (getStepState(milestone.id, step.id).status === 'done') earned += (step.xp || 0);
+  });
+  badge.textContent = `${earned} / ${total} XP`;
+}
+
+// ---- STEP DRAWER ----
+function openStepDrawer(flatIdx) {
+  const entry = allFlatSteps[flatIdx];
+  if (!entry) return;
+  currentStep = entry;
+  const step = entry.step;
+  const milestoneId = entry.milestoneId;
+
+  document.getElementById('drawerTitle').textContent = step.title;
+
+  const typeKey = step.type || 'code';
+  const typeBadge = document.getElementById('drawerTypeBadge');
+  typeBadge.className = 'step-type-badge ' + (TYPE_CLASS[typeKey] || 'type-code');
+  typeBadge.textContent = entry.isGate ? 'GATE' : entry.isReward ? 'REWARD' : (TYPE_LABEL[typeKey] || typeKey.toUpperCase());
+
+  document.getElementById('drawerDesc').textContent = step.desc || (entry.isReward ? currentMilestone.reward || '' : '');
+
+  // Gate box
+  const gateBox = document.getElementById('drawerGateBox');
+  const gateItems = document.getElementById('drawerGateItems');
+  if (entry.isGate && entry.gate) {
+    gateBox.style.display = '';
+    gateItems.innerHTML = (entry.gate.items || []).map(item =>
+      `<div class="gate-criteria-item"><span>◆</span><span>${item}</span></div>`
+    ).join('');
+  } else {
+    gateBox.style.display = 'none';
+  }
+
+  // Checklist
+  const checkSection = document.getElementById('drawerChecklistSection');
+  const checkDiv = document.getElementById('drawerChecklist');
+  if (step.checklist && step.checklist.length) {
+    checkSection.style.display = '';
+    const ss = getStepState(milestoneId, step.id);
+    const checked = ss.checklist || {};
+    checkDiv.innerHTML = '';
+    step.checklist.forEach((item, ci) => {
+      const row = document.createElement('div');
+      row.className = 'checklist-item';
+      const isChecked = !!checked['item' + ci];
+      row.innerHTML = `
+        <div class="checklist-checkbox ${isChecked ? 'checked' : ''}"></div>
+        <span class="checklist-label ${isChecked ? 'checked' : ''}">${item}</span>
+      `;
+      row.addEventListener('click', () => toggleChecklist(milestoneId, step.id, ci, step.checklist.length));
+      checkDiv.appendChild(row);
+    });
+  } else {
+    checkSection.style.display = 'none';
+  }
+
+  // Triage fields
+  const triageData = getStepTriageData(milestoneId, step.id);
+  const defaultPhdCritical = step.phd_critical !== undefined ? step.phd_critical : true;
+  document.getElementById('drawerPhdCritical').checked = triageData.phd_critical !== undefined ? triageData.phd_critical : defaultPhdCritical;
+  document.getElementById('drawerDueDate').value = triageData.due_date || '';
+  document.getElementById('drawerComputeLead').value = triageData.compute_lead_hrs !== undefined ? triageData.compute_lead_hrs : (step.compute_lead_hrs || '');
+
+  // Session dots
+  const sessionDots = document.getElementById('drawerSessionDots');
+  const sessions = ss ? (ss.sessions || 0) : 0;
+  sessionDots.innerHTML = '';
+  const maxDots = Math.max(sessions + 3, 5);
+  for (let i = 0; i < maxDots; i++) {
+    const dot = document.createElement('div');
+    dot.className = 'session-dot' + (i < sessions ? ' filled' : '');
+    sessionDots.appendChild(dot);
+  }
+
+  // Mark done button state
+  const markDoneBtn = document.getElementById('drawerMarkDone');
+  const stepSs = getStepState(milestoneId, step.id);
+  if (stepSs.status === 'done') {
+    markDoneBtn.textContent = '✓ Completed!';
+    markDoneBtn.disabled = true;
+  } else {
+    markDoneBtn.textContent = '✓ Mark Step Complete';
+    markDoneBtn.disabled = false;
+    // Require all checklist items if checklist exists
+    if (step.checklist && step.checklist.length) {
+      const checked = getStepState(milestoneId, step.id).checklist || {};
+      const allDone = step.checklist.every((_, ci) => !!checked['item' + ci]);
+      markDoneBtn.disabled = !allDone;
+      markDoneBtn.title = allDone ? '' : 'Complete all checklist items first';
+    }
+  }
+
+  // Focus button
+  document.getElementById('drawerFocusBtn').onclick = () => {
+    window.location.href = `focus.html?stepId=${encodeURIComponent(step.id)}&milestoneId=${encodeURIComponent(milestoneId)}`;
+  };
+
+  // Hide actions for reward card
+  document.getElementById('drawerActions').style.display = entry.isReward ? 'none' : '';
+
+  // Open
+  const overlay = document.getElementById('stepDrawerOverlay');
+  overlay.classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeStepDrawer() {
+  // Save triage fields before closing
+  if (currentStep) {
+    const milestoneId = currentStep.milestoneId;
+    const stepId = currentStep.step.id;
+    saveStepTriageData(milestoneId, stepId, {
+      phd_critical: document.getElementById('drawerPhdCritical').checked,
+      due_date: document.getElementById('drawerDueDate').value || null,
+      compute_lead_hrs: parseFloat(document.getElementById('drawerComputeLead').value) || null,
+    });
+  }
+  document.getElementById('stepDrawerOverlay').classList.remove('open');
+  document.body.style.overflow = '';
+  currentStep = null;
+}
+
+function toggleChecklist(milestoneId, stepId, ci, total) {
+  const ss = getStepState(milestoneId, stepId);
+  const checked = { ...(ss.checklist || {}) };
+  checked['item' + ci] = !checked['item' + ci];
+  setStepState(milestoneId, stepId, { checklist: checked });
+
+  // Re-render checklist in drawer
+  const checkDiv = document.getElementById('drawerChecklist');
+  checkDiv.querySelectorAll('.checklist-item').forEach((row, idx) => {
+    const box = row.querySelector('.checklist-checkbox');
+    const label = row.querySelector('.checklist-label');
+    const isNowChecked = !!checked['item' + idx];
+    box.className = 'checklist-checkbox' + (isNowChecked ? ' checked' : '');
+    label.className = 'checklist-label' + (isNowChecked ? ' checked' : '');
+  });
+
+  // Update mark done button
+  const markDoneBtn = document.getElementById('drawerMarkDone');
+  const allDone = Object.keys(checked).length === total && Object.values(checked).every(Boolean);
+  markDoneBtn.disabled = !allDone;
+  markDoneBtn.title = allDone ? '' : 'Complete all checklist items first';
+}
+
+function markStepDone() {
+  if (!currentStep) return;
+  const { step, milestoneId } = currentStep;
+  const ss = getStepState(milestoneId, step.id);
+  if (ss.status === 'done') return;
+
+  setStepState(milestoneId, step.id, { status: 'done' });
+
+  // XP gain notification
+  if (step.xp) {
+    showXPToast(step.xp, step.title);
+  }
+
+  closeStepDrawer();
+  renderPath(currentMilestone);
+  updateXPBadge(currentMilestone);
+  triggerConfetti();
+
+  // Check if all steps done → milestone done
+  const allDone = (currentMilestone.steps || []).every(s => getStepState(milestoneId, s.id).status === 'done');
+  if (allDone) {
+    setMilestoneState(milestoneId, { status: 'done' });
+  }
+}
+
+function showXPToast(xp, title) {
+  const toast = document.createElement('div');
+  toast.className = 'xp-toast';
+  toast.innerHTML = `<span class="xp-toast-num">+${xp} XP</span><span class="xp-toast-label">${title}</span>`;
+  document.body.appendChild(toast);
+  setTimeout(() => toast.classList.add('show'), 50);
+  setTimeout(() => {
+    toast.classList.remove('show');
+    setTimeout(() => toast.remove(), 400);
+  }, 2500);
+}
+
+// ---- INIT ----
+document.addEventListener('DOMContentLoaded', () => {
+  loadState();
+  // Apply saved theme
+  const theme = localStorage.getItem('theme') || 'dark';
+  document.documentElement.setAttribute('data-theme', theme);
+
+  const milestoneId = getMilestoneId();
+  if (!milestoneId) {
+    document.getElementById('detailTitle').textContent = 'Milestone not found';
+    return;
+  }
+
+  currentMilestone = findMilestone(milestoneId);
+  if (!currentMilestone) {
+    document.getElementById('detailTitle').textContent = 'Milestone not found';
+    return;
+  }
+
+  document.title = currentMilestone.title + ' — Quest Board';
+  document.getElementById('detailTitle').textContent = currentMilestone.emoji + ' ' + currentMilestone.title;
+
+  // Focus button → top Q1/Q3 step
+  document.getElementById('detailFocusBtn').addEventListener('click', () => {
+    const flatSteps = buildFlatSteps(currentMilestone);
+    const statuses = computeStepStatuses(currentMilestone.id, flatSteps);
+    const activeIdx = statuses.indexOf('active');
+    if (activeIdx >= 0 && !flatSteps[activeIdx].isGate && !flatSteps[activeIdx].isReward) {
+      const step = flatSteps[activeIdx].step;
+      window.location.href = `focus.html?stepId=${encodeURIComponent(step.id)}&milestoneId=${encodeURIComponent(currentMilestone.id)}`;
+    } else {
+      window.location.href = 'focus.html';
+    }
+  });
+
+  renderPath(currentMilestone);
+  updateXPBadge(currentMilestone);
+
+  // Lead time warning in header
+  checkDetailLeadWarning(currentMilestone);
+
+  // Drawer events
+  document.getElementById('drawerClose').addEventListener('click', closeStepDrawer);
+  document.getElementById('stepDrawerOverlay').addEventListener('click', e => {
+    if (e.target === document.getElementById('stepDrawerOverlay')) closeStepDrawer();
+  });
+  document.getElementById('drawerMarkDone').addEventListener('click', markStepDone);
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeStepDrawer(); });
+});
+
+function checkDetailLeadWarning(milestone) {
+  const warnDiv = document.getElementById('detailLeadWarn');
+  const flatSteps = buildFlatSteps(milestone);
+  for (const entry of flatSteps) {
+    if (entry.isGate || entry.isReward) continue;
+    const triageData = getStepTriageData(milestone.id, entry.step.id);
+    const leadHrs = triageData.compute_lead_hrs || entry.step.compute_lead_hrs;
+    const dueDate = triageData.due_date;
+    if (leadHrs && dueDate) {
+      const warn = getLeadTimeWarning({ compute_lead_hrs: leadHrs, due_date: dueDate });
+      if (warn) {
+        warnDiv.style.display = '';
+        warnDiv.className = 'lead-time-badge ' + (warn.level === 'red' ? 'lead-red' : 'lead-yellow');
+        warnDiv.textContent = warn.level === 'red' ? '🚨 ' + warn.message : '⚠️ ' + warn.message;
+        return;
+      }
+    }
+  }
+}
+</script>
+</body>
+</html>

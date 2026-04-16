@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sample Tracker — Rahma's Quest Board</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body class="tracker-page">
+
+<!-- HEADER -->
+<header class="tracker-header">
+  <div class="tracker-header-inner">
+    <a href="index.html" class="back-btn">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+      Quest Board
+    </a>
+    <span style="font-family:var(--font-display);font-weight:700;font-size:1.1rem;color:var(--text);flex:1">📋 Sample Tracker</span>
+    <button class="theme-toggle" data-theme-toggle aria-label="Toggle theme">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+    </button>
+  </div>
+</header>
+
+<!-- MAIN -->
+<main class="tracker-main">
+
+  <!-- TABS -->
+  <div class="tracker-tabs" id="trackerTabs">
+    <button class="tracker-tab active" data-project="BD2">BD2 Bipolar</button>
+    <button class="tracker-tab" data-project="AD_FTD">AD/FTD</button>
+    <button class="tracker-tab" data-project="DG">DG Neurogenesis</button>
+    <button class="tracker-tab" data-project="ACC">ACC Bipolar</button>
+    <button class="add-project-tab-btn" id="addTrackerProjectBtn">+ Add Project</button>
+  </div>
+
+  <!-- PIPELINE SUMMARY CARDS -->
+  <div class="pipeline-summary" id="pipelineSummary"></div>
+
+  <!-- TOOLBAR -->
+  <div class="tracker-toolbar">
+    <div class="tracker-toolbar-title" id="trackerTitle">BD2 Bipolar Samples</div>
+    <button class="tracker-action-btn primary" id="addSampleBtn">+ Add Sample</button>
+    <button class="tracker-action-btn" id="exportJsonBtn">↓ Export JSON</button>
+    <button class="tracker-action-btn" id="sheetsImportBtn">📊 Google Sheets</button>
+  </div>
+
+  <!-- SAMPLE TABLE -->
+  <div class="sample-table-wrap">
+    <table class="sample-table" id="sampleTable">
+      <thead>
+        <tr>
+          <th>Pair</th>
+          <th>Case</th>
+          <th>Dx</th>
+          <th>Area</th>
+          <th>Status</th>
+          <th>Prep ✓</th>
+          <th>Imaging ✓</th>
+          <th>Analysis ✓</th>
+          <th>Notes</th>
+        </tr>
+      </thead>
+      <tbody id="sampleTableBody"></tbody>
+    </table>
+  </div>
+
+  <!-- GOOGLE SHEETS SYNC BAR -->
+  <div class="sync-bar" id="syncBar">
+    <span class="sync-bar-text" id="syncBarText">Import from Google Sheets (public sheet URL):</span>
+    <input type="url" class="sync-bar-input" id="sheetsUrlInput" placeholder="https://docs.google.com/spreadsheets/d/…" />
+    <button class="tracker-action-btn primary" id="syncNowBtn">Sync</button>
+  </div>
+  <div id="syncStatus" style="font-size:0.75rem;color:var(--text-muted);padding:6px 0;display:none"></div>
+
+</main>
+
+<!-- ADD SAMPLE MODAL -->
+<div class="add-sample-overlay" id="addSampleOverlay">
+  <div class="add-sample-card">
+    <h3 class="add-project-modal-title">+ Add Sample</h3>
+    <div class="modal-field-group">
+      <label class="modal-field-label" for="samplePair">Cohort Pair</label>
+      <input type="text" id="samplePair" class="modal-input" placeholder="e.g. 65" />
+    </div>
+    <div class="modal-field-group">
+      <label class="modal-field-label" for="sampleCase">Case ID</label>
+      <input type="text" id="sampleCase" class="modal-input" placeholder="e.g. 13362" />
+    </div>
+    <div class="modal-field-group">
+      <label class="modal-field-label" for="sampleDx">Diagnosis</label>
+      <select id="sampleDx" class="modal-input">
+        <option value="Unaffected">Unaffected</option>
+        <option value="Bipolar I">Bipolar I</option>
+        <option value="Bipolar II">Bipolar II</option>
+        <option value="AD">AD</option>
+        <option value="bvFTD">bvFTD</option>
+        <option value="CN">CN</option>
+        <option value="Other">Other</option>
+      </select>
+    </div>
+    <div class="modal-field-group">
+      <label class="modal-field-label" for="sampleArea">Brain Area</label>
+      <input type="text" id="sampleArea" class="modal-input" placeholder="e.g. A25, FIC, DLPFC" />
+    </div>
+    <div class="modal-field-group">
+      <label class="modal-field-label" for="sampleStatus">Pipeline Status</label>
+      <select id="sampleStatus" class="modal-input">
+        <option value="Not Started">Not Started</option>
+        <option value="Prep In Progress">Prep In Progress</option>
+        <option value="Imaging Complete">Imaging Complete</option>
+        <option value="Analysis Complete">Analysis Complete</option>
+        <option value="Automation Complete">Automation Complete</option>
+      </select>
+    </div>
+    <div class="modal-field-group">
+      <label class="modal-field-label" for="sampleNotes">Notes</label>
+      <input type="text" id="sampleNotes" class="modal-input" placeholder="Any notes…" />
+    </div>
+    <div class="modal-btn-row">
+      <button class="btn-cancel" id="cancelAddSample">Cancel</button>
+      <button class="btn-create" id="confirmAddSample">Add Sample</button>
+    </div>
+  </div>
+</div>
+
+<script src="data.js"></script>
+<script src="app.js"></script>
+<script src="triage.js"></script>
+<script>
+// ============================================================
+// TRACKER PAGE — Sample pipeline tracker
+// ============================================================
+
+// ---- DEFAULT DATA ----
+const BD2_DEFAULT_DATA = [
+  {
+    id: 'bd2-694', pair: '65', caseId: '694', dx: 'Unaffected', area: 'A25',
+    status: 'Not Started',
+    prep: false, imaging: false, analysis: false,
+    sectioning: false, staining: false, mounting: false, imaging_run: false,
+    registration: false, cell_segmentation: false, transcript_detection: false,
+    cell_typing: false, qc_passed: false, automation_complete: false,
+    notes: 'Control for pair 65'
+  },
+  {
+    id: 'bd2-13362', pair: '65', caseId: '13362', dx: 'Bipolar II', area: 'A25',
+    status: 'Automation Complete',
+    prep: true, imaging: true, analysis: true,
+    sectioning: true, staining: true, mounting: true, imaging_run: true,
+    registration: true, cell_segmentation: true, transcript_detection: true,
+    cell_typing: true, qc_passed: true, automation_complete: true,
+    notes: 'Bipolar II — automation pipeline complete'
+  },
+  {
+    id: 'bd2-727', pair: '66', caseId: '727', dx: 'Unaffected', area: 'A25',
+    status: 'Not Started',
+    prep: false, imaging: false, analysis: false,
+    sectioning: false, staining: false, mounting: false, imaging_run: false,
+    registration: false, cell_segmentation: false, transcript_detection: false,
+    cell_typing: false, qc_passed: false, automation_complete: false,
+    notes: 'Control for pair 66'
+  },
+  {
+    id: 'bd2-13763', pair: '66', caseId: '13763', dx: 'Bipolar I', area: 'A25',
+    status: 'Automation Complete',
+    prep: true, imaging: true, analysis: true,
+    sectioning: true, staining: true, mounting: true, imaging_run: true,
+    registration: true, cell_segmentation: true, transcript_detection: true,
+    cell_typing: true, qc_passed: true, automation_complete: true,
+    notes: 'Bipolar I — automation complete'
+  },
+  {
+    id: 'bd2-1270', pair: '70', caseId: '1270', dx: 'Unaffected', area: 'A25',
+    status: 'Not Started',
+    prep: false, imaging: false, analysis: false,
+    sectioning: false, staining: false, mounting: false, imaging_run: false,
+    registration: false, cell_segmentation: false, transcript_detection: false,
+    cell_typing: false, qc_passed: false, automation_complete: false,
+    notes: 'Control for pair 70'
+  },
+  {
+    id: 'bd2-13621', pair: '70', caseId: '13621', dx: 'Bipolar I', area: 'A25',
+    status: 'Automation Complete',
+    prep: true, imaging: true, analysis: true,
+    sectioning: true, staining: true, mounting: true, imaging_run: true,
+    registration: true, cell_segmentation: true, transcript_detection: true,
+    cell_typing: true, qc_passed: true, automation_complete: true,
+    notes: 'Bipolar I — automation complete'
+  },
+];
+
+const PROJECTS = {
+  BD2: { label: 'BD2 Bipolar', storageKey: 'tracker_BD2', defaultData: BD2_DEFAULT_DATA },
+  AD_FTD: { label: 'AD/FTD', storageKey: 'tracker_AD_FTD', defaultData: [] },
+  DG: { label: 'DG Neurogenesis', storageKey: 'tracker_DG', defaultData: [] },
+  ACC: { label: 'ACC Bipolar', storageKey: 'tracker_ACC', defaultData: [] },
+};
+
+let currentProject = 'BD2';
+let expandedRows = new Set();
+
+function loadProjectData(projectKey) {
+  const proj = PROJECTS[projectKey];
+  if (!proj) return [];
+  try {
+    const saved = localStorage.getItem(proj.storageKey);
+    return saved ? JSON.parse(saved) : JSON.parse(JSON.stringify(proj.defaultData));
+  } catch(e) { return []; }
+}
+
+function saveProjectData(projectKey, data) {
+  const proj = PROJECTS[projectKey];
+  if (!proj) return;
+  localStorage.setItem(proj.storageKey, JSON.stringify(data));
+}
+
+function statusBadgeClass(status) {
+  const map = {
+    'Not Started': 'status-not-started',
+    'Prep In Progress': 'status-prep-ip',
+    'Imaging Complete': 'status-imaging-done',
+    'Analysis Complete': 'status-analysis-done',
+    'Automation Complete': 'status-automation',
+  };
+  return map[status] || 'status-not-started';
+}
+
+function boolCell(val) {
+  return val ? `<span class="bool-check">✓</span>` : `<span class="bool-x">—</span>`;
+}
+
+function renderPipelineSummary(data) {
+  const counts = { 'Not Started': 0, 'Prep In Progress': 0, 'Imaging Complete': 0, 'Analysis Complete': 0, 'Automation Complete': 0 };
+  data.forEach(s => { counts[s.status] = (counts[s.status] || 0) + 1; });
+  const total = data.length;
+
+  document.getElementById('pipelineSummary').innerHTML = `
+    <div class="pipeline-stat-card">
+      <div class="pipeline-stat-num">${total}</div>
+      <div class="pipeline-stat-label">Total Samples</div>
+    </div>
+    <div class="pipeline-stat-card">
+      <div class="pipeline-stat-num" style="color:#9ca3af">${counts['Not Started']}</div>
+      <div class="pipeline-stat-label">Not Started</div>
+    </div>
+    <div class="pipeline-stat-card">
+      <div class="pipeline-stat-num" style="color:#f59e0b">${counts['Prep In Progress']}</div>
+      <div class="pipeline-stat-label">Prep In Progress</div>
+    </div>
+    <div class="pipeline-stat-card">
+      <div class="pipeline-stat-num" style="color:#3b82f6">${(counts['Imaging Complete']||0)}</div>
+      <div class="pipeline-stat-label">Imaging Complete</div>
+    </div>
+    <div class="pipeline-stat-card">
+      <div class="pipeline-stat-num" style="color:#10b981">${(counts['Analysis Complete']||0)+(counts['Automation Complete']||0)}</div>
+      <div class="pipeline-stat-label">Analysis/Auto Done</div>
+    </div>
+  `;
+}
+
+function renderTable(data) {
+  const tbody = document.getElementById('sampleTableBody');
+  tbody.innerHTML = '';
+  if (!data.length) {
+    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;color:var(--text-muted);padding:32px">No samples yet. Add one above.</td></tr>`;
+    return;
+  }
+  data.forEach((sample, idx) => {
+    const isExpanded = expandedRows.has(sample.id);
+    const row = document.createElement('tr');
+    row.className = 'expanded-row-cursor' + (isExpanded ? ' expanded' : '');
+    row.innerHTML = `
+      <td>${sample.pair}</td>
+      <td><strong>${sample.caseId}</strong></td>
+      <td>${sample.dx}</td>
+      <td>${sample.area}</td>
+      <td><span class="status-badge ${statusBadgeClass(sample.status)}">${sample.status}</span></td>
+      <td>${boolCell(sample.prep)}</td>
+      <td>${boolCell(sample.imaging)}</td>
+      <td>${boolCell(sample.analysis)}</td>
+      <td style="font-size:0.78rem;color:var(--text-muted);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${sample.notes || ''}</td>
+    `;
+    row.addEventListener('click', () => toggleExpandRow(sample.id, data));
+    tbody.appendChild(row);
+
+    // Expanded detail row
+    if (isExpanded) {
+      const detailRow = document.createElement('tr');
+      detailRow.className = 'sample-expanded-row';
+      detailRow.innerHTML = `<td colspan="9">
+        <div class="sample-expanded-inner">
+          ${expandedFields(sample)}
+        </div>
+      </td>`;
+      tbody.appendChild(detailRow);
+    }
+  });
+}
+
+function expandedFields(sample) {
+  const fields = [
+    ['Sectioning', sample.sectioning], ['Staining', sample.staining], ['Mounting', sample.mounting],
+    ['Imaging Run', sample.imaging_run], ['Registration', sample.registration],
+    ['Cell Segmentation', sample.cell_segmentation], ['Transcript Detection', sample.transcript_detection],
+    ['Cell Typing', sample.cell_typing], ['QC Passed', sample.qc_passed],
+    ['Automation Complete', sample.automation_complete],
+  ];
+  return fields.map(([label, val]) =>
+    `<div class="expanded-field"><span class="expanded-field-label">${label}:</span> ${boolCell(val)}</div>`
+  ).join('');
+}
+
+function toggleExpandRow(id, data) {
+  if (expandedRows.has(id)) expandedRows.delete(id);
+  else expandedRows.add(id);
+  renderTable(data);
+}
+
+function renderAll() {
+  const data = loadProjectData(currentProject);
+  renderPipelineSummary(data);
+  renderTable(data);
+  document.getElementById('trackerTitle').textContent = PROJECTS[currentProject]?.label + ' Samples';
+}
+
+// ---- ADD SAMPLE ----
+document.getElementById('addSampleBtn').addEventListener('click', () => {
+  document.getElementById('addSampleOverlay').classList.add('open');
+  document.body.style.overflow = 'hidden';
+});
+document.getElementById('cancelAddSample').addEventListener('click', () => {
+  document.getElementById('addSampleOverlay').classList.remove('open');
+  document.body.style.overflow = '';
+});
+document.getElementById('addSampleOverlay').addEventListener('click', e => {
+  if (e.target === document.getElementById('addSampleOverlay')) {
+    document.getElementById('addSampleOverlay').classList.remove('open');
+    document.body.style.overflow = '';
+  }
+});
+document.getElementById('confirmAddSample').addEventListener('click', () => {
+  const pair   = document.getElementById('samplePair').value.trim();
+  const caseId = document.getElementById('sampleCase').value.trim();
+  const dx     = document.getElementById('sampleDx').value;
+  const area   = document.getElementById('sampleArea').value.trim();
+  const status = document.getElementById('sampleStatus').value;
+  const notes  = document.getElementById('sampleNotes').value.trim();
+  if (!caseId) { document.getElementById('sampleCase').focus(); return; }
+
+  const data = loadProjectData(currentProject);
+  data.push({
+    id: 'sample-' + Date.now(), pair, caseId, dx, area, status, notes,
+    prep: false, imaging: false, analysis: false,
+    sectioning: false, staining: false, mounting: false, imaging_run: false,
+    registration: false, cell_segmentation: false, transcript_detection: false,
+    cell_typing: false, qc_passed: false, automation_complete: false,
+  });
+  saveProjectData(currentProject, data);
+  renderAll();
+  document.getElementById('addSampleOverlay').classList.remove('open');
+  document.body.style.overflow = '';
+  ['samplePair','sampleCase','sampleArea','sampleNotes'].forEach(id => document.getElementById(id).value = '');
+});
+
+// ---- EXPORT JSON ----
+document.getElementById('exportJsonBtn').addEventListener('click', () => {
+  const data = loadProjectData(currentProject);
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `${currentProject}_samples_${new Date().toISOString().split('T')[0]}.json`;
+  a.click();
+});
+
+// ---- GOOGLE SHEETS IMPORT ----
+document.getElementById('sheetsImportBtn').addEventListener('click', () => {
+  const bar = document.getElementById('syncBar');
+  bar.scrollIntoView({ behavior: 'smooth' });
+  document.getElementById('sheetsUrlInput').focus();
+});
+
+document.getElementById('syncNowBtn').addEventListener('click', async () => {
+  const url = document.getElementById('sheetsUrlInput').value.trim();
+  if (!url) return;
+  const statusDiv = document.getElementById('syncStatus');
+  statusDiv.style.display = '';
+  statusDiv.textContent = 'Fetching…';
+
+  // Extract sheet ID
+  const match = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
+  if (!match) {
+    statusDiv.textContent = 'Could not parse Sheet ID from URL.';
+    return;
+  }
+  const sheetId = match[1];
+  // Try to get sheet name from URL fragment or use default
+  const sheetName = encodeURIComponent('BD2 Progress');
+  const jsonUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:json&sheet=${sheetName}`;
+
+  try {
+    const res = await fetch(jsonUrl);
+    const text = await res.text();
+    // Google wraps in google.visualization.Query.setResponse(...)
+    const json = JSON.parse(text.replace(/^[^(]+\(/, '').replace(/\);?\s*$/, ''));
+    const rows = json.table.rows;
+    const cols = json.table.cols.map(c => c.label);
+    const data = rows.map((row, i) => {
+      const r = {};
+      cols.forEach((col, ci) => { r[col] = row.c[ci]?.v ?? null; });
+      return {
+        id: 'sheets-' + i,
+        pair: String(r['Pair'] || r['pair'] || ''),
+        caseId: String(r['Case'] || r['case'] || r['Case ID'] || ''),
+        dx: String(r['Dx'] || r['Diagnosis'] || ''),
+        area: String(r['Area'] || r['area'] || ''),
+        status: String(r['Status'] || 'Not Started'),
+        notes: String(r['Notes'] || r['notes'] || ''),
+        prep: !!(r['Prep'] || r['prep']),
+        imaging: !!(r['Imaging'] || r['imaging']),
+        analysis: !!(r['Analysis'] || r['analysis']),
+        sectioning: !!(r['Sectioning']), staining: !!(r['Staining']),
+        mounting: !!(r['Mounting']), imaging_run: !!(r['Imaging Run']),
+        registration: !!(r['Registration']), cell_segmentation: !!(r['Cell Segmentation']),
+        transcript_detection: !!(r['Transcript Detection']), cell_typing: !!(r['Cell Typing']),
+        qc_passed: !!(r['QC Passed']), automation_complete: !!(r['Automation Complete']),
+      };
+    });
+    saveProjectData(currentProject, data);
+    localStorage.setItem('sheets_url_' + currentProject, url);
+    localStorage.setItem('sheets_sync_time_' + currentProject, new Date().toISOString());
+    renderAll();
+    statusDiv.textContent = `✓ Synced ${data.length} rows at ${new Date().toLocaleTimeString()}`;
+  } catch(e) {
+    statusDiv.textContent = 'Sync failed: ' + e.message + '. Make sure the sheet is public (Anyone with link → Viewer).';
+  }
+});
+
+// Show last sync time
+function showLastSync() {
+  const t = localStorage.getItem('sheets_sync_time_' + currentProject);
+  const url = localStorage.getItem('sheets_url_' + currentProject);
+  const syncDiv = document.getElementById('syncStatus');
+  if (t && url) {
+    syncDiv.style.display = '';
+    document.getElementById('sheetsUrlInput').value = url;
+    syncDiv.textContent = `Last synced: ${new Date(t).toLocaleString()}`;
+  }
+}
+
+// ---- TABS ----
+document.getElementById('trackerTabs').addEventListener('click', e => {
+  const tab = e.target.closest('[data-project]');
+  if (!tab) return;
+  document.querySelectorAll('.tracker-tab').forEach(t => t.classList.remove('active'));
+  tab.classList.add('active');
+  currentProject = tab.dataset.project;
+  expandedRows.clear();
+  renderAll();
+  showLastSync();
+});
+
+// ---- THEME TOGGLE ----
+document.querySelector('[data-theme-toggle]').addEventListener('click', () => {
+  const curr = document.documentElement.getAttribute('data-theme');
+  const next = curr === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', next);
+  localStorage.setItem('theme', next);
+});
+
+// ---- INIT ----
+document.addEventListener('DOMContentLoaded', () => {
+  document.documentElement.setAttribute('data-theme', localStorage.getItem('theme') || 'dark');
+  renderAll();
+  showLastSync();
+});
+</script>
+</body>
+</html>
