@@ -414,6 +414,10 @@ function handleRoute() {
       renderProgress();
       document.getElementById('view-progress').classList.add('active');
       break;
+    case 'docs':
+      renderDocs();
+      document.getElementById('view-docs').classList.add('active');
+      break;
     case 'settings':
       renderSettings();
       document.getElementById('view-settings').classList.add('active');
@@ -1814,6 +1818,139 @@ function deleteBatch(batchId) {
   state.prepBatches = (state.prepBatches || []).filter(b => b.id !== batchId);
   saveState();
   renderPrep();
+}
+
+// ---- RENDER: Docs ----
+const DOCS = [
+  {
+    id: 'master-strategy',
+    title: 'Master Analysis Strategy',
+    desc: 'Comprehensive methods and hypotheses for the seqFISH spatial transcriptomics pipeline across DLPFC, FIC, and DG regions.',
+    file: 'docs/master_analysis_strategy.md',
+    tags: ['dlpfc', 'bd2', 'dg', 'package'],
+    icon: 'strategy'
+  },
+  {
+    id: 'cursor-plan',
+    title: 'Cursor Coding Plan',
+    desc: 'Architect-reviewed, subagent-decomposed implementation plan for spatialpy. Phases P0 through P9 with acceptance criteria.',
+    file: 'docs/cursor_plan_improved.md',
+    tags: ['package', 'dlpfc'],
+    icon: 'code'
+  },
+  {
+    id: 'paper-prioritization',
+    title: 'Paper Prioritization',
+    desc: 'Framework for evaluating and prioritizing the portfolio of potential papers from seqFISH AD/FTD data.',
+    file: 'docs/paper_prioritization.md',
+    tags: ['dlpfc', 'bd2', 'dg'],
+    icon: 'papers'
+  },
+  {
+    id: 'gene-modules',
+    title: 'Gene Modules',
+    desc: 'Complete gene module reference for the 1,205-gene seqFISH probeset. Marker panels, cell typing modules, and pathway signatures.',
+    file: 'docs/gene_modules.md',
+    tags: ['dlpfc', 'bd2', 'dg', 'package'],
+    icon: 'dna'
+  },
+  {
+    id: 'robustness',
+    title: 'Robustness & Validation',
+    desc: 'Testing and wet lab validation guide. Statistical robustness gates, sensitivity analyses, and IF validation protocols.',
+    file: 'docs/robustness_and_validation.md',
+    tags: ['dlpfc', 'bd2', 'dg'],
+    icon: 'check'
+  },
+  {
+    id: 'singularity',
+    title: 'Singularity Recommendation',
+    desc: 'Technical recommendation for containerization of the txomics pipeline on HPC clusters.',
+    file: 'docs/singularity_recommendation.md',
+    tags: ['package'],
+    icon: 'server'
+  },
+  {
+    id: 'paper-plans',
+    title: 'Paper Plans',
+    desc: 'Detailed paper outlines and figure plans for all publications.',
+    file: 'docs/paper_plans.pdf',
+    tags: ['dlpfc', 'bd2', 'dg'],
+    icon: 'papers'
+  },
+  {
+    id: 'sample-processing',
+    title: 'Sample Processing Protocol',
+    desc: 'RNA Guide ASY-053.02-2 — wet lab sample processing protocol for seqFISH experiments.',
+    file: 'docs/Sample_Processing_for_RNA_Guide_ASY-053.02-2.pdf',
+    tags: ['dlpfc', 'bd2', 'dg'],
+    icon: 'lab'
+  }
+];
+
+const DOC_ICONS = {
+  strategy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>',
+  code: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>',
+  papers: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8M8 17h6"/></svg>',
+  dna: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M2 15c6.667-6 13.333 0 20-6"/><path d="M9 22c1.798-1.998 2.518-3.995 2.807-5.993"/><path d="M15 2c-1.798 1.998-2.518 3.995-2.807 5.993"/><path d="M17 6l-2.5 2.5"/><path d="M14 8.5l-2.5 2.5"/><path d="M7 18l2.5-2.5"/><path d="M3.5 14.5l2.5-2.5"/></svg>',
+  check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>',
+  server: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><path d="M6 6h.01M6 18h.01"/></svg>',
+  lab: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M9 3h6M12 3v7l-5 8h10l-5-8V3"/></svg>'
+};
+
+function renderDocs() {
+  const el = document.getElementById('view-docs');
+  let activeFilter = null;
+
+  let html = `<div class="section-title">Reference Docs</div>
+    <p style="font-size:var(--text-sm);color:var(--text-secondary);margin-bottom:var(--sp-5);">
+      Key documents from your research planning sessions. Tap to open.
+    </p>
+    <div class="docs-filter" id="docsFilter">
+      <button class="doc-filter-btn active" data-filter="all">All</button>
+      <button class="doc-filter-btn" data-filter="dlpfc" style="--fc:var(--c-dlpfc)">DLPFC</button>
+      <button class="doc-filter-btn" data-filter="package" style="--fc:var(--c-package)">txomics</button>
+      <button class="doc-filter-btn" data-filter="bd2" style="--fc:var(--c-bd2)">BD2</button>
+      <button class="doc-filter-btn" data-filter="dg" style="--fc:var(--c-dg)">DG</button>
+    </div>
+    <div class="docs-grid" id="docsGrid">`;
+
+  DOCS.forEach(doc => {
+    const tagBadges = doc.tags.map(t => {
+      const color = TRACK_COLORS[t] || 'var(--text-muted)';
+      const label = TRACK_LABELS[t] || t;
+      return `<span class="doc-tag" style="color:${color};border-color:${color}30">${label.split(' ')[0]}</span>`;
+    }).join('');
+    const isPdf = doc.file.endsWith('.pdf');
+    html += `
+      <a class="doc-card" href="${doc.file}" target="_blank" rel="noopener" data-tags="${doc.tags.join(',')}"> 
+        <div class="doc-card-icon">${DOC_ICONS[doc.icon] || ''}</div>
+        <div class="doc-card-body">
+          <div class="doc-card-title">${doc.title}${isPdf ? ' <span class="doc-type-badge">PDF</span>' : ''}</div>
+          <div class="doc-card-desc">${doc.desc}</div>
+          <div class="doc-card-tags">${tagBadges}</div>
+        </div>
+      </a>`;
+  });
+
+  html += `</div>`;
+  el.innerHTML = html;
+
+  // Filter logic
+  el.querySelectorAll('.doc-filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      el.querySelectorAll('.doc-filter-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const filter = btn.dataset.filter;
+      el.querySelectorAll('.doc-card').forEach(card => {
+        if (filter === 'all') {
+          card.style.display = '';
+        } else {
+          card.style.display = card.dataset.tags.includes(filter) ? '' : 'none';
+        }
+      });
+    });
+  });
 }
 
 // ---- RENDER: Settings ----
