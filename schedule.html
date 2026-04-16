@@ -264,6 +264,142 @@
       z-index:9999; white-space:nowrap;
     }
     .sched-toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+
+    /* ── Weekly audit banner ── */
+    .weekly-audit-banner {
+      background: linear-gradient(135deg, rgba(167,139,250,0.12), rgba(91,196,214,0.10));
+      border: 1px solid rgba(167,139,250,0.35);
+      border-radius: 14px;
+      padding: 16px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 20px;
+      animation: audit-pulse 2.5s ease-in-out infinite;
+    }
+    @keyframes audit-pulse {
+      0%,100% { box-shadow: 0 0 0 0 rgba(167,139,250,0); }
+      50%      { box-shadow: 0 0 0 6px rgba(167,139,250,0.12); }
+    }
+    .audit-banner-left { display:flex; align-items:center; gap:14px; }
+    .audit-banner-icon { font-size:28px; flex-shrink:0; }
+    .audit-banner-title { font-size:15px; font-weight:700; color:var(--text-primary,#fff); }
+    .audit-banner-sub   { font-size:12px; color:var(--text-muted,#aaa); margin-top:2px; }
+    .audit-banner-btn {
+      background: rgba(167,139,250,0.2); color:#a78bfa;
+      border: 1px solid rgba(167,139,250,0.4);
+      border-radius:10px; padding:9px 18px;
+      font-size:13px; font-weight:700; cursor:pointer;
+      white-space:nowrap; transition:background .15s;
+    }
+    .audit-banner-btn:hover { background:rgba(167,139,250,0.32); }
+
+    /* ── Week summary row ── */
+    .week-summary-row { display:flex; gap:16px; margin-top:24px; align-items:flex-start; }
+    @media (max-width:640px) { .week-summary-row { flex-direction:column; } }
+    .week-capacity-card {
+      background:var(--surface-card,rgba(255,255,255,0.05));
+      border:1px solid var(--border-subtle,rgba(255,255,255,0.1));
+      border-radius:16px; padding:20px 24px;
+      display:flex; flex-direction:column; align-items:center; text-align:center;
+      min-width:170px; flex-shrink:0;
+    }
+    .week-cap-title { font-size:11px; font-weight:700; text-transform:uppercase;
+      letter-spacing:.07em; color:var(--text-muted,#aaa); margin-bottom:8px; }
+    .week-cap-num { font-size:42px; font-weight:700; line-height:1; color:#fff; }
+    .week-cap-sub { font-size:12px; color:var(--text-muted,#aaa); margin-top:4px; }
+    .week-cap-done { font-size:13px; font-weight:600; color:#10b981; margin-top:6px; min-height:18px; }
+    .week-cap-btn {
+      margin-top:14px; background:none;
+      border:1px solid rgba(255,255,255,0.15); border-radius:8px;
+      padding:6px 14px; font-size:12px; color:var(--text-muted,#aaa);
+      cursor:pointer; transition:border-color .15s, color .15s;
+    }
+    .week-cap-btn:hover { border-color:rgba(167,139,250,.5); color:#a78bfa; }
+
+    /* ── Weekly audit modal ── */
+    .audit-modal-overlay {
+      position:fixed; inset:0; background:rgba(0,0,0,0.55);
+      z-index:300; display:flex; align-items:center; justify-content:center;
+      opacity:0; pointer-events:none; transition:opacity .2s;
+    }
+    .audit-modal-overlay.open { opacity:1; pointer-events:all; }
+    .audit-modal {
+      background:var(--surface-bg,#1e1e1e);
+      border:1px solid rgba(255,255,255,0.1);
+      border-radius:20px; padding:28px;
+      width:min(520px,95vw); max-height:90vh; overflow-y:auto;
+      transform:scale(0.95); transition:transform .2s;
+      box-shadow:0 24px 64px rgba(0,0,0,0.5);
+    }
+    .audit-modal-overlay.open .audit-modal { transform:scale(1); }
+    .audit-step { display:none; }
+    .audit-step.active { display:block; }
+    .audit-step-title { font-size:18px; font-weight:700; color:#fff; margin-bottom:6px; }
+    .audit-step-sub { font-size:13px; color:var(--text-muted,#aaa); margin-bottom:20px; line-height:1.5; }
+    .audit-last-week-grid {
+      display:grid; grid-template-columns:repeat(7,1fr); gap:6px; margin-bottom:20px;
+    }
+    .audit-day-cell {
+      border-radius:10px; padding:8px 4px; text-align:center;
+      background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08);
+    }
+    .audit-day-name { font-size:10px; color:var(--text-muted,#aaa); font-weight:600; }
+    .audit-day-num  { font-size:20px; font-weight:700; color:#fff; line-height:1.1; }
+    .audit-day-label{ font-size:9px; color:var(--text-muted,#aaa); margin-top:2px; }
+    .audit-day-cell.good { background:rgba(16,185,129,0.12); border-color:rgba(16,185,129,0.3); }
+    .audit-day-cell.miss { background:rgba(239,68,68,0.08); border-color:rgba(239,68,68,0.2); }
+    .audit-reflect-box {
+      width:100%; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.12);
+      border-radius:12px; color:#fff; font-size:14px; padding:12px 14px;
+      resize:none; min-height:80px; font-family:inherit; outline:none;
+      transition:border-color .15s;
+    }
+    .audit-reflect-box:focus { border-color:rgba(167,139,250,0.5); }
+    .audit-capacity-row {
+      display:flex; align-items:center; gap:12px; margin:16px 0;
+    }
+    .audit-cap-label { font-size:13px; color:var(--text-muted,#aaa); flex:1; }
+    .audit-cap-val { font-size:28px; font-weight:700; color:#fff; min-width:40px; text-align:center; }
+    .audit-cap-btn {
+      width:36px; height:36px; border-radius:50%;
+      background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.15);
+      color:#fff; font-size:20px; cursor:pointer; display:flex;
+      align-items:center; justify-content:center; transition:background .15s;
+    }
+    .audit-cap-btn:hover { background:rgba(167,139,250,0.25); }
+    .audit-nav { display:flex; justify-content:space-between; margin-top:24px; gap:12px; }
+    .audit-back-btn {
+      background:none; border:1px solid rgba(255,255,255,0.15);
+      border-radius:10px; padding:10px 20px; font-size:14px; color:var(--text-muted,#aaa);
+      cursor:pointer; transition:border-color .15s;
+    }
+    .audit-back-btn:hover { border-color:rgba(255,255,255,0.35); color:#fff; }
+    .audit-next-btn {
+      flex:1; background:linear-gradient(135deg,#a78bfa,#5bc4d6);
+      border:none; border-radius:10px; padding:10px 20px;
+      font-size:14px; font-weight:700; color:#fff; cursor:pointer;
+      transition:opacity .15s;
+    }
+    .audit-next-btn:hover { opacity:.88; }
+
+    /* ── Capacity-only modal (quick adjust) ── */
+    .cap-modal-overlay {
+      position:fixed; inset:0; background:rgba(0,0,0,0.45);
+      z-index:300; display:flex; align-items:center; justify-content:center;
+      opacity:0; pointer-events:none; transition:opacity .2s;
+    }
+    .cap-modal-overlay.open { opacity:1; pointer-events:all; }
+    .cap-modal {
+      background:var(--surface-bg,#1e1e1e);
+      border:1px solid rgba(255,255,255,0.1);
+      border-radius:18px; padding:24px 28px;
+      width:min(360px,95vw);
+      transform:scale(0.95); transition:transform .2s;
+      box-shadow:0 16px 48px rgba(0,0,0,0.5);
+    }
+    .cap-modal-overlay.open .cap-modal { transform:scale(1); }
   </style>
 </head>
 <body>
@@ -276,7 +412,7 @@
   </div>
   <div class="sched-hdr-actions">
     <button class="btn-daily-triage" onclick="openDailyTriage()">⚡ Daily Triage</button>
-    <button class="btn-plan-week"    onclick="openPlanModal()">✦ Plan Week</button>
+    <button class="btn-plan-week"    onclick="openWeeklyAudit()">📋 Weekly Review</button>
   </div>
 </header>
 
@@ -303,29 +439,100 @@
   <div class="sched-section-title">📆 Week at a Glance</div>
   <div class="week-grid-7" id="weekGrid"></div>
 
-  <!-- ── COLUMNS: Queue + Sidebar ── -->
-  <div class="sched-columns">
-    <!-- Left: queue -->
-    <div>
-      <div class="sched-section-title">⚡ Today's Block Queue</div>
-      <div class="queue-list-wrap" id="queueListWrap"></div>
-      <button class="btn-add-block" onclick="openAddBlockModal()">＋ Add block to today</button>
+  <!-- ── WEEKLY AUDIT BANNER (shown when audit is due) ── -->
+  <div id="weeklyAuditBanner" class="weekly-audit-banner" style="display:none">
+    <div class="audit-banner-left">
+      <span class="audit-banner-icon">📋</span>
+      <div>
+        <div class="audit-banner-title">Weekly Review Due</div>
+        <div class="audit-banner-sub">Take 5 minutes to close last week and set this week's capacity.</div>
+      </div>
     </div>
+    <button class="audit-banner-btn" onclick="openWeeklyAudit()">Start Review →</button>
+  </div>
 
-    <!-- Right: chart + sidebar -->
-    <div>
-      <div class="chart-card">
-        <div class="chart-title">Deep Work — Past 3 Weeks</div>
-        <canvas id="blockChartCanvas"></canvas>
-      </div>
-      <div class="sidebar-card">
-        <div class="sched-section-title" style="margin-bottom:8px">Rest of Week</div>
-        <div id="weeklySidebar"></div>
-      </div>
+  <!-- ── TODAY'S BLOCK QUEUE (full width) ── -->
+  <div class="sched-section-title">⚡ Today's Block Queue</div>
+  <div class="queue-list-wrap" id="queueListWrap"></div>
+  <button class="btn-add-block" onclick="openAddBlockModal()">＋ Add block to today</button>
+
+  <!-- ── WEEK SUMMARY (compact, no future task assignment) ── -->
+  <div class="week-summary-row">
+    <div class="chart-card" style="flex:1">
+      <div class="chart-title">Deep Work — Past 3 Weeks</div>
+      <canvas id="blockChartCanvas"></canvas>
+    </div>
+    <div class="week-capacity-card">
+      <div class="week-cap-title">This Week's Capacity</div>
+      <div class="week-cap-num" id="weekCapNum">—</div>
+      <div class="week-cap-sub" id="weekCapSub">blocks set</div>
+      <div class="week-cap-done" id="weekCapDone"></div>
+      <button class="week-cap-btn" onclick="openCapacityModal()">Adjust</button>
     </div>
   </div>
 
 </main>
+
+<!-- ──────────────────────── WEEKLY AUDIT MODAL ── -->
+<div class="audit-modal-overlay" id="auditModalOverlay">
+  <div class="audit-modal">
+
+    <!-- Step 1: Last week review -->
+    <div class="audit-step active" id="auditStep1">
+      <div class="audit-step-title">📋 Last Week — How did it go?</div>
+      <div class="audit-step-sub">Here's what you logged. Honest look — no judgment.</div>
+      <div class="audit-last-week-grid" id="auditLastWeekGrid"></div>
+      <div id="auditLastWeekSummary" style="font-size:14px;color:var(--text-muted,#aaa);margin-bottom:16px;line-height:1.5"></div>
+      <label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--text-muted,#aaa);margin-bottom:8px">One sentence reflection (optional)</label>
+      <textarea class="audit-reflect-box" id="auditReflectBox" placeholder="What worked? What got in the way?"></textarea>
+      <div class="audit-nav">
+        <button class="audit-back-btn" onclick="closeAuditModal()">Later</button>
+        <button class="audit-next-btn" onclick="auditGoStep(2)">Next →</button>
+      </div>
+    </div>
+
+    <!-- Step 2: Set this week's capacity -->
+    <div class="audit-step" id="auditStep2">
+      <div class="audit-step-title">⚡ This Week — Set Capacity</div>
+      <div class="audit-step-sub">How many deep-work blocks are you aiming for this week?<br>
+        Max 4/day × 7 days = 28. Be honest about what's realistic.
+        <br><strong style="color:#a78bfa">Don't assign tasks to specific days</strong> — add blocks each morning when you're ready.</div>
+      <div class="audit-capacity-row">
+        <button class="audit-cap-btn" onclick="adjustCap(-1)">−</button>
+        <div class="audit-cap-val" id="auditCapVal">14</div>
+        <button class="audit-cap-btn" onclick="adjustCap(1)">+</button>
+        <div class="audit-cap-label">blocks this week<br><span id="auditCapPer" style="color:var(--text-muted,#aaa)">≈ 2/day</span></div>
+      </div>
+
+      <!-- Lab days -->
+      <label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--text-muted,#aaa);margin-bottom:8px;margin-top:12px">Lab days this week? (caps that day at 2 deep blocks)</label>
+      <div class="day-toggles" id="auditLabDayBtns"></div>
+
+      <div class="audit-nav">
+        <button class="audit-back-btn" onclick="auditGoStep(1)">← Back</button>
+        <button class="audit-next-btn" onclick="saveWeeklyAudit()">Save & Start Week →</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ──────────────────────── CAPACITY ADJUST MODAL (quick) ── -->
+<div class="cap-modal-overlay" id="capModalOverlay">
+  <div class="cap-modal">
+    <div style="font-size:16px;font-weight:700;color:#fff;margin-bottom:16px">Adjust Week Capacity</div>
+    <div class="audit-capacity-row">
+      <button class="audit-cap-btn" onclick="adjustQuickCap(-1)">−</button>
+      <div class="audit-cap-val" id="quickCapVal">14</div>
+      <button class="audit-cap-btn" onclick="adjustQuickCap(1)">+</button>
+      <div class="audit-cap-label">blocks this week</div>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:20px">
+      <button class="audit-back-btn" style="flex:1" onclick="closeCapModal()">Cancel</button>
+      <button class="audit-next-btn" onclick="saveQuickCapacity()">Save</button>
+    </div>
+  </div>
+</div>
 
 <!-- ──────────────────────── WEEKLY PLAN MODAL ── -->
 <div class="modal-overlay" id="planModalOverlay">
@@ -721,24 +928,41 @@ function renderBlockChart() {
 }
 
 function renderWeeklySidebar() {
-  const el = document.getElementById('weeklySidebar');
-  if (!el) return;
-  const today = todayISO();
-  const futureDays = getWeekMonSun().filter(d=>d>today);
-  if (!futureDays.length) { el.innerHTML='<div style="color:var(--text-muted);font-size:13px">End of week!</div>'; return; }
-  const items = typeof getAllBlockItems==='function' ? getAllBlockItems().filter(i=>i.cogType==='deep') : [];
-  el.innerHTML = futureDays.slice(0,5).map((date,i)=>{
-    const dayName = DAY_FULL[getWeekMonSun().indexOf(date)];
-    const chunk = items.slice(i*2,i*2+2);
-    return `<div class="sidebar-day-grp">
-      <div class="sidebar-day-hdr">${dayName}</div>
-      ${chunk.length?chunk.map(item=>`
-        <div class="sidebar-item" onclick="startFocus('${item.step.id}','${item.milestone.id}')">
-          <span style="width:14px;height:14px;border-radius:50%;background:var(--cog-${item.cogType||'deep'});display:inline-block;flex-shrink:0"></span>
-          <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1">${item.step.title}</span>
-        </div>`).join(''):'<div style="color:var(--text-muted);font-size:12px;padding:4px 8px">—</div>'}
-    </div>`;
-  }).join('');
+  // No longer renders rest-of-week tasks — we don't pre-assign tasks to specific days.
+  // Tasks are added each morning via Daily Triage or "+ Add block".
+}
+
+function renderWeekCapacityCard() {
+  const sched = getWeekScheduleState();
+  const planned = sched.planned_blocks || null;
+  const capNum = document.getElementById('weekCapNum');
+  const capSub = document.getElementById('weekCapSub');
+  const capDone = document.getElementById('weekCapDone');
+  if (!capNum) return;
+
+  if (!planned) {
+    capNum.textContent = '—';
+    capSub.textContent = 'not set yet';
+    if (capDone) capDone.textContent = '';
+    return;
+  }
+
+  // Count blocks done this week
+  const days = getWeekMonSun();
+  const hist = getBlockHistory(30);
+  let done = 0;
+  days.forEach(d => {
+    if (d === todayISO()) {
+      done += getDayState(d).completed_deep || 0;
+    } else {
+      const h = hist.find(h => h.date === d);
+      if (h) done += h.completed_blocks || 0;
+    }
+  });
+
+  capNum.textContent = planned;
+  capSub.textContent = 'blocks this week';
+  if (capDone) capDone.textContent = done > 0 ? `${done} done so far` : '';
 }
 
 // ══════════════════════════════════════════
@@ -1009,13 +1233,15 @@ function renderAll() {
   renderQueueList();
   renderBlockChart();
   renderWeeklySidebar();
+  renderWeekCapacityCard();
+  checkWeeklyAuditDue();
 }
 
 document.addEventListener('DOMContentLoaded', ()=>{
   renderAll();
 
   // Modal backdrop closes
-  ['planModalOverlay','triageModalOv','addBlockModalOv'].forEach(id=>{
+  ['planModalOverlay','triageModalOv','addBlockModalOv','auditModalOverlay','capModalOverlay'].forEach(id=>{
     document.getElementById(id)?.addEventListener('click',e=>{
       if(e.target.id===id) {
         document.getElementById(id).classList.remove('open');
@@ -1024,14 +1250,185 @@ document.addEventListener('DOMContentLoaded', ()=>{
     });
   });
 
-  // Auto-open triage on Sunday if not done today
-  if (new Date().getDay()===0) {
-    const key='last_plan_date';
-    if (localStorage.getItem(key)!==todayISO()) {
-      setTimeout(()=>{ openPlanModal(); localStorage.setItem(key,todayISO()); },800);
-    }
+  // Auto-open weekly audit if due (first visit of a new week, Monday or later)
+  const now = new Date();
+  const dow = now.getDay(); // 0=Sun, 1=Mon
+  const isWeekStart = dow === 1; // Monday
+  const key = 'last_weekly_audit_week';
+  const currentWeekKey = getWeekMonSun()[0]; // Monday ISO
+  if (isWeekStart && localStorage.getItem(key) !== currentWeekKey) {
+    setTimeout(() => openWeeklyAudit(), 1200);
   }
 });
+
+// ══════════════════════════════════════════
+//  WEEKLY AUDIT
+// ══════════════════════════════════════════
+
+let _auditCap = 14;
+let _auditLabDays = [];
+let _auditStep = 1;
+
+function checkWeeklyAuditDue() {
+  const currentWeekKey = getWeekMonSun()[0];
+  const lastAudit = localStorage.getItem('last_weekly_audit_week');
+  const banner = document.getElementById('weeklyAuditBanner');
+  // Show banner if audit not done this week (always visible if missed, not just Monday)
+  if (banner) banner.style.display = (lastAudit !== currentWeekKey) ? 'flex' : 'none';
+}
+
+function openWeeklyAudit() {
+  _auditStep = 1;
+  _auditCap = getWeekScheduleState().planned_blocks || 14;
+  _auditLabDays = [...(getWeekScheduleState().lab_days || [])];
+
+  renderAuditLastWeek();
+  renderAuditLabDays();
+  document.getElementById('auditCapVal').textContent = _auditCap;
+  updateAuditCapPer();
+  document.getElementById('auditReflectBox').value = '';
+
+  auditGoStep(1);
+  document.getElementById('auditModalOverlay').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeAuditModal() {
+  document.getElementById('auditModalOverlay').classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+function auditGoStep(n) {
+  _auditStep = n;
+  document.querySelectorAll('.audit-step').forEach(el => el.classList.remove('active'));
+  document.getElementById('auditStep' + n)?.classList.add('active');
+}
+
+function renderAuditLastWeek() {
+  const grid = document.getElementById('auditLastWeekGrid');
+  const summary = document.getElementById('auditLastWeekSummary');
+  if (!grid) return;
+
+  // Last week = the Mon-Sun block BEFORE current week
+  const thisMonday = new Date(getWeekMonSun()[0] + 'T12:00');
+  const lastWeekDays = Array.from({length:7}, (_, i) => {
+    const d = new Date(thisMonday);
+    d.setDate(thisMonday.getDate() - 7 + i);
+    return d.toISOString().split('T')[0];
+  });
+
+  const DAY_A = ['M','T','W','T','F','S','S'];
+  const hist = getBlockHistory(30);
+  let totalDone = 0, daysWithBlocks = 0;
+
+  grid.innerHTML = lastWeekDays.map((date, i) => {
+    const h = hist.find(h => h.date === date);
+    const done = h ? (h.completed_blocks || 0) : 0;
+    const target = 3;
+    if (done > 0) daysWithBlocks++;
+    totalDone += done;
+    const cls = done >= 2 ? 'good' : (done === 0 ? 'miss' : '');
+    const dayNum = new Date(date + 'T12:00').getDate();
+    return `<div class="audit-day-cell ${cls}">
+      <div class="audit-day-name">${DAY_A[i]}</div>
+      <div class="audit-day-num">${done}</div>
+      <div class="audit-day-label">/${target}</div>
+    </div>`;
+  }).join('');
+
+  if (summary) {
+    if (totalDone === 0) {
+      summary.textContent = 'No blocks logged last week — that's okay. Fresh start.';
+    } else {
+      const avg = (totalDone / 7).toFixed(1);
+      summary.textContent = `${totalDone} blocks across ${daysWithBlocks} day${daysWithBlocks!==1?'s':''} — avg ${avg}/day.`;
+    }
+  }
+}
+
+function renderAuditLabDays() {
+  const cont = document.getElementById('auditLabDayBtns');
+  if (!cont) return;
+  const days = getWeekMonSun();
+  const DAY_A = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  cont.innerHTML = days.map((d, i) =>
+    `<button class="day-tog-btn ${_auditLabDays.includes(d)?'on':''}" onclick="toggleAuditLab('${d}',this)">${DAY_A[i]}</button>`
+  ).join('');
+}
+
+function toggleAuditLab(date, btn) {
+  _auditLabDays = _auditLabDays.includes(date)
+    ? _auditLabDays.filter(d => d !== date)
+    : [..._auditLabDays, date];
+  btn.classList.toggle('on');
+}
+
+function adjustCap(delta) {
+  _auditCap = Math.max(0, Math.min(28, _auditCap + delta));
+  document.getElementById('auditCapVal').textContent = _auditCap;
+  updateAuditCapPer();
+}
+
+function updateAuditCapPer() {
+  const el = document.getElementById('auditCapPer');
+  if (el) el.textContent = '≈ ' + Math.round(_auditCap / 7 * 10) / 10 + '/day';
+}
+
+function saveWeeklyAudit() {
+  const reflect = document.getElementById('auditReflectBox')?.value?.trim() || '';
+  const sched = getWeekScheduleState();
+  sched.planned_blocks = _auditCap;
+  sched.lab_days = _auditLabDays;
+  saveWeekScheduleState(sched);
+
+  // Save reflection to history
+  if (reflect) {
+    try {
+      const ref = JSON.parse(localStorage.getItem('weekly_reflections_v1') || '[]');
+      ref.push({ week: getWeekMonSun()[0], reflection: reflect, ts: Date.now() });
+      if (ref.length > 52) ref.splice(0, ref.length - 52);
+      localStorage.setItem('weekly_reflections_v1', JSON.stringify(ref));
+    } catch(e) {}
+  }
+
+  // Mark this week's audit as done
+  localStorage.setItem('last_weekly_audit_week', getWeekMonSun()[0]);
+
+  closeAuditModal();
+  renderAll();
+  toast('✓ Week set — ' + _auditCap + ' blocks capacity. Add tasks each morning via Daily Triage.');
+}
+
+// ══════════════════════════════════════════
+//  QUICK CAPACITY ADJUST
+// ══════════════════════════════════════════
+let _quickCap = 14;
+
+function openCapacityModal() {
+  _quickCap = getWeekScheduleState().planned_blocks || 14;
+  document.getElementById('quickCapVal').textContent = _quickCap;
+  document.getElementById('capModalOverlay').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeCapModal() {
+  document.getElementById('capModalOverlay').classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+function adjustQuickCap(delta) {
+  _quickCap = Math.max(0, Math.min(28, _quickCap + delta));
+  document.getElementById('quickCapVal').textContent = _quickCap;
+}
+
+function saveQuickCapacity() {
+  const sched = getWeekScheduleState();
+  sched.planned_blocks = _quickCap;
+  saveWeekScheduleState(sched);
+  closeCapModal();
+  renderAll();
+  toast('Capacity updated — ' + _quickCap + ' blocks this week');
+}
 </script>
 </body>
 </html>
