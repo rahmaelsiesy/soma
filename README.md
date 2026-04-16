@@ -34,5 +34,12 @@ Export your board state from the Quest Board → paste into that day's snapshot 
 - **DG Neurogenesis** — Human dentate gyrus
 - Custom projects can be added via the "+ Add Project" button
 
----
-*Target: Altos Labs · Genentech · Illumina · Southern California*
+## Skills & Methods
+- Spatial transcriptomics (seqFISH, STARmap, MERFISH)
+- Single-cell RNA-seq analysis (Scanpy, scVI, Harmony)
+- Cell typing & integration (label transfer, hierarchical clustering)
+- Spatial domain discovery (SpatialDE, BANKSY, graph-based)
+- DEG analysis + pathway enrichment (pydeseq2, GSEA, ORA)
+- Efficiency correction (EEF2 stratification, CONCORD SAE)
+- Network analysis (assortativity, PageRank, GNN)
+- Python packaging (pip, pyproject.toml, CI/CD)
