@@ -1,1134 +1,1252 @@
-// ============================================================
-// RAHMA'S PHD QUEST BOARD — APP LOGIC v2
-// localStorage-backed, XP system, card routing, custom projects
-// ============================================================
+/* ============================================================
+   NEURO-ATLAS — app.js
+   Calm ADHD Quest Board — full application logic
+   ============================================================ */
 
-// ---- STATE ----
-let state = {};
-let currentMilestoneId = null;
+// ---- Constants ----
+const ACTIVE_TRACKS = ['dlpfc', 'package', 'bd2', 'dg'];
+const INACTIVE_TRACKS = ['fic', 'eef2', 'network', 'cursor', 'learning', 'career'];
+const TRACK_COLORS = {
+  dlpfc: '#c49a6c', package: '#7db88a', bd2: '#b07da8', dg: '#6ba3b5',
+  fic: '#c49a6c', eef2: '#9a9a6c', network: '#9ca3af', cursor: '#6ba3b5',
+  learning: '#8b8b96', career: '#9ca3af'
+};
+const TRACK_LABELS = {
+  dlpfc: 'DLPFC AD Project', package: 'txomics Package', bd2: 'BD2 ACC', dg: 'DG Neurogenesis',
+  fic: 'RUSH FIC AD', eef2: 'EEF2 Methods', network: 'Network & ML', cursor: 'Cursor Plan',
+  learning: 'Learning Plan', career: 'Career Path'
+};
+const TYPE_COLORS = {
+  code: '#7db88a', figure: '#b07da8', writing: '#c49a6c', lab: '#6ba3b5', wetlab: '#6ba3b5',
+  career: '#9ca3af', paper: '#c49a6c', learning: '#8b8b96'
+};
+const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
+const STORAGE_KEY = 'questboard_v3';
 
-// ---- LOCALSTORAGE STATE (GitHub Pages compatible) ----
+// ---- State ----
+let state = loadState();
+let timerInterval = null;
+let timerRemaining = 0;
+let timerTotal = 0;
+let timerRunning = false;
+let timerStepId = null;
+let timerMilestoneId = null;
+let timerIsWarmup = false;
+let pendingNavHash = null;
+
+// ---- State helpers ----
+function defaultState() {
+  return {
+    steps: {},
+    milestones: {},
+    focusLog: [],
+    weeklyPlan: { weekOf: null, blocks: {}, approved: false, focusProjects: [] },
+    ideas: [],
+    points: 0,
+    streak: { current: 0, lastDate: null },
+    dueDates: {},
+    settings: { blocksPerDay: { min: 2, max: 4 }, blockDurationMin: 90, warmupDurationMin: 25, weeklyGoal: 10 },
+    protocolChecks: {},
+    lastAction: null
+  };
+}
+
 function loadState() {
   try {
-    const saved = localStorage.getItem('questboard_state_v2');
-    state = saved ? JSON.parse(saved) : {};
-  } catch(e) { state = {}; }
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const s = JSON.parse(raw);
+      const d = defaultState();
+      return { ...d, ...s, settings: { ...d.settings, ...(s.settings || {}) }, streak: { ...d.streak, ...(s.streak || {}) }, weeklyPlan: { ...d.weeklyPlan, ...(s.weeklyPlan || {}) } };
+    }
+  } catch (e) { console.warn('State load error', e); }
+  return defaultState();
 }
 
 function saveState() {
-  try {
-    localStorage.setItem('questboard_state_v2', JSON.stringify(state));
-  } catch(e) {}
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) { console.warn('State save error', e); }
 }
 
-function getMilestoneState(id) {
-  return state[id] || { status: 'pending', notes: '' };
+function getStepState(stepId) {
+  if (!state.steps[stepId]) state.steps[stepId] = { status: 'pending', blocksCompleted: 0, notes: '', checklist: {} };
+  return state.steps[stepId];
 }
 
-function setMilestoneState(id, updates) {
-  state[id] = { ...getMilestoneState(id), ...updates };
-  saveState();
+function getMilestoneState(msId) {
+  if (!state.milestones[msId]) state.milestones[msId] = { status: 'pending', notes: '' };
+  return state.milestones[msId];
 }
 
-// ---- STEP STATE (nested under milestone state) ----
-function getStepState(milestoneId, stepId) {
-  const ms = state[milestoneId] || {};
-  const steps = ms.steps || {};
-  return steps[stepId] || { status: 'locked', checklist: {}, sessions: 0 };
+// ---- Date helpers ----
+function todayStr() { return new Date().toISOString().slice(0, 10); }
+function dayOfWeek() { return new Date().getDay(); } // 0=Sun
+function formatDate(d) {
+  const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  return `${days[d.getDay()]}, ${months[d.getMonth()]} ${d.getDate()}`;
+}
+function getWeekStart(dateStr) {
+  const d = dateStr ? new Date(dateStr + 'T00:00:00') : new Date();
+  const day = d.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  const mon = new Date(d);
+  mon.setDate(d.getDate() + diff);
+  return mon.toISOString().slice(0, 10);
+}
+function timeAgo(ts) {
+  const diff = Date.now() - ts;
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days === 1) return 'yesterday';
+  return `${days}d ago`;
+}
+function isWeekday(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00');
+  const day = d.getDay();
+  return day >= 1 && day <= 5;
 }
 
-function setStepState(milestoneId, stepId, updates) {
-  if (!state[milestoneId]) state[milestoneId] = { status: 'pending', notes: '' };
-  if (!state[milestoneId].steps) state[milestoneId].steps = {};
-  state[milestoneId].steps[stepId] = {
-    ...getStepState(milestoneId, stepId),
-    ...updates
-  };
-  saveState();
-}
-
-// ---- XP CALCULATION ----
-function calculateTotalXP() {
-  let xp = 0;
-  TRACK_ORDER.forEach(trackId => {
-    (QUEST_DATA[trackId] || []).forEach(m => {
-      (m.steps || []).forEach(step => {
-        if (getStepState(m.id, step.id).status === 'done') xp += (step.xp || 0);
-      });
-    });
-  });
-  // Also count custom projects
-  loadCustomProjects().forEach(proj => {
-    (proj.milestones || []).forEach(m => {
-      (m.steps || []).forEach(step => {
-        if (getStepState(m.id, step.id).status === 'done') xp += (step.xp || 0);
-      });
-    });
-  });
-  return xp;
-}
-
-function getCurrentLevel(xp) {
-  let level = LEVELS[0];
-  for (const l of LEVELS) {
-    if (xp >= l.xp_required) level = l;
-  }
-  return level;
-}
-
-function getNextLevel(xp) {
-  return LEVELS.find(l => l.xp_required > xp) || null;
-}
-
-function updateTrackProgressBars() {
-  TRACK_ORDER.forEach(trackId => {
-    const milestones = QUEST_DATA[trackId] || [];
-    if (!milestones.length) return;
-    const bar = document.getElementById('track-prog-' + trackId);
-    if (!bar) return;
-    const done = milestones.filter(m => getMilestoneState(m.id).status === 'done').length;
-    const pct = Math.round((done / milestones.length) * 100);
-    bar.style.width = pct + '%';
-    // Update color based on track
-    const colors = {
-      dlpfc: 'var(--c-dlpfc)', fic: 'var(--c-fic)', bd2: 'var(--c-bd2)',
-      dg: 'var(--c-dg)', eef2: 'var(--c-eef2)', package: 'var(--c-package)',
-      cursor: 'var(--c-dg)', network: '#9ca3af', learning: 'var(--c-learning)',
-      career: 'var(--c-career)'
-    };
-    bar.style.background = colors[trackId] || 'var(--c-flagship)';
-  });
-}
-
-function updateXPBar() {
-  // XP bar removed from header — just track XP internally
-  const xp = calculateTotalXP();
-  const current = getCurrentLevel(xp);
-  // Store for other uses (future: could surface somewhere)
-  window._currentXP = xp;
-  window._currentLevel = current;
-}
-
-// ---- COUNTDOWN (kept for data, no longer rendered in header) ----
-function updateCountdown() {
-  const target = new Date('2026-11-01T00:00:00');
-  const now = new Date();
-  const diff = target - now;
-  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-  window._defenseCountdown = days; // available for other uses
-}
-
-// ---- RENDER BOARD ----
-// Track order: 4 required papers first, then optional/tools
-const TRACK_ORDER = ['dlpfc', 'fic', 'bd2', 'dg', 'eef2', 'package', 'cursor', 'network', 'learning', 'career'];
-
-// Active view shows ONLY these tracks (user's current focus).
-// dlpfc = DLPFC data acquisition, package = txomics, cursor = txomics implementation on DLPFC
-// These run in parallel: finish a txomics module → implement in dlpfc via cursor track.
-const ACTIVE_FOCUS_TRACKS = ['dlpfc', 'package', 'cursor'];
-
-// ---- VIEW MODE ----
-// 'active' = default: tracks with in-progress milestones float to top, empty tracks collapsed
-// 'all'    = show every track in standard order
-let currentView = 'active';
-
-function setView(view) {
-  currentView = view;
-  // Sync header-tab buttons
-  document.querySelectorAll('.view-btn, .header-tab').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.view === view);
-  });
-  renderAllTracks();
-}
-
-function getTrackPriority(trackId) {
-  // Returns sort weight for a track in 'active' view:
-  // 0 = has in-progress milestones (float to top)
-  // 1 = has at least one pending but none in-progress
-  // 2 = all done or empty
-  const milestones = QUEST_DATA[trackId] || [];
-  const hasInProgress = milestones.some(m => getMilestoneState(m.id).status === 'inprogress');
-  if (hasInProgress) return 0;
-  const hasAnyActive = milestones.some(m => getMilestoneState(m.id).status !== 'done');
-  if (hasAnyActive) return 1;
-  return 2;
-}
-
-function getActiveTrackOrder() {
-  // Sort tracks: in-progress first, then pending, then complete
-  // Within each group, preserve the original logical order
-  return [...TRACK_ORDER].sort((a, b) => getTrackPriority(a) - getTrackPriority(b));
-}
-
-function getAccentColor(category) {
-  const map = {
-    // Required papers
-    dlpfc:    'var(--c-dlpfc)',
-    fic:      'var(--c-fic)',
-    bd2:      'var(--c-bd2)',
-    dg:       'var(--c-dg)',
-    // Optional / tools
-    eef2:     'var(--c-eef2)',
-    package:  'var(--c-package)',
-    cursor:   'var(--c-dg)',
-    network:  '#9ca3af',
-    learning: 'var(--c-learning)',
-    career:   'var(--c-career)',
-    // Legacy aliases
-    flagship: 'var(--c-dlpfc)',
-    methods:  'var(--c-eef2)',
-  };
-  return map[category] || 'var(--c-dlpfc)';
-}
-
-function getStatusIcon(status) {
-  if (status === 'done') return { icon: '✓', cls: 'status-icon-done' };
-  if (status === 'inprogress') return { icon: '→', cls: 'status-icon-inprogress' };
-  return { icon: '○', cls: 'status-icon-pending' };
-}
-
-function getMilestoneXP(m) {
-  if (!m.steps) return 0;
-  return m.steps.reduce((sum, s) => sum + (s.xp || 0), 0);
-}
-
-function renderTrack(trackId, milestones, isCustom = false) {
-  const container = document.getElementById('track-' + trackId);
-  if (!container) return;
-  container.innerHTML = '';
-
-  milestones.forEach((m, idx) => {
-    const ms = getMilestoneState(m.id);
-    const accent = getAccentColor(m.category || trackId);
-    const { icon, cls } = getStatusIcon(ms.status);
-    const totalXP = getMilestoneXP(m);
-
-    const card = document.createElement('div');
-    card.className = 'milestone-card';
-    card.setAttribute('data-id', m.id);
-    card.setAttribute('data-status', ms.status);
-    card.style.setProperty('--card-accent', accent);
-    card.setAttribute('role', 'button');
-    card.setAttribute('tabindex', '0');
-    card.setAttribute('aria-label', m.title);
-
-    card.innerHTML = `
-      <div class="card-status-icon ${cls}">${icon}</div>
-      <button class="card-gear" title="Quick edit" aria-label="Quick edit">⚙</button>
-      <div class="card-emoji">${m.emoji || '📌'}</div>
-      <div class="card-title">${m.title}</div>
-      <div class="card-priority">${m.priority || ''}</div>
-      ${totalXP ? `<div class="card-xp-badge">+${totalXP} XP</div>` : ''}
-    `;
-
-    // Card body click → detail page
-    card.addEventListener('click', (e) => {
-      if (e.target.closest('.card-gear')) {
-        e.stopPropagation();
-        openModal(m.id);
-        return;
-      }
-      window.location.href = `detail.html?id=${encodeURIComponent(m.id)}`;
-    });
-    card.addEventListener('keydown', e => {
-      if (e.key === 'Enter' || e.key === ' ') {
-        window.location.href = `detail.html?id=${encodeURIComponent(m.id)}`;
-      }
-    });
-
-    // Gear button
-    const gearBtn = card.querySelector('.card-gear');
-    gearBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      openModal(m.id);
-    });
-
-    container.appendChild(card);
-
-    if (idx < milestones.length - 1) {
-      const conn = document.createElement('div');
-      conn.className = 'connector';
-      conn.setAttribute('aria-hidden', 'true');
-      conn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" opacity="0.35"><path d="M5 12h14M12 5l7 7-7 7"/></svg>';
-      container.appendChild(conn);
+// ---- Data helpers ----
+function getAllSteps(milestoneId) {
+  for (const track of Object.keys(QUEST_DATA)) {
+    for (const ms of QUEST_DATA[track]) {
+      if (ms.id === milestoneId) return ms.steps || [];
     }
-  });
-
-  renderTrackProgress(trackId, milestones);
-}
-
-function renderTrackProgress(trackId, milestones) {
-  const ringEl = document.querySelector(`[data-track-id="${trackId}"]`);
-  if (!ringEl) return;
-  const total = milestones.length;
-  const done = milestones.filter(m => getMilestoneState(m.id).status === 'done').length;
-  const pct = Math.round((done / total) * 100);
-  const accent = getAccentColor(milestones[0]?.category || trackId);
-  ringEl.innerHTML = `
-    <div class="track-prog-badge">
-      <div class="track-prog-bar">
-        <div class="track-prog-fill" style="width:${pct}%; background:${accent};"></div>
-      </div>
-      <span>${done}/${total}</span>
-    </div>
-  `;
-}
-
-function sortMilestonesBySequence(milestones) {
-  // Sort by priority label (P0 first, then P1, P2..., then unlabeled)
-  const priorityOrder = p => {
-    if (!p) return 999;
-    const m = p.match(/P(\d+)/i);
-    return m ? parseInt(m[1]) : 500;
-  };
-  return [...milestones].sort((a, b) =>
-    priorityOrder(a.priority) - priorityOrder(b.priority)
-  );
-}
-
-function renderAllTracks() {
-  const board = document.querySelector('.board-container');
-  if (_depArrowSVG) { _depArrowSVG.remove(); _depArrowSVG = null; }
-
-  // Move add-project button to end so focus tracks don't appear after it
-  const addSection = document.querySelector('.add-project-section');
-  if (addSection) board.appendChild(addSection);
-
-  if (currentView === 'active') {
-    // Active view: show ONLY the 3 focus tracks, fully hide the rest
-    TRACK_ORDER.forEach(trackId => {
-      const section = document.querySelector(`.track[data-track="${trackId}"]`);
-      if (!section) return;
-      if (ACTIVE_FOCUS_TRACKS.includes(trackId)) {
-        section.classList.remove('track-collapsed');
-        section.style.display = '';
-        // Insert before add-project button to maintain correct order
-        board.insertBefore(section, addSection || null);
-        renderTrack(trackId, sortMilestonesBySequence(QUEST_DATA[trackId] || []));
-      } else {
-        section.classList.add('track-collapsed');
-        section.style.display = 'none';
-      }
-    });
-  } else {
-    // All view: show everything in standard order
-    TRACK_ORDER.forEach(trackId => {
-      const milestones = QUEST_DATA[trackId];
-      if (!milestones) return;
-      const section = document.querySelector(`.track[data-track="${trackId}"]`);
-      if (!section) return;
-      section.classList.remove('track-collapsed');
-      section.style.display = '';
-      board.insertBefore(section, addSection || null);
-      renderTrack(trackId, sortMilestonesBySequence(milestones));
-    });
-    // Dependency arrows in all view (subtle, optional)
-    scheduleDepArrows();
   }
-
-  renderCustomProjects();
-  updateGlobalStats();
-  updateXPBar();
-  updateTrackProgressBars();
-  updateTrackToTrackArrows();
-
-  // Draw intra-track dependency arrows after DOM settles (needs layout complete)
-  setTimeout(drawIntraTrackArrows, 120);
+  return [];
 }
 
-function updateGlobalStats() {
-  let done = 0, inprog = 0, pending = 0;
-  TRACK_ORDER.forEach(trackId => {
-    (QUEST_DATA[trackId] || []).forEach(m => {
-      const s = getMilestoneState(m.id).status;
-      if (s === 'done') done++;
-      else if (s === 'inprogress') inprog++;
-      else pending++;
-    });
-  });
-  const doneEl = document.getElementById('totalDone');
-  const ipEl   = document.getElementById('totalInProgress');
-  const remEl  = document.getElementById('totalRemaining');
-  if (doneEl) doneEl.textContent = done;
-  if (ipEl)   ipEl.textContent   = inprog;
-  if (remEl)  remEl.textContent  = pending;
-  return done;
-}
-
-// ---- CUSTOM PROJECTS ----
-function loadCustomProjects() {
-  try { return JSON.parse(localStorage.getItem('customProjects') || '[]'); } catch(e) { return []; }
-}
-
-function saveCustomProject(proj) {
-  const projs = loadCustomProjects();
-  projs.push(proj);
-  localStorage.setItem('customProjects', JSON.stringify(projs));
-}
-
-function renderCustomProjects() {
-  const board = document.querySelector('.board-container');
-  if (!board) return;
-  // Remove old custom tracks
-  board.querySelectorAll('.track[data-custom]').forEach(el => el.remove());
-
-  const projs = loadCustomProjects();
-  projs.forEach(proj => {
-    // Add section if not present
-    if (!document.getElementById('track-' + proj.id)) {
-      const arrowDiv = document.createElement('div');
-      arrowDiv.className = 'track-to-track-arrow';
-      arrowDiv.setAttribute('aria-hidden', 'true');
-      arrowDiv.innerHTML = `<svg width="24" height="32" viewBox="0 0 24 32" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v24M5 20l7 8 7-8"/></svg>`;
-      board.insertBefore(arrowDiv, document.querySelector('.add-project-section'));
-
-      const section = document.createElement('section');
-      section.className = 'track';
-      section.setAttribute('data-track', proj.id);
-      section.setAttribute('data-custom', '1');
-      section.innerHTML = `
-        <div class="track-header">
-          <div class="track-icon">${proj.emoji || '🔬'}</div>
-          <div>
-            <h2 class="track-title">${proj.name}</h2>
-            <p class="track-desc">${proj.desc || ''}</p>
-          </div>
-          <div class="track-progress-ring" data-track-id="${proj.id}"></div>
-        </div>
-        <div class="board-row" id="track-${proj.id}"></div>
-      `;
-      board.insertBefore(section, document.querySelector('.add-project-section'));
+function getMilestone(milestoneId) {
+  for (const track of Object.keys(QUEST_DATA)) {
+    for (const ms of QUEST_DATA[track]) {
+      if (ms.id === milestoneId) return ms;
     }
-    renderTrack(proj.id, proj.milestones || []);
-  });
-}
-
-// PRESET TEMPLATES for Add Project
-const PROJECT_TEMPLATES = [
-  {
-    name: 'DG Neurogenesis',
-    emoji: '🧬',
-    desc: 'Dentate gyrus neurogenesis study milestones',
-    milestones: [
-      { id: 'dg-m1', title: 'DG Data QC', emoji: '🔬', priority: 'P0', category: 'custom', steps: [], xp: 20 },
-      { id: 'dg-m2', title: 'Cell Typing (DG)', emoji: '🧩', priority: 'P1', category: 'custom', steps: [], xp: 25 },
-      { id: 'dg-m3', title: 'Neurogenesis Analysis', emoji: '📊', priority: 'P2', category: 'custom', steps: [], xp: 30 },
-      { id: 'dg-m4', title: 'DG Manuscript', emoji: '✍️', priority: 'P3', category: 'custom', steps: [], xp: 15 },
-    ]
-  },
-  {
-    name: 'ACC Bipolar',
-    emoji: '🧠',
-    desc: 'Anterior cingulate cortex Bipolar disorder analysis',
-    milestones: [
-      { id: 'acc-m1', title: 'ACC Sample QC', emoji: '🔬', priority: 'P0', category: 'custom', steps: [], xp: 20 },
-      { id: 'acc-m2', title: 'BD vs Control Analysis', emoji: '📡', priority: 'P1', category: 'custom', steps: [], xp: 30 },
-      { id: 'acc-m3', title: 'Spatial ACC Domains', emoji: '🗺️', priority: 'P2', category: 'custom', steps: [], xp: 25 },
-      { id: 'acc-m4', title: 'ACC Paper Draft', emoji: '✍️', priority: 'P3', category: 'custom', steps: [], xp: 15 },
-    ]
-  },
-];
-
-// ---- ADD PROJECT MODAL ----
-function openAddProjectModal() {
-  const overlay = document.getElementById('addProjectOverlay');
-  if (!overlay) return;
-  overlay.classList.add('open');
-  document.body.style.overflow = 'hidden';
-}
-
-function closeAddProjectModal() {
-  const overlay = document.getElementById('addProjectOverlay');
-  if (!overlay) return;
-  overlay.classList.remove('open');
-  document.body.style.overflow = '';
-}
-
-function initAddProjectModal() {
-  const addBtn = document.getElementById('addProjectBtn');
-  if (addBtn) addBtn.addEventListener('click', openAddProjectModal);
-
-  const overlay = document.getElementById('addProjectOverlay');
-  if (!overlay) return;
-
-  overlay.addEventListener('click', e => {
-    if (e.target === overlay) closeAddProjectModal();
-  });
-
-  // Template chips
-  overlay.querySelectorAll('.template-chip').forEach(chip => {
-    chip.addEventListener('click', () => {
-      overlay.querySelectorAll('.template-chip').forEach(c => c.classList.remove('selected'));
-      chip.classList.add('selected');
-      const tpl = PROJECT_TEMPLATES.find(t => t.name === chip.dataset.template);
-      if (tpl) {
-        const nameInput = overlay.querySelector('#projName');
-        const descInput = overlay.querySelector('#projDesc');
-        const emojiInput = overlay.querySelector('#projEmoji');
-        if (nameInput && !nameInput.value) nameInput.value = tpl.name;
-        if (descInput && !descInput.value) descInput.value = tpl.desc;
-        if (emojiInput && !emojiInput.value) emojiInput.value = tpl.emoji;
-      }
-    });
-  });
-
-  const cancelBtn = overlay.querySelector('#cancelAddProject');
-  if (cancelBtn) cancelBtn.addEventListener('click', closeAddProjectModal);
-
-  const createBtn = overlay.querySelector('#createAddProject');
-  if (createBtn) {
-    createBtn.addEventListener('click', () => {
-      const name  = (overlay.querySelector('#projName')?.value || '').trim();
-      const desc  = (overlay.querySelector('#projDesc')?.value || '').trim();
-      const emoji = (overlay.querySelector('#projEmoji')?.value || '🔬').trim();
-      if (!name) { overlay.querySelector('#projName')?.focus(); return; }
-
-      const selectedChip = overlay.querySelector('.template-chip.selected');
-      const tpl = selectedChip
-        ? PROJECT_TEMPLATES.find(t => t.name === selectedChip.dataset.template)
-        : null;
-
-      const projId = 'custom-' + Date.now();
-      const proj = {
-        id: projId,
-        name,
-        desc,
-        emoji,
-        milestones: tpl ? tpl.milestones.map(m => ({...m, id: m.id + '-' + projId})) : [],
-      };
-      saveCustomProject(proj);
-      renderCustomProjects();
-      closeAddProjectModal();
-
-      // Reset form
-      overlay.querySelector('#projName').value = '';
-      overlay.querySelector('#projDesc').value = '';
-      overlay.querySelector('#projEmoji').value = '';
-      overlay.querySelectorAll('.template-chip').forEach(c => c.classList.remove('selected'));
-    });
-  }
-}
-
-// ---- MODAL (quick-edit, from gear icon) ----
-function getAllMilestones() {
-  const all = {};
-  TRACK_ORDER.forEach(trackId => {
-    (QUEST_DATA[trackId] || []).forEach(m => { all[m.id] = m; });
-  });
-  loadCustomProjects().forEach(proj => {
-    (proj.milestones || []).forEach(m => { all[m.id] = m; });
-  });
-  return all;
-}
-
-function openModal(milestoneId) {
-  const allMilestones = getAllMilestones();
-  const m = allMilestones[milestoneId];
-  if (!m) return;
-
-  currentMilestoneId = milestoneId;
-  const ms = getMilestoneState(milestoneId);
-  const accent = getAccentColor(m.category);
-  const catMeta = CATEGORY_META[m.category] || { emoji: m.emoji || '📌', label: m.category || 'Custom' };
-
-  document.querySelector('.modal-overlay').style.setProperty('--card-accent', accent);
-  document.getElementById('modalBadge').textContent = `${catMeta.emoji} ${catMeta.label}`;
-  document.getElementById('modalBadge').style.setProperty('--card-accent', accent);
-  document.getElementById('modalTitle').textContent = `${m.emoji || ''} ${m.title}`;
-  document.getElementById('modalDesc').textContent = m.desc || '';
-  document.getElementById('modalNotes').value = ms.notes || '';
-
-  const metaEl = document.getElementById('modalMeta');
-  if (m.details && m.details.length) {
-    metaEl.innerHTML = m.details.map(d =>
-      `<div class="modal-meta-item"><span class="modal-meta-bullet">◆</span><span>${d}</span></div>`
-    ).join('');
-    metaEl.style.display = '';
-  } else {
-    metaEl.style.display = 'none';
-  }
-
-  const btns = document.getElementById('statusButtons');
-  const statuses = [
-    { val: 'pending',    label: '○ Not started', cls: 'active-pending' },
-    { val: 'inprogress', label: '→ In progress',  cls: 'active-inprogress' },
-    { val: 'done',       label: '✓ Done!',         cls: 'active-done' },
-  ];
-  btns.innerHTML = statuses.map(s => `
-    <button class="status-btn ${ms.status === s.val ? s.cls : ''}" data-status="${s.val}">${s.label}</button>
-  `).join('');
-
-  btns.querySelectorAll('.status-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      btns.querySelectorAll('.status-btn').forEach(b => b.className = 'status-btn');
-      const newStatus = btn.getAttribute('data-status');
-      const matchCls = statuses.find(s => s.val === newStatus)?.cls || '';
-      btn.classList.add(matchCls);
-    });
-  });
-
-  const overlay = document.getElementById('modalOverlay');
-  overlay.classList.add('open');
-  document.body.style.overflow = 'hidden';
-  // Populate due date if set
-  const dueDateEl = document.getElementById('modalDueDate');
-  if (dueDateEl) dueDateEl.value = ms.dueDate || '';
-  const maxTimeEl = document.getElementById('modalMaxTime');
-  if (maxTimeEl) maxTimeEl.value = ms.maxTime != null ? ms.maxTime : '';
-
-  setTimeout(() => document.getElementById('modalNotes').focus(), 200);
-}
-
-function closeModal() {
-  document.getElementById('modalOverlay').classList.remove('open');
-  document.body.style.overflow = '';
-  currentMilestoneId = null;
-}
-
-function saveModal() {
-  if (!currentMilestoneId) return;
-  const activeBtnEl = document.querySelector('#statusButtons .status-btn.active-done') ||
-                      document.querySelector('#statusButtons .status-btn.active-inprogress') ||
-                      document.querySelector('#statusButtons .status-btn.active-pending');
-  const newStatus = activeBtnEl?.getAttribute('data-status') || 'pending';
-  const oldStatus = getMilestoneState(currentMilestoneId).status;
-  const notes = document.getElementById('modalNotes').value;
-
-  setMilestoneState(currentMilestoneId, { status: newStatus, notes });
-  renderAllTracks();
-  updateXPBar();
-
-  if (newStatus === 'done' && oldStatus !== 'done') triggerConfetti();
-  closeModal();
-}
-
-// ---- CONFETTI ----
-function triggerConfetti() {
-  const canvas = document.getElementById('confettiCanvas');
-  if (!canvas) return;
-  const ctx = canvas.getContext('2d');
-  canvas.width = window.innerWidth;
-  canvas.height = window.innerHeight;
-
-  // Pastel Studio palette — matches new track colors
-  const colors = ['#f4a26d','#a78bfa','#f78ca0','#7ec8a0','#5bc4d6','#a3d977','#fbd26a','#f9a8d4','#ffffff'];
-  const particles = Array.from({length: 120}, () => ({
-    x: Math.random() * canvas.width,
-    y: Math.random() * canvas.height - canvas.height,
-    r: Math.random() * 7 + 3,
-    color: colors[Math.floor(Math.random() * colors.length)],
-    speed: Math.random() * 4 + 2,
-    drift: (Math.random() - 0.5) * 2,
-    rotation: Math.random() * Math.PI * 2,
-    rotSpeed: (Math.random() - 0.5) * 0.2,
-    isRect: Math.random() > 0.5,
-    opacity: 1
-  }));
-
-  let frame = 0;
-  function animate() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    let alive = false;
-    particles.forEach(p => {
-      if (p.y < canvas.height + 20) alive = true;
-      p.y += p.speed; p.x += p.drift; p.rotation += p.rotSpeed;
-      p.opacity = Math.max(0, 1 - (p.y / canvas.height) * 0.5);
-      ctx.save(); ctx.globalAlpha = p.opacity;
-      ctx.translate(p.x, p.y); ctx.rotate(p.rotation); ctx.fillStyle = p.color;
-      if (p.isRect) ctx.fillRect(-p.r, -p.r/2, p.r*2, p.r);
-      else { ctx.beginPath(); ctx.arc(0,0,p.r,0,Math.PI*2); ctx.fill(); }
-      ctx.restore();
-    });
-    frame++;
-    if (alive && frame < 180) requestAnimationFrame(animate);
-    else ctx.clearRect(0, 0, canvas.width, canvas.height);
-  }
-  animate();
-}
-
-// ---- THEME TOGGLE ----
-function initTheme() {
-  const toggle = document.querySelector('[data-theme-toggle]');
-  const root = document.documentElement;
-  let theme = localStorage.getItem('theme') || 'light';
-  root.setAttribute('data-theme', theme);
-  updateToggleIcon(toggle, theme);
-  toggle?.addEventListener('click', () => {
-    theme = theme === 'dark' ? 'light' : 'dark';
-    root.setAttribute('data-theme', theme);
-    localStorage.setItem('theme', theme);
-    updateToggleIcon(toggle, theme);
-  });
-}
-
-function updateToggleIcon(toggle, theme) {
-  if (!toggle) return;
-  toggle.innerHTML = theme === 'dark'
-    ? '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>'
-    : '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
-}
-
-// ---- MODAL CLOSE ----
-function initModalEvents() {
-  const closeBtn = document.getElementById('modalClose');
-  const saveBtn  = document.getElementById('modalSave');
-  const overlay  = document.getElementById('modalOverlay');
-  if (closeBtn) closeBtn.addEventListener('click', closeModal);
-  if (saveBtn)  saveBtn.addEventListener('click', saveModal);
-  if (overlay) {
-    overlay.addEventListener('click', e => { if (e.target === overlay) closeModal(); });
-  }
-  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
-}
-
-// ---- INSERT TRACK-TO-TRACK ARROWS ----
-// Only shown in 'all' view; removed/hidden in active view (only 3 tracks visible)
-function insertTrackArrows() {
-  // Handled dynamically in renderAllTracks — nothing to do at init time
-  // (old static insertion removed to avoid orphaned arrows in active view)
-}
-
-function updateTrackToTrackArrows() {
-  const board = document.querySelector('.board-container');
-  if (!board) return;
-  // Remove all existing track-to-track arrows first
-  board.querySelectorAll('.track-to-track-arrow').forEach(el => el.remove());
-  // Only draw in 'all' view
-  if (currentView !== 'all') return;
-  const tracks = Array.from(board.querySelectorAll('section.track:not(.track-collapsed):not([data-custom])'));
-  tracks.forEach((track, i) => {
-    if (i < tracks.length - 1) {
-      const arrow = document.createElement('div');
-      arrow.className = 'track-to-track-arrow';
-      arrow.setAttribute('aria-hidden', 'true');
-      arrow.innerHTML = `<svg width="20" height="28" viewBox="0 0 20 28" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10 2v20M4 16l6 8 6-8"/></svg>`;
-      track.after(arrow);
-    }
-  });
-}
-
-// ---- DEPENDENCY ARROWS (SVG overlay, All Projects view only) ----
-
-// Build a lookup: milestoneId → {element, accent color}
-function buildMilestoneCardMap() {
-  const map = {};
-  // Gather all tracked milestones
-  TRACK_ORDER.forEach(trackId => {
-    (QUEST_DATA[trackId] || []).forEach(m => {
-      const el = document.querySelector(`[data-id="${m.id}"]`);
-      if (el) map[m.id] = { el, color: resolveCSSVar(getAccentColor(m.category || trackId)) };
-    });
-  });
-  return map;
-}
-
-// Resolve a CSS variable like 'var(--c-flagship)' to a hex color
-function resolveCSSVar(val) {
-  if (!val || !val.startsWith('var(')) return val || '#a78bfa';
-  const name = val.slice(4, -1).trim();
-  return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || '#a78bfa';
-}
-
-// Collect all depends_on edges across all tracks
-function collectDependencyEdges() {
-  const edges = [];
-  TRACK_ORDER.forEach(trackId => {
-    (QUEST_DATA[trackId] || []).forEach(m => {
-      if (!m.depends_on || !m.depends_on.length) return;
-      m.depends_on.forEach(depId => {
-        // Only show cross-track deps (same-track are already sequential)
-        const depTrack = findTrackForMilestone(depId);
-        if (depTrack && depTrack !== trackId) {
-          edges.push({ from: depId, to: m.id, fromTrack: depTrack, toTrack: trackId });
-        }
-      });
-    });
-  });
-  return edges;
-}
-
-function findTrackForMilestone(milestoneId) {
-  for (const trackId of TRACK_ORDER) {
-    if ((QUEST_DATA[trackId] || []).some(m => m.id === milestoneId)) return trackId;
   }
   return null;
 }
 
-function getCardCenter(el, boardEl) {
-  // Use the same board-relative helper as intra-track arrows
-  const p = cardPosRelativeToBoard(el, boardEl);
-  return {
-    x:      p.cx,
-    y:      p.cy,
-    bottom: p.bottom,
-    top:    p.top,
-    left:   p.left,
-    right:  p.right,
-  };
+function getTrackForMilestone(milestoneId) {
+  for (const track of Object.keys(QUEST_DATA)) {
+    for (const ms of QUEST_DATA[track]) {
+      if (ms.id === milestoneId) return track;
+    }
+  }
+  return null;
 }
 
-let _depArrowSVG = null;
+function getCurrentMilestone(trackId) {
+  const milestones = QUEST_DATA[trackId] || [];
+  for (const ms of milestones) {
+    const msState = getMilestoneState(ms.id);
+    if (msState.status !== 'done') return ms;
+  }
+  return milestones[milestones.length - 1] || null;
+}
 
-function drawDependencyArrows() {
-  const board = document.querySelector('.board-container');
-  if (!board) return;
+function getActiveStep(milestoneId) {
+  const steps = getAllSteps(milestoneId);
+  for (const step of steps) {
+    const ss = getStepState(step.id);
+    if (ss.status !== 'done') return step;
+  }
+  return null;
+}
 
-  // Remove old overlay
-  if (_depArrowSVG) { _depArrowSVG.remove(); _depArrowSVG = null; }
+function getBlocksForStep(stepId) {
+  return state.focusLog.filter(l => l.stepId === stepId).length;
+}
 
-  // Only show in 'all' view
-  if (currentView !== 'all') return;
+function getBlocksForMilestone(milestoneId) {
+  const steps = getAllSteps(milestoneId);
+  return steps.reduce((sum, s) => sum + getBlocksForStep(s.id), 0);
+}
 
-  const edges = collectDependencyEdges();
-  if (!edges.length) return;
+function getTotalBlocksForMilestone(milestoneId) {
+  const steps = getAllSteps(milestoneId);
+  return steps.reduce((sum, s) => sum + (s.estimated_blocks || 1), 0);
+}
 
-  const cardMap = buildMilestoneCardMap();
-  const boardH = board.scrollHeight;
-  const boardW = board.offsetWidth;
+function getMilestoneStepProgress(milestoneId) {
+  const steps = getAllSteps(milestoneId);
+  const done = steps.filter(s => getStepState(s.id).status === 'done').length;
+  return `${done}/${steps.length}`;
+}
 
-  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  svg.setAttribute('class', 'dep-arrows-overlay');
-  svg.setAttribute('aria-hidden', 'true');
-  svg.setAttribute('width',  boardW);
-  svg.setAttribute('height', boardH);
-  svg.style.cssText = `position:absolute;top:0;left:0;width:${boardW}px;height:${boardH}px;pointer-events:none;z-index:5;overflow:visible;`;
+function getTodayBlocks() {
+  const today = todayStr();
+  return state.focusLog.filter(l => l.date === today);
+}
 
-  // Add arrowhead defs (one per unique color)
-  const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
-  const usedColors = new Set();
+function getWeekBlocks(weekStart) {
+  const ws = weekStart || getWeekStart(todayStr());
+  const start = new Date(ws + 'T00:00:00');
+  const end = new Date(start);
+  end.setDate(end.getDate() + 7);
+  return state.focusLog.filter(l => {
+    const d = new Date(l.date + 'T00:00:00');
+    return d >= start && d < end;
+  });
+}
 
-  edges.forEach(edge => {
-    const fromInfo = cardMap[edge.from];
-    const toInfo   = cardMap[edge.to];
-    if (!fromInfo || !toInfo) return;
-    usedColors.add(fromInfo.color);
+function getNextQueuedTask() {
+  const focusProjects = state.weeklyPlan.focusProjects || [];
+  const tracks = focusProjects.length > 0 ? focusProjects.filter(t => ACTIVE_TRACKS.includes(t)) : ACTIVE_TRACKS;
+  for (const track of tracks) {
+    const ms = getCurrentMilestone(track);
+    if (!ms) continue;
+    const step = getActiveStep(ms.id);
+    if (step) return { track, milestone: ms, step };
+  }
+  return null;
+}
+
+// ---- Streak ----
+function updateStreak() {
+  const today = todayStr();
+  if (!isWeekday(today)) return; // weekends don't affect streak
+  const todayBlocks = getTodayBlocks().filter(l => !l.warmup);
+  if (todayBlocks.length >= state.settings.blocksPerDay.min) {
+    if (state.streak.lastDate === today) return;
+    // Check if last streak date is previous weekday
+    const d = new Date(today + 'T00:00:00');
+    let prev = new Date(d);
+    prev.setDate(prev.getDate() - 1);
+    while (prev.getDay() === 0 || prev.getDay() === 6) prev.setDate(prev.getDate() - 1);
+    const prevStr = prev.toISOString().slice(0, 10);
+    if (state.streak.lastDate === prevStr || state.streak.current === 0) {
+      state.streak.current++;
+    } else {
+      state.streak.current = 1;
+    }
+    state.streak.lastDate = today;
+    saveState();
+  }
+}
+
+// ---- Points ----
+function awardPoints(isWarmup) {
+  const todayBlocks = getTodayBlocks();
+  const fullBlocksToday = todayBlocks.filter(l => !l.warmup).length;
+  let pts = isWarmup ? 3 : 10;
+  if (!isWarmup && fullBlocksToday > 2 && fullBlocksToday <= 4) pts += 5; // bonus for 3rd/4th
+  state.points += pts;
+  saveState();
+  return pts;
+}
+
+// ---- Confetti ----
+function showConfetti() {
+  const container = document.getElementById('confettiContainer');
+  container.innerHTML = '';
+  const colors = ['#c49a6c', '#7db88a', '#b07da8', '#6ba3b5', '#d4a44c'];
+  for (let i = 0; i < 40; i++) {
+    const piece = document.createElement('div');
+    piece.className = 'confetti-piece';
+    piece.style.left = Math.random() * 100 + '%';
+    piece.style.background = colors[Math.floor(Math.random() * colors.length)];
+    piece.style.animationDelay = Math.random() * 0.5 + 's';
+    piece.style.borderRadius = Math.random() > 0.5 ? '50%' : '2px';
+    container.appendChild(piece);
+  }
+  setTimeout(() => { container.innerHTML = ''; }, 3000);
+}
+
+// ---- Router ----
+function navigate(hash) {
+  if (timerRunning && !hash.startsWith('#focus')) {
+    pendingNavHash = hash;
+    const mins = Math.ceil(timerRemaining / 60);
+    document.getElementById('antiSwitchMsg').textContent = `You have ${mins} min left. Navigate away?`;
+    document.getElementById('antiSwitchModal').classList.add('open');
+    return;
+  }
+  window.location.hash = hash;
+}
+
+function handleRoute() {
+  const hash = window.location.hash || '#home';
+  const parts = hash.slice(1).split('/');
+  const route = parts[0];
+
+  // Hide all views
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+
+  // Update nav
+  document.querySelectorAll('.nav-item').forEach(n => {
+    n.classList.toggle('active', n.dataset.nav === route || (route === 'path' && n.dataset.nav === 'projects') || (route === 'track' && n.dataset.nav === 'projects'));
   });
 
-  usedColors.forEach(color => {
-    const safeId = 'arr-' + color.replace(/[^a-zA-Z0-9]/g, '');
-    const marker = document.createElementNS('http://www.w3.org/2000/svg', 'marker');
-    marker.setAttribute('id', safeId);
-    marker.setAttribute('markerWidth', '8');
-    marker.setAttribute('markerHeight', '8');
-    marker.setAttribute('refX', '7');
-    marker.setAttribute('refY', '3');
-    marker.setAttribute('orient', 'auto');
-    marker.setAttribute('markerUnits', 'strokeWidth');
-    const arrow = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    arrow.setAttribute('d', 'M0,0 L0,6 L8,3 z');
-    arrow.setAttribute('fill', color);
-    arrow.setAttribute('opacity', '0.55');
-    marker.appendChild(arrow);
-    defs.appendChild(marker);
-  });
-  svg.appendChild(defs);
-
-  edges.forEach(edge => {
-    const fromInfo = cardMap[edge.from];
-    const toInfo   = cardMap[edge.to];
-    if (!fromInfo || !toInfo) return;
-
-    const from = getCardCenter(fromInfo.el, board);
-    const to   = getCardCenter(toInfo.el,   board);
-    const color = fromInfo.color;
-    const safeId = 'arr-' + color.replace(/[^a-zA-Z0-9]/g, '');
-
-    // Route: exit bottom of source card, enter top of target card
-    // Use cubic bezier with vertical control points
-    const x1 = from.x, y1 = from.bottom - 4;
-    const x2 = to.x,   y2 = to.top + 4;
-    const cp1y = y1 + Math.abs(y2 - y1) * 0.45;
-    const cp2y = y2 - Math.abs(y2 - y1) * 0.45;
-
-    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    const d = `M ${x1} ${y1} C ${x1} ${cp1y}, ${x2} ${cp2y}, ${x2} ${y2}`;
-    path.setAttribute('d', d);
-    path.setAttribute('fill', 'none');
-    path.setAttribute('stroke', color);
-    path.setAttribute('stroke-width', '1.5');
-    path.setAttribute('stroke-dasharray', '5 4');
-    path.setAttribute('opacity', '0.45');
-    path.setAttribute('marker-end', `url(#${safeId})`);
-    // Tooltip on hover
-    const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
-    const fromM = Object.values(QUEST_DATA).flat().find(m => m.id === edge.from);
-    const toM   = Object.values(QUEST_DATA).flat().find(m => m.id === edge.to);
-    title.textContent = `${fromM?.title || edge.from}  →  ${toM?.title || edge.to}`;
-    path.appendChild(title);
-    svg.appendChild(path);
-  });
-
-  // Make board relatively positioned so SVG overlay aligns
-  if (getComputedStyle(board).position === 'static') board.style.position = 'relative';
-  board.appendChild(svg);
-  _depArrowSVG = svg;
+  switch (route) {
+    case 'home': case '':
+      renderHome();
+      document.getElementById('view-home').classList.add('active');
+      break;
+    case 'projects':
+      renderProjects();
+      document.getElementById('view-projects').classList.add('active');
+      break;
+    case 'track':
+      renderTrack(parts[1]);
+      document.getElementById('view-track').classList.add('active');
+      break;
+    case 'path':
+      renderPath(parts[1], parts[2]);
+      document.getElementById('view-path').classList.add('active');
+      break;
+    case 'focus':
+      renderFocus(parts[1], parts[2]);
+      document.getElementById('view-focus').classList.add('active');
+      break;
+    case 'schedule':
+      renderSchedule();
+      document.getElementById('view-schedule').classList.add('active');
+      break;
+    case 'ideas':
+      renderIdeas();
+      document.getElementById('view-ideas').classList.add('active');
+      break;
+    case 'settings':
+      renderSettings();
+      document.getElementById('view-settings').classList.add('active');
+      break;
+    default:
+      renderHome();
+      document.getElementById('view-home').classList.add('active');
+  }
 }
 
-// Redraw after render + on resize
-function scheduleDepArrows() {
-  // Small delay to let DOM settle after render
-  clearTimeout(scheduleDepArrows._t);
-  scheduleDepArrows._t = setTimeout(drawDependencyArrows, 120);
-}
+// ---- SVG Icons (inline) ----
+const ICONS = {
+  chevronRight: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M9 18l6-6-6-6"/></svg>',
+  arrowLeft: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>',
+  lock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="12" height="12"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>',
+  check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M20 6L9 17l-5-5"/></svg>',
+  x: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M18 6L6 18M6 6l12 12"/></svg>',
+  play: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><polygon points="5 3 19 12 5 21 5 3"/></svg>',
+};
 
-// ---- INTRA-TRACK DEPENDENCY ARROWS ----
-// Draws SVG arrows between milestone cards to show the pathway/sequence.
-// Same-row (adjacent) cards already have inline .connector arrows — we only draw
-// cross-row arrows here (row-wrap transitions), using bezier curves.
-// Positions are computed relative to the board-container element (not viewport).
-let _intraArrowSVG = null;
+// ---- RENDER: Home ----
+function renderHome() {
+  const el = document.getElementById('view-home');
+  const now = new Date();
+  const dateStr = formatDate(now);
+  const todayB = getTodayBlocks();
+  const fullToday = todayB.filter(l => !l.warmup).length;
+  const maxToday = state.settings.blocksPerDay.max;
+  const weekStart = getWeekStart(todayStr());
+  const weekB = getWeekBlocks(weekStart);
+  const fullWeek = weekB.filter(l => !l.warmup).length;
+  const weeklyGoal = state.settings.weeklyGoal || 10;
+  const next = getNextQueuedTask();
+  const allDoneToday = fullToday >= maxToday;
 
-function cardPosRelativeToBoard(el, boardEl) {
-  // Returns element rect relative to boardEl's top-left, accounting for scroll.
-  const er = el.getBoundingClientRect();
-  const br = boardEl.getBoundingClientRect();
-  // scrollLeft/Top of the board itself (usually 0 since board doesn't scroll)
-  return {
-    left:   er.left   - br.left,
-    top:    er.top    - br.top  + boardEl.scrollTop,
-    right:  er.right  - br.left,
-    bottom: er.bottom - br.top  + boardEl.scrollTop,
-    width:  er.width,
-    height: er.height,
-    cx:     er.left   - br.left + er.width  / 2,
-    cy:     er.top    - br.top  + boardEl.scrollTop + er.height / 2,
-  };
-}
+  let html = '';
 
-function drawIntraTrackArrows() {
-  if (_intraArrowSVG) { _intraArrowSVG.remove(); _intraArrowSVG = null; }
+  // Greeting
+  html += `<div class="greeting-bar">
+    <div class="greeting-date">${dateStr}</div>
+    <div class="points-badge">${state.points} pts</div>
+  </div>`;
 
-  const board = document.querySelector('.board-container');
-  if (!board) return;
+  // Sunday prompt
+  if (dayOfWeek() === 0 && !state.weeklyPlan.approved) {
+    html += `<div class="sunday-prompt">Ready to plan next week? It takes 5 minutes. <a href="#schedule" style="color:var(--text-primary);text-decoration:underline;cursor:pointer;">Plan now</a></div>`;
+  }
 
-  // Ensure board is positioned so the absolute SVG overlay aligns
-  if (getComputedStyle(board).position === 'static') board.style.position = 'relative';
+  // No plan nudge
+  const hasPlan = state.weeklyPlan.approved && state.weeklyPlan.focusProjects && state.weeklyPlan.focusProjects.length > 0;
+  if (!hasPlan && dayOfWeek() !== 0) {
+    html += `<div class="no-plan-msg">No weekly plan yet. <a onclick="navigate('#schedule')">Pick your focus for the week</a></div>`;
+  }
 
-  const boardH = board.scrollHeight;
-  const boardW = board.offsetWidth;
+  // Start next block button
+  if (allDoneToday) {
+    html += `<div class="done-msg">You've done enough today. Rest is productive too.</div>`;
+  } else if (next) {
+    const color = TRACK_COLORS[next.track];
+    const label = next.step.title.length > 50 ? next.step.title.slice(0, 47) + '...' : next.step.title;
+    html += `<button class="start-block-btn" style="background:${color}" onclick="navigate('#focus/${next.milestone.id}/${next.step.id}')">
+      <span class="btn-label-sm">Start next block</span>
+      <span>${label}</span>
+    </button>`;
+  } else {
+    html += `<div class="done-msg" style="background:rgba(255,255,255,0.03);border-color:var(--border);">No active tasks queued. Check your <a onclick="navigate('#projects')" style="color:var(--text-primary);text-decoration:underline;cursor:pointer;">projects</a>.</div>`;
+  }
 
-  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  svg.setAttribute('class', 'intra-arrows-overlay');
-  svg.setAttribute('aria-hidden', 'true');
-  // Size to full board scroll height so arrows below fold are drawn correctly
-  svg.style.cssText = `position:absolute;top:0;left:0;width:${boardW}px;height:${boardH}px;pointer-events:none;z-index:6;overflow:visible;`;
+  // Today's blocks
+  html += `<div class="block-section">
+    <div class="block-section-label">Today</div>
+    <div class="block-circles">`;
+  for (let i = 0; i < maxToday; i++) {
+    if (i < todayB.length) {
+      const log = todayB[i];
+      const color = TRACK_COLORS[getTrackForMilestone(log.milestoneId)] || '#5a5a66';
+      html += `<div class="block-circle filled" style="background:${color}"></div>`;
+    } else {
+      html += `<div class="block-circle"></div>`;
+    }
+  }
+  html += `</div></div>`;
 
-  const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
-  const markerColors = new Set();
-
-  const visibleTracks = currentView === 'active' ? ACTIVE_FOCUS_TRACKS : TRACK_ORDER;
-  const edges = []; // { fromEl, toEl, color }
-
-  visibleTracks.forEach(trackId => {
-    const milestones = QUEST_DATA[trackId] || [];
-    if (!milestones.length) return;
-    const color = resolveCSSVar(getAccentColor(trackId));
-    markerColors.add(color);
-
-    milestones.forEach((m, i) => {
-      const toEl = document.querySelector(`[data-id="${m.id}"]`);
-      if (!toEl) return;
-
-      if (m.depends_on && m.depends_on.length) {
-        // Explicit cross-row deps within same track
-        m.depends_on.forEach(depId => {
-          if (milestones.some(x => x.id === depId)) {
-            const fromEl = document.querySelector(`[data-id="${depId}"]`);
-            if (fromEl) edges.push({ fromEl, toEl, color });
-          }
-        });
-      } else if (i > 0) {
-        // Sequential: previous milestone in track
-        const fromEl = document.querySelector(`[data-id="${milestones[i-1].id}"]`);
-        if (fromEl) edges.push({ fromEl, toEl, color });
+  // Weekly blocks — circles
+  html += `<div class="block-section">
+    <div class="block-section-label">This week</div>
+    <div class="block-circles">`;
+  const totalCircles = Math.max(weeklyGoal, fullWeek);
+  for (let i = 0; i < totalCircles; i++) {
+    if (i < weekB.length) {
+      if (i >= weeklyGoal) {
+        html += `<div class="block-circle bonus"></div>`;
+      } else {
+        const log = weekB[i];
+        const color = TRACK_COLORS[getTrackForMilestone(log.milestoneId)] || '#5a5a66';
+        html += `<div class="block-circle filled" style="background:${color}"></div>`;
       }
+    } else if (i < weeklyGoal) {
+      html += `<div class="block-circle"></div>`;
+    }
+  }
+  html += `</div></div>`;
+
+  // Where was I
+  if (state.lastAction) {
+    html += `<div class="where-was-i">Last: ${state.lastAction}</div>`;
+  }
+
+  // Streak
+  if (state.streak.current > 0) {
+    html += `<div class="streak-line">${state.streak.current}-day streak</div>`;
+  }
+
+  el.innerHTML = html;
+}
+
+// ---- RENDER: Projects ----
+function renderProjects() {
+  const el = document.getElementById('view-projects');
+  let html = '<div class="section-title">Projects</div>';
+
+  // Active
+  for (const track of ACTIVE_TRACKS) {
+    const ms = getCurrentMilestone(track);
+    const color = TRACK_COLORS[track];
+    const label = TRACK_LABELS[track];
+    const msTitle = ms ? ms.title : 'Complete';
+    const progress = ms ? getMilestoneStepProgress(ms.id) : '--';
+    html += `<div class="project-card" onclick="navigate('#track/${track}')">
+      <span class="dot" style="background:${color}"></span>
+      <span class="proj-name">${label}</span>
+      <span class="proj-milestone">${msTitle}</span>
+      <span class="proj-progress">${progress}</span>
+    </div>`;
+  }
+
+  // Archive toggle
+  html += `<div class="archive-toggle" id="archiveToggle" onclick="toggleArchive()">
+    ${ICONS.chevronRight}
+    <span>${INACTIVE_TRACKS.length} archived projects</span>
+  </div>`;
+  html += `<div class="archive-list" id="archiveList" style="display:none;">`;
+  for (const track of INACTIVE_TRACKS) {
+    const ms = getCurrentMilestone(track);
+    const color = TRACK_COLORS[track];
+    const label = TRACK_LABELS[track];
+    const msTitle = ms ? ms.title : 'Complete';
+    html += `<div class="project-card" onclick="navigate('#track/${track}')">
+      <span class="dot" style="background:${color}"></span>
+      <span class="proj-name">${label}</span>
+      <span class="proj-milestone">${msTitle}</span>
+    </div>`;
+  }
+  html += `</div>`;
+
+  // Protocol timeline
+  if (typeof PROTOCOL_PHASES !== 'undefined') {
+    html += `<div class="protocol-section">
+      <div class="protocol-title">Protocol Timeline (parallel)</div>`;
+    for (const phase of PROTOCOL_PHASES) {
+      html += `<div class="protocol-phase">
+        <div class="protocol-phase-name">${phase.name}</div>`;
+      for (const step of phase.steps) {
+        const checked = state.protocolChecks && state.protocolChecks[step.id] ? 'checked' : '';
+        html += `<div class="protocol-step">
+          <input type="checkbox" class="proto-cb" data-proto-id="${step.id}" ${checked}>
+          <span>${step.name}</span>
+        </div>`;
+      }
+      html += `</div>`;
+    }
+    html += `</div>`;
+  }
+
+  el.innerHTML = html;
+
+  // Protocol checkbox listeners
+  el.querySelectorAll('.proto-cb').forEach(cb => {
+    cb.addEventListener('change', () => {
+      if (!state.protocolChecks) state.protocolChecks = {};
+      state.protocolChecks[cb.dataset.protoId] = cb.checked;
+      saveState();
     });
   });
-
-  if (!edges.length) { board.appendChild(svg); _intraArrowSVG = svg; return; }
-
-  // Build arrowhead markers
-  markerColors.forEach(color => {
-    const safeId = 'ia-' + color.replace(/[^a-zA-Z0-9]/g, '');
-    const marker = document.createElementNS('http://www.w3.org/2000/svg', 'marker');
-    marker.setAttribute('id', safeId);
-    marker.setAttribute('markerWidth', '8'); marker.setAttribute('markerHeight', '8');
-    marker.setAttribute('refX', '7'); marker.setAttribute('refY', '3');
-    marker.setAttribute('orient', 'auto');
-    marker.setAttribute('markerUnits', 'strokeWidth');
-    const arrow = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    arrow.setAttribute('d', 'M0,0 L0,6 L8,3 z');
-    arrow.setAttribute('fill', color); arrow.setAttribute('opacity', '0.75');
-    marker.appendChild(arrow); defs.appendChild(marker);
-  });
-  svg.appendChild(defs);
-
-  edges.forEach(({ fromEl, toEl, color }) => {
-    const fr = cardPosRelativeToBoard(fromEl, board);
-    const tr = cardPosRelativeToBoard(toEl,   board);
-
-    const safeId = 'ia-' + color.replace(/[^a-zA-Z0-9]/g, '');
-
-    // Determine if cards are on the same visual row:
-    // same row = their vertical centers are within one card-height of each other
-    // AND toEl is to the right of fromEl
-    const cardH = fr.height;
-    const sameRow = Math.abs(fr.cy - tr.cy) < cardH * 0.6 && tr.left > fr.left;
-
-    if (sameRow) {
-      // Same row: the inline .connector arrow already handles this visually.
-      // Skip to avoid double arrows.
-      return;
-    }
-
-    // Cross-row: curved bezier from bottom-center of fromEl to top-center of toEl
-    const x1 = fr.cx;
-    const y1 = fr.bottom + 3;
-    const x2 = tr.cx;
-    const y2 = tr.top - 3;
-
-    // Vertical distance for control points
-    const dy = Math.abs(y2 - y1);
-    const cp1y = y1 + dy * 0.4;
-    const cp2y = y2 - dy * 0.4;
-
-    // Horizontal shift: if going to a different column, add horizontal offset
-    // to make the curve arc gracefully instead of going straight down
-    const dx = x2 - x1;
-    const cp1x = x1 + dx * 0.1;
-    const cp2x = x2 - dx * 0.1;
-
-    const d = `M ${x1} ${y1} C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${x2} ${y2}`;
-
-    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    path.setAttribute('d', d);
-    path.setAttribute('fill', 'none');
-    path.setAttribute('stroke', color);
-    path.setAttribute('stroke-width', '1.8');
-    path.setAttribute('stroke-dasharray', '6 3');
-    path.setAttribute('opacity', '0.55');
-    path.setAttribute('marker-end', `url(#${safeId})`);
-    svg.appendChild(path);
-  });
-
-  board.appendChild(svg);
-  _intraArrowSVG = svg;
 }
 
-// ---- AUTO-SEQUENCE: get next task by pipeline order ----
-// Returns the first milestone/step that should be worked on next,
-// based on sequence (not manual selection). Urgency flag overrides.
-function getAutoNextItems(limit = 5) {
-  const results = [];
-  // First: any item with urgency flag (due date in past or today, or manually flagged)
-  const today = new Date().toISOString().split('T')[0];
+function toggleArchive() {
+  const list = document.getElementById('archiveList');
+  const toggle = document.getElementById('archiveToggle');
+  const open = list.style.display === 'none';
+  list.style.display = open ? 'block' : 'none';
+  toggle.classList.toggle('open', open);
+}
 
-  TRACK_ORDER.forEach(trackId => {
-    const milestones = QUEST_DATA[trackId] || [];
-    milestones.forEach(m => {
-      const ms = getMilestoneState(m.id);
-      if (ms.status === 'done') return;
-      const dueDate = ms.dueDate || null;
-      const urgent = dueDate && dueDate <= today;
-      if (urgent) results.push({ milestone: m, trackId, urgent: true, dueDate });
+// ---- RENDER: Track ----
+function renderTrack(trackId) {
+  const el = document.getElementById('view-track');
+  const milestones = QUEST_DATA[trackId] || [];
+  const color = TRACK_COLORS[trackId];
+  const label = TRACK_LABELS[trackId];
+
+  let html = `<div class="track-header">
+    <button class="back-btn" onclick="navigate('#projects')">${ICONS.arrowLeft}</button>
+    <div class="track-title"><span class="dot" style="background:${color}"></span> ${label}</div>
+  </div>`;
+
+  for (const ms of milestones) {
+    const msState = getMilestoneState(ms.id);
+    const progress = getMilestoneStepProgress(ms.id);
+    const blocksLogged = getBlocksForMilestone(ms.id);
+    const totalBlocks = getTotalBlocksForMilestone(ms.id);
+    const statusClass = msState.status === 'done' ? ' status-done' : '';
+    html += `<div class="milestone-card${statusClass}" onclick="navigate('#path/${trackId}/${ms.id}')">
+      <span class="dot" style="background:${color};width:6px;height:6px;"></span>
+      <span class="ms-name">${ms.title}</span>
+      <span class="ms-progress">${blocksLogged}/${totalBlocks} blocks</span>
+    </div>`;
+  }
+
+  el.innerHTML = html;
+}
+
+// ---- RENDER: Path (board game) ----
+function renderPath(trackId, milestoneId) {
+  const el = document.getElementById('view-path');
+  const ms = getMilestone(milestoneId);
+  if (!ms) { el.innerHTML = '<p>Milestone not found.</p>'; return; }
+  const track = trackId || getTrackForMilestone(milestoneId);
+  const color = TRACK_COLORS[track];
+  const steps = ms.steps || [];
+  const blocksLogged = getBlocksForMilestone(milestoneId);
+  const totalBlocks = getTotalBlocksForMilestone(milestoneId);
+
+  let html = `<div class="path-header">
+    <button class="back-btn" onclick="navigate('#track/${track}')">${ICONS.arrowLeft}</button>
+    <div class="path-title"><span class="dot" style="background:${color}"></span> ${ms.title}</div>
+  </div>
+  <div class="path-progress-text">${blocksLogged} / ${totalBlocks} blocks logged</div>
+  <div class="winding-path">`;
+
+  const activeStep = getActiveStep(milestoneId);
+
+  steps.forEach((step, idx) => {
+    const ss = getStepState(step.id);
+    const side = idx % 2 === 0 ? 'left' : 'right';
+    const estBlocks = step.estimated_blocks || 1;
+    const completed = getBlocksForStep(step.id);
+    const isActive = activeStep && activeStep.id === step.id;
+    const statusClass = ss.status === 'done' ? 'status-done' : (isActive ? 'status-active' : (ss.status === 'locked' ? 'status-locked' : ''));
+    const typeBadge = step.type ? `<span class="badge badge-type" style="color:${TYPE_COLORS[step.type] || '#8b8b96'}">${step.type}</span>` : '';
+
+    // Due date indicator
+    let dueIndicator = '';
+    if (state.dueDates[step.id]) {
+      const dueDate = new Date(state.dueDates[step.id] + 'T00:00:00');
+      const daysLeft = Math.ceil((dueDate - new Date()) / 86400000);
+      if (daysLeft < 3) dueIndicator = ' due-urgent';
+      else if (daysLeft < 14) dueIndicator = ' due-soon';
+    }
+
+    html += `<div class="path-node">
+      <div class="path-step ${side} ${statusClass}${dueIndicator}" style="--step-accent:${color}" onclick="openStepDrawer('${step.id}','${milestoneId}','${track}')">
+        ${isActive ? `<div class="game-piece" style="background:${color}"></div>` : ''}
+        <div class="step-num">Step ${idx + 1}</div>
+        <div class="step-title-text">${step.title}</div>
+        <div class="step-meta">
+          ${typeBadge}
+          <div class="step-block-dots">`;
+    for (let b = 0; b < estBlocks; b++) {
+      html += `<div class="step-block-dot${b < completed ? ' filled' : ''}"></div>`;
+    }
+    html += `</div>
+          ${ss.status === 'done' ? `<span class="done-check">${ICONS.check}</span>` : ''}
+        </div>
+      </div>`;
+    if (idx < steps.length - 1) html += `<div class="path-connector"></div>`;
+    html += `</div>`;
+  });
+
+  // Gate card
+  if (ms.gate) {
+    html += `<div class="path-connector"></div>
+    <div class="gate-card">
+      <h4>${ms.gate.title}</h4>`;
+    for (const item of ms.gate.items) {
+      html += `<div class="gate-item">${item}</div>`;
+    }
+    html += `</div>`;
+  }
+
+  // Reward card
+  if (ms.reward) {
+    html += `<div class="path-connector"></div>
+    <div class="reward-card">
+      <div class="reward-text">${ms.reward}</div>
+    </div>`;
+  }
+
+  html += `</div>`; // winding-path
+  el.innerHTML = html;
+}
+
+// ---- Step Drawer ----
+function openStepDrawer(stepId, milestoneId, track) {
+  const ms = getMilestone(milestoneId);
+  if (!ms) return;
+  const step = (ms.steps || []).find(s => s.id === stepId);
+  if (!step) return;
+  const ss = getStepState(stepId);
+  const color = TRACK_COLORS[track];
+
+  let html = `<button class="drawer-close" onclick="closeDrawer()">${ICONS.x}</button>
+    <h3>${step.title}</h3>
+    <div class="drawer-desc">${step.desc || ''}</div>`;
+
+  // Focus button
+  html += `<button class="btn btn-primary" style="background:${color};width:100%;margin-bottom:16px;" onclick="closeDrawer();navigate('#focus/${milestoneId}/${stepId}')">
+    ${ICONS.play} Start Focus
+  </button>`;
+
+  // Checklist
+  if (step.checklist && step.checklist.length > 0) {
+    html += `<div class="drawer-section-title">Checklist</div><div class="drawer-checklist">`;
+    step.checklist.forEach((item, i) => {
+      const checked = ss.checklist && ss.checklist[i] ? 'checked' : '';
+      html += `<label><input type="checkbox" class="drawer-cb" data-step="${stepId}" data-idx="${i}" ${checked}><span>${item}</span></label>`;
+    });
+    html += `</div>`;
+  }
+
+  // Notes
+  html += `<div class="drawer-section-title">Notes</div>
+    <textarea class="drawer-notes" id="drawerNotes" placeholder="Your notes...">${ss.notes || ''}</textarea>`;
+
+  // Due date
+  html += `<div class="drawer-section-title">Due date</div>
+    <input type="date" class="drawer-due-date" id="drawerDue" value="${state.dueDates[stepId] || ''}">`;
+
+  // Mark done
+  if (ss.status !== 'done') {
+    html += `<button class="btn btn-outline" style="width:100%;margin-top:16px;" onclick="markStepDone('${stepId}','${milestoneId}')">Mark as done</button>`;
+  }
+
+  const drawer = document.getElementById('drawer');
+  drawer.innerHTML = html;
+  document.getElementById('drawerOverlay').classList.add('open');
+
+  // Listeners
+  drawer.querySelectorAll('.drawer-cb').forEach(cb => {
+    cb.addEventListener('change', () => {
+      const sid = cb.dataset.step;
+      const idx = parseInt(cb.dataset.idx);
+      const s = getStepState(sid);
+      if (!s.checklist) s.checklist = {};
+      s.checklist[idx] = cb.checked;
+      saveState();
     });
   });
+  const notesEl = document.getElementById('drawerNotes');
+  if (notesEl) {
+    notesEl.addEventListener('input', () => {
+      getStepState(stepId).notes = notesEl.value;
+      saveState();
+    });
+  }
+  const dueEl = document.getElementById('drawerDue');
+  if (dueEl) {
+    dueEl.addEventListener('change', () => {
+      if (dueEl.value) state.dueDates[stepId] = dueEl.value;
+      else delete state.dueDates[stepId];
+      saveState();
+    });
+  }
+}
 
-  // Then: first non-done milestone in each ACTIVE_FOCUS_TRACKS (by sequence)
-  ACTIVE_FOCUS_TRACKS.forEach(trackId => {
-    const milestones = QUEST_DATA[trackId] || [];
-    for (const m of milestones) {
-      const ms = getMilestoneState(m.id);
-      if (ms.status !== 'done' && !results.find(r => r.milestone.id === m.id)) {
-        results.push({ milestone: m, trackId, urgent: false });
-        break; // Only the next one per track
+function closeDrawer() {
+  document.getElementById('drawerOverlay').classList.remove('open');
+}
+
+function markStepDone(stepId, milestoneId) {
+  const ss = getStepState(stepId);
+  ss.status = 'done';
+  // Check if all steps done → milestone done
+  const steps = getAllSteps(milestoneId);
+  const allDone = steps.every(s => getStepState(s.id).status === 'done');
+  if (allDone) {
+    getMilestoneState(milestoneId).status = 'done';
+    showConfetti();
+  }
+  const track = getTrackForMilestone(milestoneId);
+  const ms = getMilestone(milestoneId);
+  state.lastAction = `${TRACK_LABELS[track]} → ${ms ? ms.title : ''} → done`;
+  saveState();
+  closeDrawer();
+  handleRoute();
+}
+
+// ---- RENDER: Focus ----
+function renderFocus(milestoneId, stepId) {
+  const el = document.getElementById('view-focus');
+
+  // If no params, get next queued
+  if (!milestoneId || !stepId) {
+    const next = getNextQueuedTask();
+    if (next) { milestoneId = next.milestone.id; stepId = next.step.id; }
+    else { el.innerHTML = '<div class="focus-view"><p style="color:var(--text-muted)">No task queued. Pick a project first.</p></div>'; return; }
+  }
+
+  const ms = getMilestone(milestoneId);
+  const step = ms ? (ms.steps || []).find(s => s.id === stepId) : null;
+  if (!ms || !step) { el.innerHTML = '<div class="focus-view"><p style="color:var(--text-muted)">Task not found.</p></div>'; return; }
+
+  const track = getTrackForMilestone(milestoneId);
+  const color = TRACK_COLORS[track];
+  const blocksOnStep = getBlocksForStep(stepId);
+  const estBlocks = step.estimated_blocks || null;
+  const todayFull = getTodayBlocks().filter(l => !l.warmup).length;
+  const maxToday = state.settings.blocksPerDay.max;
+  const tooMany = todayFull >= maxToday;
+
+  timerStepId = stepId;
+  timerMilestoneId = milestoneId;
+
+  const isWarmup = timerIsWarmup;
+  const duration = isWarmup ? state.settings.warmupDurationMin : state.settings.blockDurationMin;
+  if (!timerRunning) {
+    timerTotal = duration * 60;
+    timerRemaining = timerTotal;
+  }
+
+  const radius = 80;
+  const circumference = 2 * Math.PI * radius;
+
+  let html = `<div class="focus-view">
+    <div class="focus-breadcrumb">${TRACK_LABELS[track]} → ${ms.title}</div>
+    <div class="focus-step-title">${step.title}</div>
+
+    <div class="timer-ring">
+      <svg viewBox="0 0 180 180">
+        <circle class="ring-bg" cx="90" cy="90" r="${radius}"/>
+        <circle class="ring-fill" id="timerRing" cx="90" cy="90" r="${radius}"
+          stroke="${color}" stroke-dasharray="${circumference}" stroke-dashoffset="0"/>
+      </svg>
+      <div class="timer-time" id="timerDisplay">${formatTime(timerRemaining)}</div>
+    </div>
+
+    <div class="focus-block-info" id="focusBlockInfo">Block ${blocksOnStep + 1}${estBlocks ? ` of ~${estBlocks}` : ''}</div>
+
+    <div class="focus-toggle">
+      <button class="${!timerIsWarmup ? 'active' : ''}" onclick="setTimerMode(false)">Full (${state.settings.blockDurationMin}m)</button>
+      <button class="${timerIsWarmup ? 'active' : ''}" onclick="setTimerMode(true)">Warm-up (${state.settings.warmupDurationMin}m)</button>
+    </div>
+
+    <div class="focus-controls">
+      <button class="btn btn-primary" style="background:${color};padding:8px 24px;" id="timerStartBtn" onclick="toggleTimer()">${timerRunning ? 'Pause' : 'Start'}</button>
+      <button class="btn btn-outline" onclick="resetTimer()">Reset</button>
+    </div>`;
+
+  if (tooMany) {
+    html += `<div class="focus-done-msg">You've done great today. Rest is productive too.</div>`;
+  }
+
+  html += `</div>`;
+  el.innerHTML = html;
+
+  // Update ring position if timer is mid-run
+  updateTimerRing();
+}
+
+function formatTime(seconds) {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+function setTimerMode(warmup) {
+  if (timerRunning) return;
+  timerIsWarmup = warmup;
+  const duration = warmup ? state.settings.warmupDurationMin : state.settings.blockDurationMin;
+  timerTotal = duration * 60;
+  timerRemaining = timerTotal;
+  const display = document.getElementById('timerDisplay');
+  if (display) display.textContent = formatTime(timerRemaining);
+  updateTimerRing();
+  // Update toggle buttons
+  document.querySelectorAll('.focus-toggle button').forEach((btn, i) => {
+    btn.classList.toggle('active', i === (warmup ? 1 : 0));
+  });
+}
+
+function toggleTimer() {
+  if (timerRunning) {
+    clearInterval(timerInterval);
+    timerRunning = false;
+    const btn = document.getElementById('timerStartBtn');
+    if (btn) btn.textContent = 'Start';
+  } else {
+    timerRunning = true;
+    const btn = document.getElementById('timerStartBtn');
+    if (btn) btn.textContent = 'Pause';
+    timerInterval = setInterval(timerTick, 1000);
+  }
+}
+
+function resetTimer() {
+  clearInterval(timerInterval);
+  timerRunning = false;
+  const duration = timerIsWarmup ? state.settings.warmupDurationMin : state.settings.blockDurationMin;
+  timerTotal = duration * 60;
+  timerRemaining = timerTotal;
+  const display = document.getElementById('timerDisplay');
+  if (display) display.textContent = formatTime(timerRemaining);
+  updateTimerRing();
+  const btn = document.getElementById('timerStartBtn');
+  if (btn) btn.textContent = 'Start';
+}
+
+function timerTick() {
+  timerRemaining--;
+  if (timerRemaining <= 0) {
+    timerRemaining = 0;
+    clearInterval(timerInterval);
+    timerRunning = false;
+    completeBlock();
+  }
+  const display = document.getElementById('timerDisplay');
+  if (display) display.textContent = formatTime(timerRemaining);
+  updateTimerRing();
+}
+
+function updateTimerRing() {
+  const ring = document.getElementById('timerRing');
+  if (!ring) return;
+  const radius = 80;
+  const circumference = 2 * Math.PI * radius;
+  const progress = timerTotal > 0 ? (timerTotal - timerRemaining) / timerTotal : 0;
+  ring.setAttribute('stroke-dashoffset', circumference * (1 - progress));
+}
+
+function completeBlock() {
+  // Log the block
+  const logEntry = {
+    date: todayStr(),
+    stepId: timerStepId,
+    milestoneId: timerMilestoneId,
+    blocks: 1,
+    warmup: timerIsWarmup,
+    timestamp: Date.now()
+  };
+  state.focusLog.push(logEntry);
+
+  // Update step state
+  const ss = getStepState(timerStepId);
+  ss.blocksCompleted = (ss.blocksCompleted || 0) + 1;
+  if (ss.status !== 'done') ss.status = 'active';
+
+  // Check if step is "done" based on blocks
+  const ms = getMilestone(timerMilestoneId);
+  const step = ms ? (ms.steps || []).find(s => s.id === timerStepId) : null;
+  if (step && step.estimated_blocks && ss.blocksCompleted >= step.estimated_blocks) {
+    // Don't auto-complete, but mark as ready
+  }
+
+  // Award points
+  const pts = awardPoints(timerIsWarmup);
+
+  // Update streak
+  updateStreak();
+
+  // Last action
+  const track = getTrackForMilestone(timerMilestoneId);
+  state.lastAction = `${TRACK_LABELS[track]} → ${ms ? ms.title : ''} → ${step ? step.title : ''}`;
+  saveState();
+
+  // Show points popup
+  showPointsPopup(pts);
+
+  // Re-render focus
+  const hash = window.location.hash;
+  if (hash.startsWith('#focus')) {
+    renderFocus(timerMilestoneId, timerStepId);
+  }
+}
+
+function showPointsPopup(pts) {
+  const popup = document.createElement('div');
+  popup.className = 'points-popup';
+  const todayFull = getTodayBlocks().filter(l => !l.warmup).length;
+  const isBonus = todayFull > 2;
+  popup.textContent = isBonus ? `+${pts} pts (bonus)` : `+${pts} pts`;
+  document.body.appendChild(popup);
+  setTimeout(() => popup.remove(), 2200);
+}
+
+// ---- RENDER: Schedule ----
+function renderSchedule() {
+  const el = document.getElementById('view-schedule');
+  const currentTab = el.dataset.tab || 'plan';
+
+  let html = `<div class="section-title">Schedule</div>
+    <div class="schedule-tabs">
+      <div class="schedule-tab${currentTab === 'plan' ? ' active' : ''}" onclick="switchScheduleTab('plan')">Plan</div>
+      <div class="schedule-tab${currentTab === 'review' ? ' active' : ''}" onclick="switchScheduleTab('review')">Review</div>
+    </div>`;
+
+  if (currentTab === 'review') {
+    html += renderScheduleReview();
+  } else {
+    html += renderSchedulePlan();
+  }
+
+  el.innerHTML = html;
+  el.dataset.tab = currentTab;
+
+  // Add listeners for focus project toggles
+  el.querySelectorAll('.focus-proj-toggle').forEach(toggle => {
+    toggle.addEventListener('click', () => {
+      const track = toggle.dataset.track;
+      let fps = state.weeklyPlan.focusProjects || [];
+      if (fps.includes(track)) {
+        fps = fps.filter(t => t !== track);
+      } else {
+        fps.push(track);
+      }
+      state.weeklyPlan.focusProjects = fps;
+      saveState();
+      renderSchedule();
+    });
+  });
+}
+
+function switchScheduleTab(tab) {
+  const el = document.getElementById('view-schedule');
+  el.dataset.tab = tab;
+  renderSchedule();
+}
+
+function renderScheduleReview() {
+  // Show this week's data (more useful in practice)
+  const thisWeekStart = getWeekStart(todayStr());
+  const weekBlocks = getWeekBlocks(thisWeekStart);
+  const fullBlocks = weekBlocks.filter(l => !l.warmup);
+  const weeklyGoal = state.settings.weeklyGoal || 10;
+  const totalHours = Math.round(fullBlocks.length * state.settings.blockDurationMin / 60 * 10) / 10;
+
+  // Also check last week
+  const d = new Date(thisWeekStart + 'T00:00:00');
+  d.setDate(d.getDate() - 7);
+  const prevWeekStart = d.toISOString().slice(0, 10);
+  const lastWeekBlocks = getWeekBlocks(prevWeekStart);
+  const lastWeekFull = lastWeekBlocks.filter(l => !l.warmup);
+
+  let html = `<div class="review-summary">This week: ${fullBlocks.length} / ${weeklyGoal} blocks completed</div>`;
+
+  // Per-project breakdown
+  const breakdown = {};
+  for (const log of weekBlocks) {
+    const track = getTrackForMilestone(log.milestoneId) || 'unknown';
+    breakdown[track] = (breakdown[track] || 0) + 1;
+  }
+  if (Object.keys(breakdown).length > 0) {
+    html += `<div class="review-breakdown">`;
+    for (const [track, count] of Object.entries(breakdown)) {
+      const color = TRACK_COLORS[track] || '#5a5a66';
+      html += `<div class="review-breakdown-item"><span class="dot" style="background:${color}"></span> ${TRACK_LABELS[track] || track}: ${count} blocks</div>`;
+    }
+    html += `</div>`;
+  }
+
+  // Morale
+  if (totalHours > 0) {
+    html += `<div class="morale-msg">You've spent ${totalHours} hours in deep focus this week. That's meaningful progress.</div>`;
+  }
+
+  // Last week summary
+  if (lastWeekFull.length > 0) {
+    html += `<div style="margin-top:24px;padding-top:16px;border-top:1px solid var(--border);">
+      <div class="review-summary" style="font-size:13px;color:var(--text-muted);">Last week: ${lastWeekFull.length} / ${weeklyGoal} blocks</div>
+    </div>`;
+  }
+
+  return html;
+}
+
+function renderSchedulePlan() {
+  const fps = state.weeklyPlan.focusProjects || [];
+  const weeklyGoal = state.settings.weeklyGoal || 10;
+
+  let html = `<div class="focus-picker">
+    <h4>Which projects will you focus on this week?</h4>
+    <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px;">Pick 1–2 to reduce context switching. Only selected projects appear in your daily queue.</p>`;
+
+  for (const track of ACTIVE_TRACKS) {
+    const color = TRACK_COLORS[track];
+    const label = TRACK_LABELS[track];
+    const selected = fps.includes(track);
+    const ms = getCurrentMilestone(track);
+    const msTitle = ms ? ms.title : 'Complete';
+    html += `<div class="focus-proj-toggle${selected ? ' selected' : ''}" data-track="${track}" style="${selected ? `border-color:${color}` : ''}">
+      <span class="dot" style="background:${color}"></span>
+      <span class="fp-name">${label}</span>
+      <span style="font-size:11px;color:var(--text-muted);flex:1;text-align:right;">${msTitle}</span>
+    </div>`;
+  }
+  html += `</div>`;
+
+  // Plan grid
+  if (fps.length > 0) {
+    html += generatePlanGrid(fps, weeklyGoal);
+    if (!state.weeklyPlan.approved) {
+      html += `<button class="btn btn-primary approve-plan-btn" style="width:100%;" onclick="approvePlan()">Approve plan</button>`;
+    } else {
+      html += `<div style="font-size:13px;color:var(--text-muted);text-align:center;padding:8px;">Plan approved for this week</div>`;
+    }
+  } else {
+    html += `<div style="font-size:13px;color:var(--text-muted);text-align:center;padding:24px;">Select at least one project to generate a plan.</div>`;
+  }
+
+  return html;
+}
+
+function generatePlanGrid(focusProjects, weeklyGoal) {
+  const blocksPerDay = Math.floor(weeklyGoal / 5);
+  const flexTotal = Math.max(0, Math.floor(weeklyGoal * 0.2));
+  const hardBlocks = weeklyGoal - flexTotal;
+  const hardPerDay = Math.ceil(hardBlocks / 5);
+  const flexPerDay = Math.ceil(flexTotal / 5);
+
+  // Gather steps from focus projects
+  const taskQueue = [];
+  for (const track of focusProjects) {
+    const ms = getCurrentMilestone(track);
+    if (!ms) continue;
+    const steps = ms.steps || [];
+    for (const step of steps) {
+      const ss = getStepState(step.id);
+      if (ss.status === 'done') continue;
+      const remaining = Math.max(0, (step.estimated_blocks || 1) - (ss.blocksCompleted || 0));
+      for (let i = 0; i < remaining; i++) {
+        taskQueue.push({ track, milestoneId: ms.id, stepId: step.id, stepTitle: step.title });
       }
     }
+  }
+
+  let html = `<div class="plan-grid">`;
+  let taskIdx = 0;
+  for (let d = 0; d < 5; d++) {
+    html += `<div class="plan-day"><div class="plan-day-name">${DAYS[d]}</div>`;
+    for (let b = 0; b < hardPerDay && b < blocksPerDay; b++) {
+      if (taskIdx < taskQueue.length) {
+        const t = taskQueue[taskIdx];
+        const color = TRACK_COLORS[t.track];
+        const shortTitle = t.stepTitle.length > 20 ? t.stepTitle.slice(0, 18) + '..' : t.stepTitle;
+        html += `<div class="plan-slot"><span class="dot" style="background:${color}"></span>${shortTitle}</div>`;
+        taskIdx++;
+      }
+    }
+    if (d < 5 && flexPerDay > 0 && d < flexTotal) {
+      html += `<div class="plan-slot flex-slot">flex</div>`;
+    }
+    html += `</div>`;
+  }
+  html += `</div>`;
+  return html;
+}
+
+function approvePlan() {
+  state.weeklyPlan.approved = true;
+  state.weeklyPlan.weekOf = getWeekStart(todayStr());
+  saveState();
+  renderSchedule();
+}
+
+// ---- RENDER: Ideas ----
+function renderIdeas() {
+  const el = document.getElementById('view-ideas');
+  let html = `<div class="section-title">Ideas</div>
+    <div class="idea-input-wrap">
+      <input class="idea-input" id="ideaInput" placeholder="What's on your mind?" onkeydown="if(event.key==='Enter')addIdea()">
+      <button class="btn btn-outline" onclick="addIdea()">Add</button>
+    </div>
+    <div id="ideaList">`;
+
+  const ideas = (state.ideas || []).slice().sort((a, b) => b.createdAt - a.createdAt);
+  for (const idea of ideas) {
+    html += `<div class="idea-card">
+      <div class="idea-text">${escapeHtml(idea.text)}</div>
+      <div class="idea-meta">
+        <span class="idea-time">${timeAgo(idea.createdAt)}</span>
+        ${idea.promoted ? '<span class="badge">promoted</span>' : `<button class="idea-promote" onclick="promoteIdea('${idea.id}')">Promote to step</button>`}
+      </div>
+    </div>`;
+  }
+
+  html += `</div>`;
+  el.innerHTML = html;
+}
+
+function addIdea() {
+  const input = document.getElementById('ideaInput');
+  const text = (input.value || '').trim();
+  if (!text) return;
+  state.ideas.push({ id: 'idea-' + Date.now(), text, createdAt: Date.now(), promoted: false });
+  saveState();
+  input.value = '';
+  renderIdeas();
+}
+
+function promoteIdea(ideaId) {
+  // Simple promotion — just mark as promoted
+  const idea = state.ideas.find(i => i.id === ideaId);
+  if (idea) { idea.promoted = true; saveState(); renderIdeas(); }
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+// ---- RENDER: Settings ----
+function renderSettings() {
+  const el = document.getElementById('view-settings');
+  const s = state.settings;
+
+  let html = `<div class="section-title">Settings</div>
+
+    <div class="settings-group">
+      <h4>Focus blocks</h4>
+      <div class="setting-row">
+        <span class="setting-label">Full block duration (min)</span>
+        <input class="setting-input" type="number" id="settingBlockDur" value="${s.blockDurationMin}" min="15" max="180">
+      </div>
+      <div class="setting-row">
+        <span class="setting-label">Warm-up duration (min)</span>
+        <input class="setting-input" type="number" id="settingWarmupDur" value="${s.warmupDurationMin}" min="5" max="60">
+      </div>
+      <div class="setting-row">
+        <span class="setting-label">Min blocks per day</span>
+        <input class="setting-input" type="number" id="settingMinBlocks" value="${s.blocksPerDay.min}" min="1" max="6">
+      </div>
+      <div class="setting-row">
+        <span class="setting-label">Max blocks per day</span>
+        <input class="setting-input" type="number" id="settingMaxBlocks" value="${s.blocksPerDay.max}" min="1" max="8">
+      </div>
+      <div class="setting-row">
+        <span class="setting-label">Weekly goal (blocks)</span>
+        <input class="setting-input" type="number" id="settingWeeklyGoal" value="${s.weeklyGoal || 10}" min="1" max="30">
+      </div>
+    </div>
+
+    <div class="settings-group">
+      <h4>Data</h4>
+      <div class="setting-row">
+        <span class="setting-label">Total points earned</span>
+        <span style="font-size:13px;color:var(--text-primary)">${state.points}</span>
+      </div>
+      <div class="setting-row">
+        <span class="setting-label">Total blocks logged</span>
+        <span style="font-size:13px;color:var(--text-primary)">${state.focusLog.length}</span>
+      </div>
+      <div class="setting-row">
+        <span class="setting-label">Current streak</span>
+        <span style="font-size:13px;color:var(--text-primary)">${state.streak.current} days</span>
+      </div>
+    </div>
+
+    <div class="settings-group">
+      <button class="btn btn-outline" style="width:100%;" onclick="resetAllData()">Reset all data</button>
+    </div>`;
+
+  el.innerHTML = html;
+
+  // Save on change
+  ['settingBlockDur', 'settingWarmupDur', 'settingMinBlocks', 'settingMaxBlocks', 'settingWeeklyGoal'].forEach(id => {
+    const input = document.getElementById(id);
+    if (input) input.addEventListener('change', saveSettings);
   });
-
-  return results.slice(0, limit);
 }
 
-// ---- DUE DATE SUPPORT ----
-// Due date is stored in milestone state: state[milestoneId].dueDate = 'YYYY-MM-DD'
-// Accessed via getMilestoneState / setMilestoneState (already supports arbitrary fields)
-function setMilestoneDueDate(milestoneId, dateStr) {
-  setMilestoneState(milestoneId, { dueDate: dateStr || null });
+function saveSettings() {
+  state.settings.blockDurationMin = parseInt(document.getElementById('settingBlockDur')?.value) || 90;
+  state.settings.warmupDurationMin = parseInt(document.getElementById('settingWarmupDur')?.value) || 25;
+  state.settings.blocksPerDay.min = parseInt(document.getElementById('settingMinBlocks')?.value) || 2;
+  state.settings.blocksPerDay.max = parseInt(document.getElementById('settingMaxBlocks')?.value) || 4;
+  state.settings.weeklyGoal = parseInt(document.getElementById('settingWeeklyGoal')?.value) || 10;
+  saveState();
 }
 
-// ---- INIT ----
-document.addEventListener('DOMContentLoaded', () => {
-  loadState();
-  initTheme();
-  initModalEvents();
-  initDueDateModal();
-  renderAllTracks();
-  insertTrackArrows();
-  updateCountdown();
-  updateXPBar();
-  setInterval(updateCountdown, 60000);
-  initAddProjectModal();
-  scheduleDepArrows();
-  window.addEventListener('resize', () => {
-    scheduleDepArrows();
-    setTimeout(drawIntraTrackArrows, 100);
+function resetAllData() {
+  if (confirm('Reset all progress? This cannot be undone.')) {
+    localStorage.removeItem(STORAGE_KEY);
+    state = defaultState();
+    handleRoute();
+  }
+}
+
+// ---- Navigation events ----
+document.querySelectorAll('.nav-item').forEach(item => {
+  item.addEventListener('click', () => {
+    const nav = item.dataset.nav;
+    if (nav) navigate('#' + nav);
   });
 });
 
-// ---- DUE DATE EDIT MODAL ----
-// Lightweight: triggered from quick-edit modal's due-date field
-function initDueDateModal() {
-  // Due date field already exists in modal HTML (#modalDueDate)
-  // On modal save, persist due date alongside status
-  // Patch saveModal to also save due date
-  const origSaveModal = window.saveModal || saveModal;
-  window.saveModal = function() {
-    if (!currentMilestoneId) return;
-    const activeBtnEl = document.querySelector('#statusButtons .status-btn.active-done') ||
-                        document.querySelector('#statusButtons .status-btn.active-inprogress') ||
-                        document.querySelector('#statusButtons .status-btn.active-pending');
-    const newStatus = activeBtnEl?.getAttribute('data-status') || 'pending';
-    const oldStatus = getMilestoneState(currentMilestoneId).status;
-    const notes = document.getElementById('modalNotes').value;
-    const dueDateEl = document.getElementById('modalDueDate');
-    const dueDate = dueDateEl ? (dueDateEl.value || null) : null;
-    const maxTimeEl = document.getElementById('modalMaxTime');
-    const maxTime = maxTimeEl ? (maxTimeEl.value ? parseInt(maxTimeEl.value) : null) : null;
-
-    setMilestoneState(currentMilestoneId, { status: newStatus, notes, dueDate, maxTime });
-    renderAllTracks();
-    updateXPBar();
-    if (newStatus === 'done' && oldStatus !== 'done') triggerConfetti();
-    closeModal();
-  };
-}
-
-// ---- FOCUS MODE LAUNCHER (used by header button) ----
-function openFocusMode() {
-  // Try to find best step: Q1 deep first, then Q3 deep
-  // Falls back to triage.js functions if available
-  if (typeof getTodayQueue === 'function') {
-    const queue = getTodayQueue();
-    const today = typeof getTodayBlockState === 'function' ? getTodayBlockState() : {};
-    const doneIds = new Set(today.completed_step_ids || []);
-    const next = queue.find(q => !doneIds.has(q.stepId));
-    if (next) {
-      window.location.href = `focus.html?stepId=${encodeURIComponent(next.stepId)}&milestoneId=${encodeURIComponent(next.milestoneId)}`;
-      return;
-    }
+// Anti-switch modal
+document.getElementById('modalStay').addEventListener('click', () => {
+  document.getElementById('antiSwitchModal').classList.remove('open');
+  pendingNavHash = null;
+});
+document.getElementById('modalLeave').addEventListener('click', () => {
+  document.getElementById('antiSwitchModal').classList.remove('open');
+  clearInterval(timerInterval);
+  timerRunning = false;
+  if (pendingNavHash) {
+    window.location.hash = pendingNavHash;
+    pendingNavHash = null;
   }
-  // Fallback: open focus with no step pre-loaded
-  window.location.href = 'focus.html';
-}
-window.openFocusMode = openFocusMode;
+});
 
-// ---- BLOCK STATE HELPERS (used before triage.js loads) ----
-function getTodayBlocksDone() {
-  const today = new Date().toISOString().split('T')[0];
-  try {
-    const s = JSON.parse(localStorage.getItem('block_state_v1') || '{}');
-    if (s.date === today) return s.completed_blocks || 0;
-  } catch(e) {}
-  return 0;
-}
-window.getTodayBlocksDone = getTodayBlocksDone;
+// Drawer close on overlay click
+document.getElementById('drawerOverlay').addEventListener('click', (e) => {
+  if (e.target === document.getElementById('drawerOverlay')) closeDrawer();
+});
+
+// Hash change
+window.addEventListener('hashchange', handleRoute);
+
+// Weekly plan auto-reset check
+(function checkWeeklyPlanReset() {
+  const currentWeek = getWeekStart(todayStr());
+  if (state.weeklyPlan.weekOf && state.weeklyPlan.weekOf !== currentWeek) {
+    state.weeklyPlan.approved = false;
+    state.weeklyPlan.blocks = {};
+    // Keep focusProjects so user remembers their choices
+    saveState();
+  }
+})();
+
+// Init
+handleRoute();
