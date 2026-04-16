@@ -60,7 +60,11 @@ function defaultState() {
     // Feature 5: admin tasks
     adminTasks: [],
     // Feature 6: prep batches
-    prepBatches: []
+    prepBatches: [],
+    // Feature 9: rewards
+    rewards: { tiers: {}, claimedHistory: [] },
+    // Feature 11: weekly reviews
+    weeklyReviews: []
   };
 }
 
@@ -79,7 +83,9 @@ function loadState() {
         trackOverrides: s.trackOverrides || {},
         urgency: s.urgency || {},
         adminTasks: s.adminTasks || [],
-        prepBatches: s.prepBatches || []
+        prepBatches: s.prepBatches || [],
+        rewards: s.rewards || { tiers: {}, claimedHistory: [] },
+        weeklyReviews: s.weeklyReviews || []
       };
     }
   } catch (e) { console.warn('State load error', e); }
@@ -374,6 +380,14 @@ function handleRoute() {
       renderPrep();
       document.getElementById('view-prep').classList.add('active');
       break;
+    case 'rewards':
+      renderRewards();
+      document.getElementById('view-rewards').classList.add('active');
+      break;
+    case 'progress':
+      renderProgress();
+      document.getElementById('view-progress').classList.add('active');
+      break;
     case 'settings':
       renderSettings();
       document.getElementById('view-settings').classList.add('active');
@@ -401,6 +415,9 @@ const ICONS = {
 
 // ---- RENDER: Home ----
 function renderHome() {
+  // Feature 11: Check for Sunday weekly review
+  checkSundayReview();
+
   const el = document.getElementById('view-home');
   const now = new Date();
   const dateStr = formatDate(now);
@@ -419,6 +436,11 @@ function renderHome() {
     <div class="greeting-date">${dateStr}</div>
     <div class="points-badge">${state.points} pts</div>
   </div>`;
+
+  // Feature 11: Review done badge
+  if (dayOfWeek() === 0 && isReviewDoneThisWeek()) {
+    html += `<div class="review-done-badge">Review done this week</div>`;
+  }
 
   if (dayOfWeek() === 0 && !state.weeklyPlan.approved) {
     html += `<div class="sunday-prompt">Ready to plan next week? It takes 5 minutes. <a href="#schedule" style="color:var(--text-primary);text-decoration:underline;cursor:pointer;">Plan now</a></div>`;
@@ -480,6 +502,29 @@ function renderHome() {
   }
   if (state.streak.current > 0) {
     html += `<div class="streak-line">${state.streak.current}-day streak</div>`;
+  }
+
+  // Feature 9: Reward unlocked banner
+  const newlyEarned = getNewlyEarnedRewards();
+  if (newlyEarned.length > 0) {
+    html += `<div class="reward-unlocked-banner">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89L17 22l-5-3-5 3 1.523-9.11"/></svg>
+      Reward unlocked: ${escapeHtml(newlyEarned[0].label)}
+    </div>`;
+  }
+
+  // Feature 9: Next reward card
+  const nextReward = getNextPointReward();
+  if (nextReward) {
+    const pct = Math.min(100, Math.round((state.points / nextReward.threshold) * 100));
+    const chosen = (state.rewards.tiers[nextReward.id] || {}).text || nextReward.defaultReward;
+    html += `<div class="next-reward-card" onclick="navigate('#rewards')">
+      <div>
+        <div class="next-reward-label">Next reward</div>
+        <div class="next-reward-text">${escapeHtml(chosen)}</div>
+      </div>
+      <div class="next-reward-progress">${state.points}/${nextReward.threshold} pts</div>
+    </div>`;
   }
 
   el.innerHTML = html;
@@ -1805,6 +1850,17 @@ function renderSettings() {
     </div>
 
     <div class="settings-group">
+      <h4>Export / Import</h4>
+      <p style="font-size:var(--text-xs);color:var(--text-muted);margin-bottom:var(--sp-3);">Export your data as JSON to back up or move to another device. Import a previously exported file to restore.</p>
+      <div class="data-actions-row">
+        <button class="btn-data" onclick="exportData()">Export JSON</button>
+        <button class="btn-data" id="copyDataBtn" onclick="copyDataToClipboard()">Copy JSON</button>
+        <button class="btn-data" onclick="importData()">Import JSON</button>
+      </div>
+      <input type="file" class="import-file-input" id="importFileInput" accept=".json" onchange="handleImportFile(this)">
+    </div>
+
+    <div class="settings-group">
       <button class="btn btn-outline" style="width:100%;" onclick="resetAllData()">Reset all data</button>
     </div>`;
 
@@ -1831,6 +1887,525 @@ function resetAllData() {
     state = defaultState();
     handleRoute();
   }
+}
+
+// ================================================================
+// FEATURE 9: REWARD TIER SYSTEM
+// ================================================================
+
+const REWARD_TIERS_POINT = [
+  { id: 'pts_50',  threshold: 50,  label: '50 pts',  defaultReward: 'Guilt-free scroll break (30 min)' },
+  { id: 'pts_100', threshold: 100, label: '100 pts', defaultReward: 'Fancy coffee or boba run' },
+  { id: 'pts_200', threshold: 200, label: '200 pts', defaultReward: 'Watch a full movie uninterrupted' },
+  { id: 'pts_350', threshold: 350, label: '350 pts', defaultReward: 'Afternoon completely off' },
+  { id: 'pts_500', threshold: 500, label: '500 pts', defaultReward: 'Something you\'ve been wanting (~$30)' },
+];
+
+const REWARD_TIERS_STREAK = [
+  { id: 'str_5',  threshold: 5,  label: '5-day streak',  defaultReward: 'Friday afternoon off' },
+  { id: 'str_10', threshold: 10, label: '10-day streak', defaultReward: 'Day trip or concert' },
+  { id: 'str_20', threshold: 20, label: '20-day streak', defaultReward: 'Something meaningful — bigger treat' },
+];
+
+const REWARD_SUGGESTIONS = [
+  { group: 'Rest', options: ['Sleep in — no alarm', 'Long hot shower with music', 'Guilt-free nap', 'Lie on the floor and do nothing for 20 min'] },
+  { group: 'Entertainment', options: ['YouTube deep dive — 1 hour', 'Watch a comfort show episode', 'Start that show you\'ve been saving', 'Full movie night'] },
+  { group: 'Movement', options: ['Walk with no destination', 'Sit outside with coffee', 'Beach/park visit', 'Stretch session with music'] },
+  { group: 'Social', options: ['Call a friend', 'Plan a hangout — actual fun', 'Cook something with someone'] },
+  { group: 'Creative', options: ['Draw or doodle — no pressure', 'Read fiction (not papers)', 'Explore a new cafe', 'Reorganize your desk'] },
+];
+
+function getNextPointReward() {
+  const pts = state.points;
+  for (const tier of REWARD_TIERS_POINT) {
+    const tierState = state.rewards.tiers[tier.id];
+    if (!tierState || !tierState.claimed) {
+      if (pts < tier.threshold) return tier;
+    }
+  }
+  return null;
+}
+
+function getNewlyEarnedRewards() {
+  const earned = [];
+  for (const tier of REWARD_TIERS_POINT) {
+    const tierState = state.rewards.tiers[tier.id] || {};
+    if (state.points >= tier.threshold && !tierState.claimed && !tierState.notified) {
+      earned.push(tier);
+    }
+  }
+  for (const tier of REWARD_TIERS_STREAK) {
+    const tierState = state.rewards.tiers[tier.id] || {};
+    if (state.streak.current >= tier.threshold && !tierState.claimed && !tierState.notified) {
+      earned.push(tier);
+    }
+  }
+  return earned;
+}
+
+function isRewardEarned(tier, isStreak) {
+  if (isStreak) return state.streak.current >= tier.threshold;
+  return state.points >= tier.threshold;
+}
+
+function renderRewardsDropdown(tierId, defaultReward) {
+  let opts = `<option value="">Pick a reward idea...</option>`;
+  for (const group of REWARD_SUGGESTIONS) {
+    opts += `<optgroup label="${escapeHtml(group.group)}">`;
+    for (const opt of group.options) {
+      opts += `<option value="${escapeHtml(opt)}">${escapeHtml(opt)}</option>`;
+    }
+    opts += `</optgroup>`;
+  }
+  return `<select onchange="rewardDropdownChange('${tierId}', this.value)">${opts}</select>`;
+}
+
+function rewardDropdownChange(tierId, value) {
+  if (!value) return;
+  if (!state.rewards.tiers[tierId]) state.rewards.tiers[tierId] = { text: '', claimed: false };
+  state.rewards.tiers[tierId].text = value;
+  saveState();
+  const input = document.getElementById('reward-input-' + tierId);
+  if (input) input.value = value;
+}
+
+function rewardCustomInput(tierId, value) {
+  if (!state.rewards.tiers[tierId]) state.rewards.tiers[tierId] = { text: '', claimed: false };
+  state.rewards.tiers[tierId].text = value;
+  saveState();
+}
+
+function claimReward(tierId) {
+  if (!state.rewards.tiers[tierId]) state.rewards.tiers[tierId] = { text: '', claimed: false };
+  const tierState = state.rewards.tiers[tierId];
+  tierState.claimed = true;
+  tierState.notified = true;
+  state.rewards.claimedHistory.push({ tierId, claimedAt: Date.now(), text: tierState.text });
+  saveState();
+  renderRewards();
+}
+
+function renderRewards() {
+  const el = document.getElementById('view-rewards');
+  let html = `<div class="section-title">Rewards</div>
+    <p style="font-size:var(--text-sm);color:var(--text-muted);margin-bottom:var(--sp-5);">Set a reward for each milestone. Claim it when you get there.</p>`;
+
+  // Point-based tiers
+  html += `<div class="rewards-section-label">Points earned</div>`;
+  for (const tier of REWARD_TIERS_POINT) {
+    html += renderRewardCard(tier, false);
+  }
+
+  // Streak-based tiers
+  html += `<div class="rewards-section-label">Streak</div>`;
+  for (const tier of REWARD_TIERS_STREAK) {
+    html += renderRewardCard(tier, true);
+  }
+
+  el.innerHTML = html;
+}
+
+function renderRewardCard(tier, isStreak) {
+  const earned = isRewardEarned(tier, isStreak);
+  const tierState = state.rewards.tiers[tier.id] || {};
+  const claimed = tierState.claimed || false;
+  const chosenText = tierState.text || '';
+  const current = isStreak ? state.streak.current : state.points;
+  const pct = Math.min(100, Math.round((current / tier.threshold) * 100));
+
+  let statusClass = 'locked';
+  let statusText = 'Locked';
+  if (claimed) { statusClass = 'claimed'; statusText = 'Claimed'; }
+  else if (earned) { statusClass = 'earned'; statusText = 'Earned'; }
+
+  let cardClass = 'reward-card';
+  if (earned && !claimed) cardClass += ' earned';
+  if (claimed) cardClass += ' claimed';
+
+  let html = `<div class="${cardClass}">
+    <div class="reward-card-header">
+      <span class="reward-threshold">${escapeHtml(tier.label)}</span>
+      <span class="reward-status-badge ${statusClass}">${statusText}</span>
+    </div>
+    <div class="reward-progress-bar">
+      <div class="reward-progress-fill${pct >= 100 ? ' full' : ''}" style="width:${pct}%"></div>
+    </div>
+    <div class="reward-progress-label">${current} / ${tier.threshold} ${isStreak ? 'days' : 'pts'}</div>`;
+
+  if (!claimed) {
+    if (chosenText) {
+      html += `<div class="reward-chosen-text">${escapeHtml(chosenText)}</div>`;
+    }
+    html += `<div class="reward-picker">
+      ${renderRewardsDropdown(tier.id, tier.defaultReward)}
+      <input class="reward-custom-input" id="reward-input-${tier.id}" type="text" placeholder="or type your own..." value="${escapeHtml(chosenText)}" oninput="rewardCustomInput('${tier.id}', this.value)">
+    </div>`;
+    if (earned) {
+      html += `<div style="margin-top:12px;">
+        <button class="reward-claim-btn" onclick="claimReward('${tier.id}')">Mark as claimed</button>
+      </div>`;
+    }
+  } else {
+    const displayText = chosenText || tier.defaultReward;
+    html += `<div class="reward-chosen-text">${escapeHtml(displayText)}</div>
+      <div class="reward-claimed-check">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><path d="M20 6L9 17l-5-5"/></svg>
+        Claimed
+      </div>`;
+  }
+
+  html += `</div>`;
+  return html;
+}
+
+// ================================================================
+// FEATURE 10: PROGRESS CHARTS
+// ================================================================
+
+// Track chart instances so we can destroy before re-render
+let _chartWeekly = null;
+let _chartProject = null;
+
+function renderProgress() {
+  const el = document.getElementById('view-progress');
+
+  const allFull = state.focusLog.filter(l => !l.warmup);
+  const totalBlocks = allFull.length;
+  const blockMin = state.settings.blockDurationMin || 90;
+  const totalHours = Math.round(totalBlocks * blockMin / 60 * 10) / 10;
+  const streak = state.streak.current;
+  const pts = state.points;
+
+  let html = `<div class="section-title">Progress</div>
+    <div class="progress-stats-grid">
+      <div class="progress-stat-card">
+        <div class="progress-stat-value">${totalHours}</div>
+        <div class="progress-stat-label">Total hours</div>
+      </div>
+      <div class="progress-stat-card">
+        <div class="progress-stat-value">${totalBlocks}</div>
+        <div class="progress-stat-label">Total blocks</div>
+      </div>
+      <div class="progress-stat-card">
+        <div class="progress-stat-value">${streak}</div>
+        <div class="progress-stat-label">Day streak</div>
+      </div>
+      <div class="progress-stat-card">
+        <div class="progress-stat-value">${pts}</div>
+        <div class="progress-stat-label">Points</div>
+      </div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-card-title">Weekly focus hours — last 12 weeks</div>
+      <div class="chart-canvas-wrap" style="height:200px;">
+        <canvas id="chartWeekly"></canvas>
+      </div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-card-title">Blocks by project (all time)</div>
+      <div class="chart-canvas-wrap" style="height:180px;">
+        <canvas id="chartProject"></canvas>
+      </div>
+    </div>`;
+
+  el.innerHTML = html;
+
+  // Destroy old charts before creating new ones
+  if (_chartWeekly) { _chartWeekly.destroy(); _chartWeekly = null; }
+  if (_chartProject) { _chartProject.destroy(); _chartProject = null; }
+
+  // Build weekly data
+  const today = new Date();
+  const weekLabels = [];
+  const weekHours = [];
+  for (let w = 11; w >= 0; w--) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - (w * 7));
+    const ws = getWeekStart(d.toISOString().slice(0, 10));
+    const blocks = getWeekBlocks(ws).filter(l => !l.warmup);
+    const hrs = Math.round(blocks.length * blockMin / 60 * 10) / 10;
+    const label = new Date(ws + 'T00:00:00');
+    const mon = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    weekLabels.push(mon[label.getMonth()] + ' ' + label.getDate());
+    weekHours.push(hrs);
+  }
+
+  const ctxW = document.getElementById('chartWeekly');
+  if (ctxW && typeof Chart !== 'undefined') {
+    _chartWeekly = new Chart(ctxW, {
+      type: 'line',
+      data: {
+        labels: weekLabels,
+        datasets: [{
+          data: weekHours,
+          borderColor: '#7db88a',
+          backgroundColor: 'rgba(125,184,138,0.08)',
+          borderWidth: 2,
+          tension: 0.3,
+          pointRadius: 3,
+          pointBackgroundColor: '#7db88a',
+          fill: true,
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { grid: { color: '#2a2a32' }, ticks: { color: '#8b8b96', font: { size: 10, family: 'Inter' }, maxRotation: 45 } },
+          y: { grid: { color: '#2a2a32' }, ticks: { color: '#8b8b96', font: { size: 10, family: 'Inter' } }, beginAtZero: true }
+        }
+      }
+    });
+  }
+
+  // Build project breakdown data
+  const projectBlocks = {};
+  for (const log of state.focusLog.filter(l => !l.warmup)) {
+    const track = getTrackForMilestone(log.milestoneId);
+    if (track) projectBlocks[track] = (projectBlocks[track] || 0) + 1;
+  }
+
+  const projLabels = [];
+  const projData = [];
+  const projColors = [];
+  for (const track of [...ACTIVE_TRACKS, ...INACTIVE_TRACKS]) {
+    if (projectBlocks[track]) {
+      projLabels.push(getTrackLabel(track));
+      projData.push(projectBlocks[track]);
+      projColors.push(TRACK_COLORS[track] || '#5a5a66');
+    }
+  }
+
+  const ctxP = document.getElementById('chartProject');
+  if (ctxP && typeof Chart !== 'undefined') {
+    _chartProject = new Chart(ctxP, {
+      type: 'bar',
+      data: {
+        labels: projLabels,
+        datasets: [{
+          data: projData,
+          backgroundColor: projColors,
+          borderRadius: 4,
+          borderSkipped: false,
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { grid: { color: '#2a2a32' }, ticks: { color: '#8b8b96', font: { size: 10, family: 'Inter' } }, beginAtZero: true },
+          y: { grid: { display: false }, ticks: { color: '#8b8b96', font: { size: 10, family: 'Inter' } } }
+        }
+      }
+    });
+  }
+}
+
+// ================================================================
+// FEATURE 11: SUNDAY WEEKLY REVIEW
+// ================================================================
+
+function isReviewDoneThisWeek() {
+  const ws = getWeekStart(todayStr());
+  return (state.weeklyReviews || []).some(r => r.weekOf === ws);
+}
+
+function checkSundayReview() {
+  if (dayOfWeek() !== 0) return;
+  if (isReviewDoneThisWeek()) return;
+  // Show the review modal
+  openWeeklyReview();
+}
+
+function openWeeklyReview() {
+  renderWeeklyReviewStep(1);
+  document.getElementById('weeklyReviewModal').classList.add('open');
+}
+
+function closeWeeklyReview() {
+  document.getElementById('weeklyReviewModal').classList.remove('open');
+}
+
+function renderWeeklyReviewStep(step) {
+  const box = document.getElementById('weeklyReviewBox');
+
+  // Compute last week stats
+  const now = new Date();
+  const thisWeekStart = getWeekStart(todayStr());
+  const d = new Date(thisWeekStart + 'T00:00:00');
+  d.setDate(d.getDate() - 7);
+  const lastWeekStart = d.toISOString().slice(0, 10);
+  const lastWeekBlocks = getWeekBlocks(lastWeekStart);
+  const lastFull = lastWeekBlocks.filter(l => !l.warmup);
+  const lastProjects = [...new Set(lastFull.map(l => getTrackForMilestone(l.milestoneId)).filter(Boolean))];
+
+  const dots = `<div class="review-step-indicator">
+    <div class="review-step-dot${step === 1 ? ' active' : step > 1 ? ' done' : ''}"></div>
+    <div class="review-step-dot${step === 2 ? ' active' : step > 2 ? ' done' : ''}"></div>
+    <div class="review-step-dot${step === 3 ? ' active' : ''}"></div>
+  </div>`;
+
+  let html = dots;
+
+  if (step === 1) {
+    html += `<div class="review-title">Weekly Reflect</div>
+      <div class="review-subtitle">How did last week go?</div>
+      <div class="review-stats-row">
+        <div class="review-stat">
+          <div class="review-stat-val">${lastFull.length}</div>
+          <div class="review-stat-lbl">Blocks done</div>
+        </div>
+        <div class="review-stat">
+          <div class="review-stat-val">${lastProjects.length}</div>
+          <div class="review-stat-lbl">Projects</div>
+        </div>
+        <div class="review-stat">
+          <div class="review-stat-val">${state.streak.current}</div>
+          <div class="review-stat-lbl">Streak</div>
+        </div>
+      </div>
+      <label class="review-label">What went well?</label>
+      <textarea class="review-textarea" id="reviewWentWell" placeholder="Anything you completed, maintained, or felt good about..."></textarea>
+      <label class="review-label">What was hard?</label>
+      <textarea class="review-textarea" id="reviewWasHard" placeholder="Any obstacles, distractions, or things that felt heavy..."></textarea>
+      <div class="review-actions">
+        <button class="review-skip" onclick="closeWeeklyReview()">Skip for now</button>
+        <button class="btn btn-primary" onclick="reviewStep2()">Continue</button>
+      </div>`;
+
+  } else if (step === 2) {
+    const fps = state.weeklyPlan.focusProjects || [];
+    let projectPicker = '';
+    for (const track of ACTIVE_TRACKS) {
+      const color = TRACK_COLORS[track];
+      const label = getTrackLabel(track);
+      const selected = fps.includes(track);
+      projectPicker += `<div class="focus-proj-toggle${selected ? ' selected' : ''}" data-track="${track}" style="${selected ? 'border-color:' + color : ''}" onclick="reviewToggleProject('${track}', this)">
+        <span class="dot" style="background:${color}"></span>
+        <span class="fp-name">${escapeHtml(label)}</span>
+      </div>`;
+    }
+    html += `<div class="review-title">Plan This Week</div>
+      <div class="review-subtitle">Which projects will you focus on?</div>
+      <div class="focus-picker" style="margin-bottom:0;">${projectPicker}</div>
+      <div class="review-actions">
+        <button class="review-skip" onclick="closeWeeklyReview()">Skip for now</button>
+        <button class="btn btn-primary" onclick="reviewStep3()">Done</button>
+      </div>`;
+
+  } else if (step === 3) {
+    html += `<div class="review-done-card">
+      <div class="review-done-pts">+15 pts</div>
+      <div class="review-done-msg">Review complete. You showed up for yourself this week.</div>
+      <button class="btn btn-primary" onclick="closeWeeklyReview()">Back to home</button>
+    </div>`;
+  }
+
+  box.innerHTML = html;
+}
+
+function reviewStep2() {
+  const wentWell = document.getElementById('reviewWentWell')?.value || '';
+  const wasHard = document.getElementById('reviewWasHard')?.value || '';
+  // Store for later save
+  document.getElementById('weeklyReviewBox').dataset.wentWell = wentWell;
+  document.getElementById('weeklyReviewBox').dataset.wasHard = wasHard;
+  renderWeeklyReviewStep(2);
+}
+
+function reviewToggleProject(track, el) {
+  let fps = state.weeklyPlan.focusProjects || [];
+  if (fps.includes(track)) {
+    fps = fps.filter(t => t !== track);
+    el.classList.remove('selected');
+    el.style.borderColor = '';
+  } else {
+    fps.push(track);
+    el.classList.add('selected');
+    el.style.borderColor = TRACK_COLORS[track] || '';
+  }
+  state.weeklyPlan.focusProjects = fps;
+  saveState();
+}
+
+function reviewStep3() {
+  const box = document.getElementById('weeklyReviewBox');
+  const wentWell = box.dataset.wentWell || '';
+  const wasHard = box.dataset.wasHard || '';
+  const focusProjects = state.weeklyPlan.focusProjects || [];
+  const ws = getWeekStart(todayStr());
+
+  if (!state.weeklyReviews) state.weeklyReviews = [];
+  state.weeklyReviews.push({
+    weekOf: ws,
+    wentWell,
+    wasHard,
+    focusProjects: [...focusProjects],
+    completedAt: Date.now(),
+    pointsAwarded: 15
+  });
+  state.points += 15;
+  saveState();
+  showConfetti();
+  renderWeeklyReviewStep(3);
+}
+
+// ================================================================
+// FEATURE 12: EXPORT / IMPORT
+// ================================================================
+
+function exportData() {
+  const json = JSON.stringify(state, null, 2);
+  const today = new Date().toISOString().slice(0, 10);
+  const filename = `soma-data-${today}.json`;
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function copyDataToClipboard() {
+  const json = JSON.stringify(state, null, 2);
+  navigator.clipboard.writeText(json).then(() => {
+    const btn = document.getElementById('copyDataBtn');
+    if (btn) {
+      btn.textContent = 'Copied!';
+      btn.classList.add('success');
+      setTimeout(() => { btn.textContent = 'Copy JSON'; btn.classList.remove('success'); }, 2000);
+    }
+  }).catch(() => {
+    alert('Copy failed. Try exporting instead.');
+  });
+}
+
+function importData() {
+  document.getElementById('importFileInput').click();
+}
+
+function handleImportFile(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const parsed = JSON.parse(e.target.result);
+      if (typeof parsed !== 'object' || parsed === null) throw new Error('Invalid format');
+      if (!confirm('Replace all current data with the imported file?')) return;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
+      state = loadState();
+      handleRoute();
+    } catch (err) {
+      alert('Import failed: ' + err.message);
+    }
+  };
+  reader.readAsText(file);
+  input.value = '';
 }
 
 // ---- Utility ----
