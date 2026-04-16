@@ -5,13 +5,13 @@
 
 /* ---------- DESIGN TOKENS ---------- */
 :root {
-  /* Type scale — bumped up across the board */
-  --text-xs:   clamp(0.82rem,  0.78rem + 0.2vw,  0.95rem);
-  --text-sm:   clamp(0.95rem,  0.88rem + 0.35vw, 1.1rem);
-  --text-base: clamp(1.05rem,  1rem + 0.25vw,    1.2rem);
-  --text-lg:   clamp(1.2rem,   1.1rem + 0.5vw,   1.5rem);
-  --text-xl:   clamp(1.5rem,   1.3rem + 1vw,     2.25rem);
-  --text-2xl:  clamp(2rem,     1.4rem + 2.5vw,   3.5rem);
+  /* Type scale — compact, readable */
+  --text-xs:   clamp(0.72rem,  0.68rem + 0.15vw, 0.8rem);
+  --text-sm:   clamp(0.8rem,   0.75rem + 0.2vw,  0.9rem);
+  --text-base: clamp(0.875rem, 0.85rem + 0.15vw, 0.95rem);
+  --text-lg:   clamp(1rem,     0.95rem + 0.25vw, 1.1rem);
+  --text-xl:   clamp(1.2rem,   1.1rem + 0.5vw,   1.5rem);
+  --text-2xl:  clamp(1.5rem,   1.2rem + 1.5vw,   2.25rem);
 
   /* Spacing */
   --sp-1: 0.25rem; --sp-2: 0.5rem;  --sp-3: 0.75rem; --sp-4: 1rem;
@@ -453,10 +453,10 @@ h1, h2, h3, h4 { font-family: var(--font-display); line-height: 1.15; text-wrap:
 .board-container {
   max-width: var(--w-page);
   margin: 0 auto;
-  padding: var(--sp-8) var(--sp-6) var(--sp-24);
+  padding: var(--sp-4) var(--sp-6) var(--sp-16);
   display: flex;
   flex-direction: column;
-  gap: var(--sp-10);
+  gap: var(--sp-6);
   position: relative; /* required for dep-arrows SVG overlay */
 }
 
@@ -492,18 +492,18 @@ h1, h2, h3, h4 { font-family: var(--font-display); line-height: 1.15; text-wrap:
 .track-header {
   display: flex;
   align-items: center;
-  gap: var(--sp-4);
-  padding: var(--sp-5) var(--sp-6);
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
   border-bottom: 1px solid var(--border);
   background: var(--surface-2);
 }
 .track-icon {
-  font-size: 1.75rem;
+  font-size: 1.25rem;
   flex-shrink: 0;
   line-height: 1;
 }
 .track-title {
-  font-size: var(--text-lg);
+  font-size: var(--text-base);
   font-weight: 700;
   color: var(--text);
   margin: 0;
@@ -550,8 +550,8 @@ h1, h2, h3, h4 { font-family: var(--font-display); line-height: 1.15; text-wrap:
 .board-row {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--sp-4);
-  padding: var(--sp-6);
+  gap: var(--sp-3);
+  padding: var(--sp-4);
   align-items: flex-start;
 }
 
@@ -561,11 +561,11 @@ h1, h2, h3, h4 { font-family: var(--font-display); line-height: 1.15; text-wrap:
 .milestone-card {
   position: relative;
   flex: 0 0 auto;
-  width: clamp(140px, 16vw, 180px);
-  border-radius: var(--r-xl);
+  width: clamp(120px, 13vw, 155px);
+  border-radius: var(--r-lg);
   border: 2px solid transparent;
   background: var(--bg);
-  padding: var(--sp-4);
+  padding: var(--sp-3);
   cursor: pointer;
   transition: transform var(--t-fast), box-shadow var(--t-fast), border-color var(--t-fast);
   display: flex;

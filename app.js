@@ -274,9 +274,25 @@ function renderTrackProgress(trackId, milestones) {
   `;
 }
 
+function sortMilestonesBySequence(milestones) {
+  // Sort by priority label (P0 first, then P1, P2..., then unlabeled)
+  const priorityOrder = p => {
+    if (!p) return 999;
+    const m = p.match(/P(\d+)/i);
+    return m ? parseInt(m[1]) : 500;
+  };
+  return [...milestones].sort((a, b) =>
+    priorityOrder(a.priority) - priorityOrder(b.priority)
+  );
+}
+
 function renderAllTracks() {
   const board = document.querySelector('.board-container');
   if (_depArrowSVG) { _depArrowSVG.remove(); _depArrowSVG = null; }
+
+  // Move add-project button to end so focus tracks don't appear after it
+  const addSection = document.querySelector('.add-project-section');
+  if (addSection) board.appendChild(addSection);
 
   if (currentView === 'active') {
     // Active view: show ONLY the 3 focus tracks, fully hide the rest
@@ -286,8 +302,9 @@ function renderAllTracks() {
       if (ACTIVE_FOCUS_TRACKS.includes(trackId)) {
         section.classList.remove('track-collapsed');
         section.style.display = '';
-        board.appendChild(section);
-        renderTrack(trackId, QUEST_DATA[trackId] || []);
+        // Insert before add-project button to maintain correct order
+        board.insertBefore(section, addSection || null);
+        renderTrack(trackId, sortMilestonesBySequence(QUEST_DATA[trackId] || []));
       } else {
         section.classList.add('track-collapsed');
         section.style.display = 'none';
@@ -302,16 +319,12 @@ function renderAllTracks() {
       if (!section) return;
       section.classList.remove('track-collapsed');
       section.style.display = '';
-      board.appendChild(section);
-      renderTrack(trackId, milestones);
+      board.insertBefore(section, addSection || null);
+      renderTrack(trackId, sortMilestonesBySequence(milestones));
     });
     // Dependency arrows in all view (subtle, optional)
     scheduleDepArrows();
   }
-
-  // Always re-append add-project section last
-  const addSection = document.getElementById('addProjectSection');
-  if (addSection) board.appendChild(addSection);
 
   renderCustomProjects();
   updateGlobalStats();
