@@ -661,6 +661,7 @@ function renderQueueList() {
           <div class="qblock-meta">
             <span class="cog-type-pill ${cog}" style="font-size:10px;padding:1px 6px">${COG_LABEL[cog]||cog}</span>
             <span style="background:rgba(255,255,255,.07);border-radius:4px;padding:1px 5px;font-size:10px">${qLabel}</span>
+            ${item.estimatedBlocks ? `<span style="background:rgba(167,139,250,.12);color:#a78bfa;border-radius:4px;padding:1px 6px;font-size:10px" title="Estimated blocks for this step">~${item.estimatedBlocks} blocks</span>` : ''}
             ${done?'<span style="color:#10b981;font-weight:700">✓ Done</span>':''}
           </div>
         </div>

@@ -67,8 +67,9 @@
 
   <!-- SESSION DOTS -->
   <div class="session-dots-area">
-    <div class="session-dots-label">Completed sessions this step</div>
+    <div class="session-dots-label" id="sessionDotsLabel">Block 0 of ~? for this step</div>
     <div class="session-dots" id="sessionDots"></div>
+    <div class="session-blocks-note" id="sessionBlocksNote" style="font-size:0.72rem;color:var(--text-faint);text-align:center;margin-top:4px"></div>
   </div>
 
   <!-- CHECKLIST MINI-VIEW -->
@@ -98,6 +99,7 @@
   <div class="session-complete-emoji">🎉</div>
   <h3 class="session-complete-title">Session Complete!</h3>
   <p class="session-complete-sub" id="sessionCompleteSubtext">90 minutes of deep work. Session logged.</p>
+  <p class="session-block-progress" id="sessionBlockProgress" style="font-size:0.8rem;color:rgba(255,255,255,0.6);margin-top:4px"></p>
   <button class="session-continue-btn" id="sessionContinueBtn">Keep going ▶</button>
 </div>
 
@@ -270,11 +272,29 @@ function onSessionComplete() {
     });
   }
 
-  // Show banner
+  // Show banner with block progress
   const banner = document.getElementById('sessionCompleteBanner');
-  const ss = getStepState(currentMilestoneId, currentStepId);
+  const ss2 = getStepState(currentMilestoneId, currentStepId);
+  const completedNow = ss2.sessions || 1;
+  const estimated = currentStepData?.step?.estimated_blocks || null;
+
   document.getElementById('sessionCompleteSubtext').textContent =
-    `90 min of deep work complete. Session #${ss.sessions || 1} logged.`;
+    `Block #${completedNow} logged — 90 min of deep work done.`;
+
+  const progressEl = document.getElementById('sessionBlockProgress');
+  if (progressEl && estimated) {
+    if (completedNow < estimated) {
+      const left = estimated - completedNow;
+      progressEl.textContent = `${completedNow} of ~${estimated} blocks for this step — ~${left} to go`;
+    } else if (completedNow === estimated) {
+      progressEl.textContent = `✅ Hit the estimate (${estimated} blocks) — check checklist to close this step`;
+    } else {
+      progressEl.textContent = `${completedNow} blocks in — this one ran deeper than estimated, that's fine`;
+    }
+  } else if (progressEl) {
+    progressEl.textContent = '';
+  }
+
   banner.classList.add('show');
 
   triggerConfetti();
@@ -282,15 +302,48 @@ function onSessionComplete() {
 
 function renderSessionDots() {
   const dotsContainer = document.getElementById('sessionDots');
+  const labelEl = document.getElementById('sessionDotsLabel');
+  const noteEl  = document.getElementById('sessionBlocksNote');
   if (!currentStepId || !currentMilestoneId) return;
+
   const ss = getStepState(currentMilestoneId, currentStepId);
-  const n = ss.sessions || 0;
+  const completed = ss.sessions || 0;
+  // estimated_blocks from step data — how many 90-min blocks this step typically takes
+  const estimated = currentStepData?.step?.estimated_blocks || null;
+
+  // Dot display: show estimated dots if known, else show completed + 2 ahead
+  const totalDots = estimated ? Math.max(estimated, completed) : Math.max(completed + 2, 3);
+
   dotsContainer.innerHTML = '';
-  const maxDots = Math.max(n + 3, 5);
-  for (let i = 0; i < maxDots; i++) {
+  for (let i = 0; i < totalDots; i++) {
     const dot = document.createElement('div');
-    dot.className = 'session-dot' + (i < n ? ' filled' : '');
+    dot.className = 'session-dot' + (i < completed ? ' filled' : '');
     dotsContainer.appendChild(dot);
+  }
+
+  // Label: "Block X of ~N" or "Block X (no estimate)"
+  if (labelEl) {
+    if (estimated) {
+      labelEl.textContent = `Block ${completed} of ~${estimated} for this step`;
+    } else {
+      labelEl.textContent = `${completed} block${completed !== 1 ? 's' : ''} completed on this step`;
+    }
+  }
+
+  // Note: show encouragement based on progress vs estimate
+  if (noteEl && estimated) {
+    if (completed === 0) {
+      noteEl.textContent = `Estimated ~${estimated} × 90-min blocks`;
+    } else if (completed < estimated) {
+      const left = estimated - completed;
+      noteEl.textContent = `~${left} block${left !== 1 ? 's' : ''} to go — keep it up`;
+    } else if (completed === estimated) {
+      noteEl.textContent = `On track — check your checklist to close this step`;
+    } else {
+      noteEl.textContent = `This one ran long — totally normal for complex steps`;
+    }
+  } else if (noteEl) {
+    noteEl.textContent = '';
   }
 }
 

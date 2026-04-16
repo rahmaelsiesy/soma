@@ -329,6 +329,7 @@ function getTodayQueue() {
     title: i.step.title,
     cogType: i.cogType,
     quadrant: i.quadrant,
+    estimatedBlocks: i.step.estimated_blocks || null,
   }));
 }
 
@@ -504,7 +505,8 @@ function toggleDailyPriority(itemEl) {
     itemEl.classList.remove('triage-item-selected');
     itemEl.querySelector('.triage-item-check').textContent = '+';
   } else {
-    daily.push({ stepId, milestoneId, title, cogType });
+    const stepObj = getAllBlockItems().find(i => i.step.id === stepId)?.step;
+    daily.push({ stepId, milestoneId, title, cogType, estimatedBlocks: stepObj?.estimated_blocks || null });
     itemEl.classList.add('triage-item-selected');
     itemEl.querySelector('.triage-item-check').textContent = '✓';
   }
