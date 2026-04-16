@@ -1,5 +1,5 @@
 /* ============================================================
-   NEURO-ATLAS — Calm ADHD Quest Board
+   SOMA — Calm ADHD focus tracker
    Dark-only · Minimal · One thing at a time
    ============================================================ */
 
@@ -136,6 +136,8 @@ a { color: inherit; text-decoration: none; }
 .btn-outline:hover { border-color: var(--text-muted); color: var(--text-primary); }
 .btn-ghost { background: transparent; color: var(--text-secondary); }
 .btn-ghost:hover { color: var(--text-primary); background: rgba(255,255,255,0.04); }
+.btn-danger { background: transparent; border: 1px solid rgba(176,112,112,0.3); color: #b07070; }
+.btn-danger:hover { border-color: #b07070; opacity: 1; }
 
 .badge {
   display: inline-flex; align-items: center;
@@ -250,6 +252,19 @@ a { color: inherit; text-decoration: none; }
   font-size: var(--text-sm); font-weight: 600; color: var(--text-primary);
   white-space: nowrap; min-width: 110px;
 }
+/* Feature 2: Editable project name */
+.proj-name-editable {
+  cursor: text; border-radius: var(--r-sm);
+  padding: 1px 3px; margin: -1px -3px;
+  transition: background var(--t-fast);
+}
+.proj-name-editable:hover { background: rgba(255,255,255,0.06); }
+.proj-name-input {
+  background: transparent; border: none; border-bottom: 1px solid var(--text-muted);
+  color: var(--text-primary); font-family: var(--font); font-size: var(--text-sm);
+  font-weight: 600; outline: none; min-width: 80px; max-width: 180px;
+}
+
 .project-card .proj-milestone {
   font-size: var(--text-sm); color: var(--text-secondary);
   flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -277,37 +292,13 @@ a { color: inherit; text-decoration: none; }
 .archive-list { margin-top: var(--sp-2); }
 .archive-list .project-card { opacity: 0.45; }
 
-/* Protocol timeline */
-.protocol-section { margin-top: var(--sp-8); padding-top: var(--sp-6); border-top: 1px solid var(--border); }
-.protocol-title { font-size: var(--text-base); font-weight: 600; color: var(--text-primary); margin-bottom: var(--sp-4); }
-
-.protocol-phase { margin-bottom: var(--sp-3); }
-.protocol-phase-name { font-size: var(--text-sm); font-weight: 500; color: var(--text-secondary); margin-bottom: var(--sp-1); }
-.protocol-step {
-  display: flex; align-items: flex-start; gap: var(--sp-2);
-  font-size: var(--text-sm); color: var(--text-muted);
-  padding: 3px 0 3px var(--sp-4);
-}
-.proto-cb {
-  appearance: none; -webkit-appearance: none;
-  width: 14px; height: 14px; border: 1.5px solid var(--text-muted);
-  border-radius: 3px; background: transparent; cursor: pointer;
-  flex-shrink: 0; margin-top: 2px;
-  transition: background var(--t-fast), border-color var(--t-fast);
-}
-.proto-cb:checked { background: var(--c-dlpfc); border-color: var(--c-dlpfc); }
-.proto-cb:checked::after {
-  content: ''; display: block; width: 4px; height: 7px;
-  border: solid #fff; border-width: 0 1.5px 1.5px 0;
-  transform: rotate(45deg); margin: 1px auto 0;
-}
-
 /* ========================================
    TRACK VIEW — milestones list for a project
    ======================================== */
 .track-header {
-  display: flex; align-items: center; gap: var(--sp-3); margin-bottom: var(--sp-6);
+  display: flex; align-items: flex-start; gap: var(--sp-3); margin-bottom: var(--sp-6);
 }
+.track-header-info { flex: 1; min-width: 0; }
 .back-btn {
   display: flex; align-items: center; justify-content: center;
   width: 32px; height: 32px; border: 1px solid var(--border);
@@ -317,7 +308,39 @@ a { color: inherit; text-decoration: none; }
 .back-btn:hover { background: var(--surface-hover); color: var(--text-primary); }
 .back-btn svg { width: 16px; height: 16px; }
 
-.track-title { font-size: var(--text-lg); font-weight: 600; display: flex; align-items: center; gap: var(--sp-2); }
+.track-title { font-size: var(--text-lg); font-weight: 600; display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
+
+/* Feature 2: Tags on track view */
+.track-tags {
+  display: flex; align-items: center; gap: var(--sp-1); flex-wrap: wrap;
+  margin-top: var(--sp-2);
+}
+.tag-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 8px; font-size: var(--text-xs);
+  border-radius: var(--r-sm); background: rgba(255,255,255,0.06);
+  color: var(--text-secondary); border: 1px solid var(--border);
+}
+.tag-remove {
+  background: none; border: none; color: var(--text-muted);
+  cursor: pointer; padding: 0; line-height: 1; font-size: 12px;
+  display: flex; align-items: center;
+  transition: color var(--t-fast);
+}
+.tag-remove:hover { color: var(--text-primary); }
+.tag-add-btn {
+  background: none; border: 1px dashed var(--border);
+  border-radius: var(--r-sm); color: var(--text-muted);
+  font-size: var(--text-xs); padding: 2px 8px; cursor: pointer;
+  font-family: var(--font); transition: border-color var(--t-fast), color var(--t-fast);
+}
+.tag-add-btn:hover { border-color: var(--text-muted); color: var(--text-secondary); }
+.tag-input {
+  background: var(--surface); border: 1px solid var(--text-muted);
+  border-radius: var(--r-sm); color: var(--text-primary);
+  font-family: var(--font); font-size: var(--text-xs);
+  padding: 2px 8px; outline: none; width: 140px;
+}
 
 .milestone-card {
   display: flex; align-items: center; gap: var(--sp-3);
@@ -330,8 +353,45 @@ a { color: inherit; text-decoration: none; }
 .milestone-card.status-done { opacity: 0.5; }
 .milestone-card .ms-name {
   font-size: var(--text-sm); font-weight: 500; color: var(--text-primary); flex: 1;
+  display: flex; align-items: center; gap: var(--sp-2);
 }
 .milestone-card .ms-progress { font-size: var(--text-sm); color: var(--text-muted); }
+
+/* Feature 4: Milestone due date / pace indicator */
+.ms-due-wrap {
+  display: flex; align-items: center; gap: var(--sp-2);
+  font-size: var(--text-xs); color: var(--text-muted);
+  margin-top: 4px;
+}
+.ms-due-date-input {
+  background: transparent; border: none; border-bottom: 1px solid var(--border);
+  color: var(--text-muted); font-family: var(--font); font-size: var(--text-xs);
+  outline: none; cursor: pointer; color-scheme: dark;
+  width: 108px;
+}
+.ms-due-date-input:focus { border-bottom-color: var(--text-muted); }
+.ms-pace-label { font-size: var(--text-xs); }
+.ms-pace-ok { color: var(--text-muted); }
+.ms-pace-warn { color: var(--c-dlpfc); }
+.ms-pace-crit { color: #b07070; }
+
+/* Feature 3: Urgency dots */
+.urgency-dot {
+  width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
+  display: inline-block;
+}
+.urgency-dot.important { background: var(--c-dlpfc); }
+.urgency-dot.critical { background: #b07070; }
+
+/* Urgency toggle button */
+.urgency-btn {
+  background: none; border: none; cursor: pointer;
+  padding: 2px; border-radius: var(--r-sm);
+  display: flex; align-items: center;
+  color: var(--text-muted); transition: color var(--t-fast);
+  font-size: var(--text-xs);
+}
+.urgency-btn:hover { color: var(--text-secondary); }
 
 /* ========================================
    PATH VIEW — board game winding path
@@ -352,6 +412,7 @@ a { color: inherit; text-decoration: none; }
   transition: background var(--t-fast), border-color var(--t-fast);
 }
 .path-step:hover { background: var(--surface-hover); }
+.path-step:hover .step-reorder { opacity: 1; }
 .path-step.left { margin-left: 0; margin-right: auto; }
 .path-step.right { margin-left: auto; margin-right: 0; }
 
@@ -404,6 +465,43 @@ a { color: inherit; text-decoration: none; }
   width: 280px; margin-left: auto; margin-right: auto;
 }
 .reward-card .reward-text { font-size: var(--text-sm); color: var(--text-secondary); }
+
+/* Feature 1: Step reorder controls */
+.step-reorder {
+  position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+  display: flex; flex-direction: column; gap: 2px;
+  opacity: 0; transition: opacity var(--t-fast);
+}
+.step-reorder-btn {
+  background: none; border: none; cursor: pointer;
+  color: var(--text-muted); padding: 2px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 2px; transition: color var(--t-fast), background var(--t-fast);
+}
+.step-reorder-btn:hover { color: var(--text-primary); background: rgba(255,255,255,0.08); }
+.step-reorder-btn svg { width: 12px; height: 12px; }
+
+/* Feature 1: Add step button */
+.add-step-btn {
+  display: flex; align-items: center; gap: var(--sp-2);
+  width: 220px; padding: var(--sp-2) var(--sp-3);
+  background: transparent; border: 1px dashed var(--border);
+  border-radius: var(--r-lg); color: var(--text-muted);
+  cursor: pointer; font-family: var(--font); font-size: var(--text-sm);
+  transition: border-color var(--t-fast), color var(--t-fast);
+  margin: var(--sp-2) 0;
+}
+.add-step-btn:hover { border-color: var(--text-muted); color: var(--text-secondary); }
+
+/* Feature 1: Inline step title editing */
+.step-title-editable {
+  background: transparent; border: none; border-bottom: 1px solid transparent;
+  color: var(--text-primary); font-family: var(--font); font-size: var(--text-sm);
+  font-weight: 500; outline: none; width: 100%;
+  transition: border-bottom-color var(--t-fast);
+  padding: 0;
+}
+.step-title-editable:focus { border-bottom-color: var(--text-muted); }
 
 /* ---- Step detail drawer ---- */
 .drawer-overlay {
@@ -474,6 +572,22 @@ a { color: inherit; text-decoration: none; }
   font-family: var(--font); font-size: var(--text-sm); color: var(--text-primary);
   outline: none; color-scheme: dark;
 }
+
+/* Feature 3: Urgency selector in drawer */
+.urgency-picker {
+  display: flex; gap: var(--sp-2); margin-top: var(--sp-2);
+}
+.urgency-option {
+  display: flex; align-items: center; gap: 6px;
+  padding: 4px 10px; border: 1px solid var(--border);
+  border-radius: var(--r-sm); cursor: pointer; font-size: var(--text-xs);
+  color: var(--text-muted); background: transparent;
+  font-family: var(--font); transition: all var(--t-fast);
+}
+.urgency-option:hover { border-color: var(--text-muted); color: var(--text-secondary); }
+.urgency-option.active-none { border-color: var(--text-muted); color: var(--text-primary); background: rgba(255,255,255,0.04); }
+.urgency-option.active-important { border-color: var(--c-dlpfc); color: var(--c-dlpfc); background: rgba(196,154,108,0.08); }
+.urgency-option.active-critical { border-color: #b07070; color: #b07070; background: rgba(176,112,112,0.08); }
 
 /* ========================================
    FOCUS VIEW — Zen timer
@@ -628,6 +742,9 @@ a { color: inherit; text-decoration: none; }
 .plan-slot.flex-slot {
   border: 1px dashed var(--border); color: var(--text-muted); background: transparent;
 }
+/* Feature 3: Urgency in plan grid */
+.plan-slot.urgency-critical { border-left: 2px solid #b07070; }
+.plan-slot.urgency-important { border-left: 2px solid var(--c-dlpfc); }
 
 /* ========================================
    IDEAS VIEW
@@ -665,6 +782,180 @@ a { color: inherit; text-decoration: none; }
   font-family: var(--font); font-size: var(--text-sm); color: var(--text-primary);
   outline: none; margin-bottom: var(--sp-3); color-scheme: dark;
 }
+
+/* ========================================
+   ADMIN VIEW (Feature 5)
+   ======================================== */
+.admin-cap-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: var(--sp-3) var(--sp-4);
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r-lg); margin-bottom: var(--sp-5);
+}
+.admin-cap-count { font-size: var(--text-sm); color: var(--text-secondary); }
+.admin-cap-count strong { color: var(--text-primary); }
+.admin-cap-reached {
+  font-size: var(--text-sm); color: var(--c-package);
+  font-style: italic;
+}
+
+.admin-input-wrap { display: flex; gap: var(--sp-2); margin-bottom: var(--sp-5); }
+.admin-input {
+  flex: 1; background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r-md); padding: var(--sp-2) var(--sp-3);
+  font-family: var(--font); font-size: var(--text-sm); color: var(--text-primary);
+  outline: none; transition: border-color var(--t-fast);
+}
+.admin-input:focus { border-color: var(--text-muted); }
+.admin-input::placeholder { color: var(--text-muted); }
+
+.admin-section-label {
+  font-size: var(--text-xs); color: var(--text-muted); font-weight: 500;
+  text-transform: uppercase; letter-spacing: 0.5px;
+  margin-bottom: var(--sp-2); margin-top: var(--sp-4);
+}
+.admin-section-label:first-of-type { margin-top: 0; }
+
+.admin-task-card {
+  display: flex; align-items: center; gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r-lg); margin-bottom: var(--sp-2);
+  transition: background var(--t-fast);
+}
+.admin-task-card.completed { opacity: 0.5; }
+.admin-task-cb {
+  appearance: none; -webkit-appearance: none;
+  width: 16px; height: 16px; border: 1.5px solid var(--text-muted);
+  border-radius: 3px; background: transparent; cursor: pointer;
+  flex-shrink: 0;
+  transition: background var(--t-fast), border-color var(--t-fast);
+}
+.admin-task-cb:checked { background: var(--c-package); border-color: var(--c-package); }
+.admin-task-cb:checked::after {
+  content: ''; display: block; width: 5px; height: 8px;
+  border: solid #fff; border-width: 0 1.5px 1.5px 0;
+  transform: rotate(45deg); margin: 1px auto 0;
+}
+.admin-task-text {
+  flex: 1; font-size: var(--text-sm); color: var(--text-primary);
+  line-height: 1.4;
+}
+.admin-task-card.completed .admin-task-text {
+  text-decoration: line-through; color: var(--text-muted);
+}
+.admin-task-delete {
+  background: none; border: none; cursor: pointer;
+  color: var(--text-muted); padding: 4px;
+  border-radius: var(--r-sm); display: flex; align-items: center;
+  transition: color var(--t-fast);
+}
+.admin-task-delete:hover { color: #b07070; }
+.admin-task-delete svg { width: 14px; height: 14px; }
+
+/* ========================================
+   PREP VIEW (Feature 6)
+   ======================================== */
+.prep-batch-new {
+  display: flex; gap: var(--sp-2); flex-wrap: wrap;
+  margin-bottom: var(--sp-6); padding: var(--sp-4);
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+}
+.prep-batch-new h4 {
+  width: 100%; font-size: var(--text-sm); font-weight: 600;
+  color: var(--text-primary); margin-bottom: var(--sp-1);
+}
+.prep-input {
+  flex: 1; min-width: 120px; background: var(--bg); border: 1px solid var(--border);
+  border-radius: var(--r-md); padding: var(--sp-2) var(--sp-3);
+  font-family: var(--font); font-size: var(--text-sm); color: var(--text-primary);
+  outline: none; transition: border-color var(--t-fast);
+}
+.prep-input:focus { border-color: var(--text-muted); }
+.prep-input::placeholder { color: var(--text-muted); }
+.prep-date-input {
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: var(--r-md); padding: var(--sp-2) var(--sp-3);
+  font-family: var(--font); font-size: var(--text-sm); color: var(--text-primary);
+  outline: none; color-scheme: dark;
+}
+.prep-select {
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: var(--r-md); padding: var(--sp-2) var(--sp-3);
+  font-family: var(--font); font-size: var(--text-sm); color: var(--text-primary);
+  outline: none; color-scheme: dark;
+}
+
+/* Batch cards */
+.batch-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r-lg); margin-bottom: var(--sp-3); overflow: hidden;
+}
+.batch-card-header {
+  display: flex; align-items: center; gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4); cursor: pointer;
+  transition: background var(--t-fast);
+}
+.batch-card-header:hover { background: var(--surface-hover); }
+.batch-name { font-size: var(--text-sm); font-weight: 600; color: var(--text-primary); flex: 1; }
+.batch-meta { font-size: var(--text-xs); color: var(--text-muted); }
+.batch-chevron {
+  color: var(--text-muted); transition: transform var(--t-fast);
+  display: flex; align-items: center;
+}
+.batch-card.open .batch-chevron { transform: rotate(90deg); }
+.batch-body { display: none; padding: var(--sp-3) var(--sp-4) var(--sp-4); border-top: 1px solid var(--border); }
+.batch-card.open .batch-body { display: block; }
+
+.batch-progress-bar {
+  height: 3px; background: var(--border); border-radius: 2px;
+  margin-bottom: var(--sp-3); overflow: hidden;
+}
+.batch-progress-fill { height: 100%; border-radius: 2px; background: var(--c-dg); transition: width var(--t-normal); }
+
+/* Prep template section */
+.prep-template-header {
+  font-size: var(--text-sm); font-weight: 600; color: var(--text-secondary);
+  margin-bottom: var(--sp-4); padding-top: var(--sp-4);
+  border-top: 1px solid var(--border);
+}
+.prep-phase { margin-bottom: var(--sp-4); }
+.prep-phase-name {
+  font-size: var(--text-sm); font-weight: 500; color: var(--text-secondary);
+  margin-bottom: var(--sp-1); display: flex; align-items: center; gap: var(--sp-2);
+}
+.prep-phase-day {
+  font-size: var(--text-xs); color: var(--text-muted);
+  background: rgba(255,255,255,0.04); border-radius: var(--r-sm);
+  padding: 1px 6px;
+}
+.prep-phase-stop {
+  font-size: var(--text-xs); color: var(--c-package);
+  background: rgba(125,184,138,0.08); border-radius: var(--r-sm);
+  padding: 1px 6px;
+}
+.prep-step {
+  display: flex; align-items: flex-start; gap: var(--sp-2);
+  font-size: var(--text-sm); color: var(--text-muted);
+  padding: 3px 0 3px var(--sp-4);
+}
+.prep-step-cb {
+  appearance: none; -webkit-appearance: none;
+  width: 14px; height: 14px; border: 1.5px solid var(--text-muted);
+  border-radius: 3px; background: transparent; cursor: pointer;
+  flex-shrink: 0; margin-top: 2px;
+  transition: background var(--t-fast), border-color var(--t-fast);
+}
+.prep-step-cb:checked { background: var(--c-dg); border-color: var(--c-dg); }
+.prep-step-cb:checked::after {
+  content: ''; display: block; width: 4px; height: 7px;
+  border: solid #fff; border-width: 0 1.5px 1.5px 0;
+  transform: rotate(45deg); margin: 1px auto 0;
+}
+.prep-step-info { flex: 1; }
+.prep-step-name { color: var(--text-secondary); }
+.prep-step-note { font-size: var(--text-xs); color: var(--text-muted); margin-top: 1px; }
 
 /* ========================================
    SETTINGS VIEW
@@ -708,6 +999,7 @@ a { color: inherit; text-decoration: none; }
   .path-step { width: 180px; }
   .drawer { width: 100vw; }
   .home-view { max-width: 100%; }
+  .bottom-bar .nav-item span { font-size: 9px; }
 }
 
 /* Scrollbar */

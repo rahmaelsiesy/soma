@@ -1,6 +1,9 @@
 /* ============================================================
-   NEURO-ATLAS — app.js
-   Calm ADHD Quest Board — full application logic
+   SOMA — app.js
+   Calm ADHD focus tracker
+   Features: F1 step edit/reorder, F2 editable names+tags,
+             F3 urgency flags, F4 backward scheduling,
+             F5 admin tab, F6 prep/batch system
    ============================================================ */
 
 // ---- Constants ----
@@ -47,7 +50,17 @@ function defaultState() {
     dueDates: {},
     settings: { blocksPerDay: { min: 2, max: 4 }, blockDurationMin: 90, warmupDurationMin: 25, weeklyGoal: 10 },
     protocolChecks: {},
-    lastAction: null
+    lastAction: null,
+    // Feature 1: custom steps per milestone
+    customSteps: {},
+    // Feature 2: track name/tag overrides
+    trackOverrides: {},
+    // Feature 3: urgency flags
+    urgency: {},
+    // Feature 5: admin tasks
+    adminTasks: [],
+    // Feature 6: prep batches
+    prepBatches: []
   };
 }
 
@@ -57,7 +70,17 @@ function loadState() {
     if (raw) {
       const s = JSON.parse(raw);
       const d = defaultState();
-      return { ...d, ...s, settings: { ...d.settings, ...(s.settings || {}) }, streak: { ...d.streak, ...(s.streak || {}) }, weeklyPlan: { ...d.weeklyPlan, ...(s.weeklyPlan || {}) } };
+      return {
+        ...d, ...s,
+        settings: { ...d.settings, ...(s.settings || {}) },
+        streak: { ...d.streak, ...(s.streak || {}) },
+        weeklyPlan: { ...d.weeklyPlan, ...(s.weeklyPlan || {}) },
+        customSteps: s.customSteps || {},
+        trackOverrides: s.trackOverrides || {},
+        urgency: s.urgency || {},
+        adminTasks: s.adminTasks || [],
+        prepBatches: s.prepBatches || []
+      };
     }
   } catch (e) { console.warn('State load error', e); }
   return defaultState();
@@ -79,7 +102,7 @@ function getMilestoneState(msId) {
 
 // ---- Date helpers ----
 function todayStr() { return new Date().toISOString().slice(0, 10); }
-function dayOfWeek() { return new Date().getDay(); } // 0=Sun
+function dayOfWeek() { return new Date().getDay(); }
 function formatDate(d) {
   const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
   const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
@@ -109,15 +132,25 @@ function isWeekday(dateStr) {
   const day = d.getDay();
   return day >= 1 && day <= 5;
 }
+function weeksUntil(dateStr) {
+  const target = new Date(dateStr + 'T00:00:00');
+  const now = new Date();
+  const diff = (target - now) / (1000 * 60 * 60 * 24 * 7);
+  return Math.max(0, diff);
+}
 
 // ---- Data helpers ----
+// Feature 1: merged steps (base + custom)
 function getAllSteps(milestoneId) {
+  let baseSteps = [];
   for (const track of Object.keys(QUEST_DATA)) {
     for (const ms of QUEST_DATA[track]) {
-      if (ms.id === milestoneId) return ms.steps || [];
+      if (ms.id === milestoneId) { baseSteps = ms.steps || []; break; }
     }
+    if (baseSteps.length) break;
   }
-  return [];
+  const custom = state.customSteps[milestoneId] || [];
+  return [...baseSteps, ...custom];
 }
 
 function getMilestone(milestoneId) {
@@ -170,6 +203,17 @@ function getTotalBlocksForMilestone(milestoneId) {
   return steps.reduce((sum, s) => sum + (s.estimated_blocks || 1), 0);
 }
 
+function getRemainingBlocksForMilestone(milestoneId) {
+  const steps = getAllSteps(milestoneId);
+  return steps.reduce((sum, s) => {
+    const ss = getStepState(s.id);
+    if (ss.status === 'done') return sum;
+    const est = s.estimated_blocks || 1;
+    const done = ss.blocksCompleted || 0;
+    return sum + Math.max(0, est - done);
+  }, 0);
+}
+
 function getMilestoneStepProgress(milestoneId) {
   const steps = getAllSteps(milestoneId);
   const done = steps.filter(s => getStepState(s.id).status === 'done').length;
@@ -204,14 +248,25 @@ function getNextQueuedTask() {
   return null;
 }
 
+// Feature 2: get effective track label
+function getTrackLabel(trackId) {
+  const override = state.trackOverrides[trackId];
+  if (override && override.label) return override.label;
+  return TRACK_LABELS[trackId] || trackId;
+}
+
+// Feature 3: get urgency for item
+function getUrgency(itemId) {
+  return state.urgency[itemId] || null;
+}
+
 // ---- Streak ----
 function updateStreak() {
   const today = todayStr();
-  if (!isWeekday(today)) return; // weekends don't affect streak
+  if (!isWeekday(today)) return;
   const todayBlocks = getTodayBlocks().filter(l => !l.warmup);
   if (todayBlocks.length >= state.settings.blocksPerDay.min) {
     if (state.streak.lastDate === today) return;
-    // Check if last streak date is previous weekday
     const d = new Date(today + 'T00:00:00');
     let prev = new Date(d);
     prev.setDate(prev.getDate() - 1);
@@ -232,7 +287,7 @@ function awardPoints(isWarmup) {
   const todayBlocks = getTodayBlocks();
   const fullBlocksToday = todayBlocks.filter(l => !l.warmup).length;
   let pts = isWarmup ? 3 : 10;
-  if (!isWarmup && fullBlocksToday > 2 && fullBlocksToday <= 4) pts += 5; // bonus for 3rd/4th
+  if (!isWarmup && fullBlocksToday > 2 && fullBlocksToday <= 4) pts += 5;
   state.points += pts;
   saveState();
   return pts;
@@ -272,12 +327,14 @@ function handleRoute() {
   const parts = hash.slice(1).split('/');
   const route = parts[0];
 
-  // Hide all views
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
 
-  // Update nav
   document.querySelectorAll('.nav-item').forEach(n => {
-    n.classList.toggle('active', n.dataset.nav === route || (route === 'path' && n.dataset.nav === 'projects') || (route === 'track' && n.dataset.nav === 'projects'));
+    const active =
+      n.dataset.nav === route ||
+      (route === 'path' && n.dataset.nav === 'projects') ||
+      (route === 'track' && n.dataset.nav === 'projects');
+    n.classList.toggle('active', active);
   });
 
   switch (route) {
@@ -309,6 +366,14 @@ function handleRoute() {
       renderIdeas();
       document.getElementById('view-ideas').classList.add('active');
       break;
+    case 'admin':
+      renderAdmin();
+      document.getElementById('view-admin').classList.add('active');
+      break;
+    case 'prep':
+      renderPrep();
+      document.getElementById('view-prep').classList.add('active');
+      break;
     case 'settings':
       renderSettings();
       document.getElementById('view-settings').classList.add('active');
@@ -326,7 +391,12 @@ const ICONS = {
   lock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="12" height="12"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>',
   check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M20 6L9 17l-5-5"/></svg>',
   x: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M18 6L6 18M6 6l12 12"/></svg>',
+  xSm: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="12" height="12"><path d="M18 6L6 18M6 6l12 12"/></svg>',
   play: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><polygon points="5 3 19 12 5 21 5 3"/></svg>',
+  arrowUp: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="12" height="12"><path d="M12 19V5M5 12l7-7 7 7"/></svg>',
+  arrowDown: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="12" height="12"><path d="M12 5v14M19 12l-7 7-7-7"/></svg>',
+  plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M12 5v14M5 12h14"/></svg>',
+  trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>',
 };
 
 // ---- RENDER: Home ----
@@ -339,31 +409,26 @@ function renderHome() {
   const maxToday = state.settings.blocksPerDay.max;
   const weekStart = getWeekStart(todayStr());
   const weekB = getWeekBlocks(weekStart);
-  const fullWeek = weekB.filter(l => !l.warmup).length;
   const weeklyGoal = state.settings.weeklyGoal || 10;
   const next = getNextQueuedTask();
   const allDoneToday = fullToday >= maxToday;
 
   let html = '';
 
-  // Greeting
   html += `<div class="greeting-bar">
     <div class="greeting-date">${dateStr}</div>
     <div class="points-badge">${state.points} pts</div>
   </div>`;
 
-  // Sunday prompt
   if (dayOfWeek() === 0 && !state.weeklyPlan.approved) {
     html += `<div class="sunday-prompt">Ready to plan next week? It takes 5 minutes. <a href="#schedule" style="color:var(--text-primary);text-decoration:underline;cursor:pointer;">Plan now</a></div>`;
   }
 
-  // No plan nudge
   const hasPlan = state.weeklyPlan.approved && state.weeklyPlan.focusProjects && state.weeklyPlan.focusProjects.length > 0;
   if (!hasPlan && dayOfWeek() !== 0) {
     html += `<div class="no-plan-msg">No weekly plan yet. <a onclick="navigate('#schedule')">Pick your focus for the week</a></div>`;
   }
 
-  // Start next block button
   if (allDoneToday) {
     html += `<div class="done-msg">You've done enough today. Rest is productive too.</div>`;
   } else if (next) {
@@ -377,7 +442,6 @@ function renderHome() {
     html += `<div class="done-msg" style="background:rgba(255,255,255,0.03);border-color:var(--border);">No active tasks queued. Check your <a onclick="navigate('#projects')" style="color:var(--text-primary);text-decoration:underline;cursor:pointer;">projects</a>.</div>`;
   }
 
-  // Today's blocks
   html += `<div class="block-section">
     <div class="block-section-label">Today</div>
     <div class="block-circles">`;
@@ -392,11 +456,10 @@ function renderHome() {
   }
   html += `</div></div>`;
 
-  // Weekly blocks — circles
   html += `<div class="block-section">
     <div class="block-section-label">This week</div>
     <div class="block-circles">`;
-  const totalCircles = Math.max(weeklyGoal, fullWeek);
+  const totalCircles = Math.max(weeklyGoal, weekB.length);
   for (let i = 0; i < totalCircles; i++) {
     if (i < weekB.length) {
       if (i >= weeklyGoal) {
@@ -412,12 +475,9 @@ function renderHome() {
   }
   html += `</div></div>`;
 
-  // Where was I
   if (state.lastAction) {
     html += `<div class="where-was-i">Last: ${state.lastAction}</div>`;
   }
-
-  // Streak
   if (state.streak.current > 0) {
     html += `<div class="streak-line">${state.streak.current}-day streak</div>`;
   }
@@ -430,22 +490,20 @@ function renderProjects() {
   const el = document.getElementById('view-projects');
   let html = '<div class="section-title">Projects</div>';
 
-  // Active
   for (const track of ACTIVE_TRACKS) {
     const ms = getCurrentMilestone(track);
     const color = TRACK_COLORS[track];
-    const label = TRACK_LABELS[track];
+    const label = getTrackLabel(track); // Feature 2
     const msTitle = ms ? ms.title : 'Complete';
     const progress = ms ? getMilestoneStepProgress(ms.id) : '--';
     html += `<div class="project-card" onclick="navigate('#track/${track}')">
       <span class="dot" style="background:${color}"></span>
-      <span class="proj-name">${label}</span>
-      <span class="proj-milestone">${msTitle}</span>
+      <span class="proj-name proj-name-editable" data-track="${track}" ondblclick="startEditProjectName(event,'${track}')">${escapeHtml(label)}</span>
+      <span class="proj-milestone">${escapeHtml(msTitle)}</span>
       <span class="proj-progress">${progress}</span>
     </div>`;
   }
 
-  // Archive toggle
   html += `<div class="archive-toggle" id="archiveToggle" onclick="toggleArchive()">
     ${ICONS.chevronRight}
     <span>${INACTIVE_TRACKS.length} archived projects</span>
@@ -454,45 +512,17 @@ function renderProjects() {
   for (const track of INACTIVE_TRACKS) {
     const ms = getCurrentMilestone(track);
     const color = TRACK_COLORS[track];
-    const label = TRACK_LABELS[track];
+    const label = getTrackLabel(track);
     const msTitle = ms ? ms.title : 'Complete';
     html += `<div class="project-card" onclick="navigate('#track/${track}')">
       <span class="dot" style="background:${color}"></span>
-      <span class="proj-name">${label}</span>
-      <span class="proj-milestone">${msTitle}</span>
+      <span class="proj-name">${escapeHtml(label)}</span>
+      <span class="proj-milestone">${escapeHtml(msTitle)}</span>
     </div>`;
   }
   html += `</div>`;
 
-  // Protocol timeline
-  if (typeof PROTOCOL_PHASES !== 'undefined') {
-    html += `<div class="protocol-section">
-      <div class="protocol-title">Protocol Timeline (parallel)</div>`;
-    for (const phase of PROTOCOL_PHASES) {
-      html += `<div class="protocol-phase">
-        <div class="protocol-phase-name">${phase.name}</div>`;
-      for (const step of phase.steps) {
-        const checked = state.protocolChecks && state.protocolChecks[step.id] ? 'checked' : '';
-        html += `<div class="protocol-step">
-          <input type="checkbox" class="proto-cb" data-proto-id="${step.id}" ${checked}>
-          <span>${step.name}</span>
-        </div>`;
-      }
-      html += `</div>`;
-    }
-    html += `</div>`;
-  }
-
   el.innerHTML = html;
-
-  // Protocol checkbox listeners
-  el.querySelectorAll('.proto-cb').forEach(cb => {
-    cb.addEventListener('change', () => {
-      if (!state.protocolChecks) state.protocolChecks = {};
-      state.protocolChecks[cb.dataset.protoId] = cb.checked;
-      saveState();
-    });
-  });
 }
 
 function toggleArchive() {
@@ -503,17 +533,57 @@ function toggleArchive() {
   toggle.classList.toggle('open', open);
 }
 
+// Feature 2: inline edit project name
+function startEditProjectName(evt, trackId) {
+  evt.stopPropagation();
+  const span = evt.currentTarget;
+  const currentLabel = getTrackLabel(trackId);
+  span.innerHTML = `<input class="proj-name-input" type="text" value="${escapeHtml(currentLabel)}" id="projNameInput_${trackId}">`;
+  const input = span.querySelector('input');
+  input.focus();
+  input.select();
+  function finish() {
+    const val = (input.value || '').trim();
+    if (val) {
+      if (!state.trackOverrides[trackId]) state.trackOverrides[trackId] = {};
+      state.trackOverrides[trackId].label = val;
+      saveState();
+    }
+    renderProjects();
+  }
+  input.addEventListener('blur', finish);
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+    if (e.key === 'Escape') { input.removeEventListener('blur', finish); renderProjects(); }
+  });
+}
+
 // ---- RENDER: Track ----
 function renderTrack(trackId) {
   const el = document.getElementById('view-track');
   const milestones = QUEST_DATA[trackId] || [];
   const color = TRACK_COLORS[trackId];
-  const label = TRACK_LABELS[trackId];
+  const label = getTrackLabel(trackId); // Feature 2
+  const override = state.trackOverrides[trackId] || {};
+  const tags = override.tags || [];
+
+  // Tags HTML
+  let tagsHtml = `<div class="track-tags" id="trackTags_${trackId}">`;
+  for (let i = 0; i < tags.length; i++) {
+    tagsHtml += `<span class="tag-badge">${escapeHtml(tags[i])}<button class="tag-remove" onclick="removeTag('${trackId}',${i})" title="Remove tag">${ICONS.xSm}</button></span>`;
+  }
+  tagsHtml += `<button class="tag-add-btn" onclick="showTagInput('${trackId}')">+ tag</button>`;
+  tagsHtml += `</div>`;
 
   let html = `<div class="track-header">
     <button class="back-btn" onclick="navigate('#projects')">${ICONS.arrowLeft}</button>
-    <div class="track-title"><span class="dot" style="background:${color}"></span> ${label}</div>
+    <div class="track-header-info">
+      <div class="track-title"><span class="dot" style="background:${color}"></span> <span ondblclick="startEditTrackName(event,'${trackId}')" class="proj-name-editable" style="font-size:inherit;font-weight:inherit;">${escapeHtml(label)}</span></div>
+      ${tagsHtml}
+    </div>
   </div>`;
+
+  const weeklyGoal = state.settings.weeklyGoal || 10;
 
   for (const ms of milestones) {
     const msState = getMilestoneState(ms.id);
@@ -521,14 +591,141 @@ function renderTrack(trackId) {
     const blocksLogged = getBlocksForMilestone(ms.id);
     const totalBlocks = getTotalBlocksForMilestone(ms.id);
     const statusClass = msState.status === 'done' ? ' status-done' : '';
+    const urgLevel = getUrgency(ms.id);
+    const urgDot = urgLevel ? `<span class="urgency-dot ${urgLevel}"></span>` : '';
+
+    // Feature 4: due date and pace
+    const dueDate = state.dueDates[ms.id] || '';
+    let paceHtml = '';
+    if (dueDate) {
+      const weeks = weeksUntil(dueDate);
+      const remaining = getRemainingBlocksForMilestone(ms.id);
+      if (weeks > 0) {
+        const pace = (remaining / weeks).toFixed(1);
+        const paceNum = parseFloat(pace);
+        let paceClass = 'ms-pace-ok';
+        if (paceNum > weeklyGoal * 2) paceClass = 'ms-pace-crit';
+        else if (paceNum > weeklyGoal) paceClass = 'ms-pace-warn';
+        paceHtml = `<span class="ms-pace-label ${paceClass}" title="${remaining} blocks remaining, ${weeks.toFixed(1)} weeks">~${pace} blocks/week needed</span>`;
+      } else if (weeks === 0) {
+        paceHtml = `<span class="ms-pace-label ms-pace-crit">Due today or overdue</span>`;
+      }
+    }
+
     html += `<div class="milestone-card${statusClass}" onclick="navigate('#path/${trackId}/${ms.id}')">
       <span class="dot" style="background:${color};width:6px;height:6px;"></span>
-      <span class="ms-name">${ms.title}</span>
-      <span class="ms-progress">${blocksLogged}/${totalBlocks} blocks</span>
+      <div style="flex:1;min-width:0;">
+        <div class="ms-name">${urgDot}${escapeHtml(ms.title)}</div>
+        <div class="ms-due-wrap" onclick="event.stopPropagation()">
+          <input type="date" class="ms-due-date-input" data-ms="${ms.id}"
+            value="${dueDate}"
+            title="Set due date for this milestone">
+          ${paceHtml}
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <button class="urgency-btn" onclick="event.stopPropagation();cycleUrgency('${ms.id}','track','${trackId}')" title="Set urgency">
+          ${urgLevel === 'critical' ? '<span style="color:#b07070;font-size:11px;">critical</span>' : urgLevel === 'important' ? '<span style="color:var(--c-dlpfc);font-size:11px;">important</span>' : '<span style="font-size:11px;">flag</span>'}
+        </button>
+        <span class="ms-progress">${blocksLogged}/${totalBlocks} blocks</span>
+      </div>
     </div>`;
   }
 
   el.innerHTML = html;
+
+  // Feature 4: due date listeners
+  el.querySelectorAll('.ms-due-date-input').forEach(input => {
+    input.addEventListener('change', () => {
+      const msId = input.dataset.ms;
+      if (input.value) state.dueDates[msId] = input.value;
+      else delete state.dueDates[msId];
+      saveState();
+      renderTrack(trackId);
+    });
+  });
+}
+
+// Feature 2: inline track name edit from track view
+function startEditTrackName(evt, trackId) {
+  evt.stopPropagation();
+  const span = evt.currentTarget;
+  const currentLabel = getTrackLabel(trackId);
+  span.innerHTML = `<input class="proj-name-input" type="text" value="${escapeHtml(currentLabel)}" style="font-size:inherit;font-weight:inherit;">`;
+  const input = span.querySelector('input');
+  input.focus(); input.select();
+  function finish() {
+    const val = (input.value || '').trim();
+    if (val) {
+      if (!state.trackOverrides[trackId]) state.trackOverrides[trackId] = {};
+      state.trackOverrides[trackId].label = val;
+      saveState();
+    }
+    renderTrack(trackId);
+  }
+  input.addEventListener('blur', finish);
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+    if (e.key === 'Escape') { input.removeEventListener('blur', finish); renderTrack(trackId); }
+  });
+}
+
+// Feature 2: tags
+function showTagInput(trackId) {
+  const tagsDiv = document.getElementById(`trackTags_${trackId}`);
+  if (!tagsDiv) return;
+  // Replace add button with input
+  const addBtn = tagsDiv.querySelector('.tag-add-btn');
+  if (!addBtn) return;
+  const inputEl = document.createElement('input');
+  inputEl.className = 'tag-input';
+  inputEl.placeholder = 'tag1, tag2';
+  inputEl.setAttribute('autofocus', '');
+  addBtn.replaceWith(inputEl);
+  inputEl.focus();
+  function commit() {
+    const val = inputEl.value.trim();
+    if (val) {
+      const newTags = val.split(',').map(t => t.trim()).filter(Boolean);
+      if (!state.trackOverrides[trackId]) state.trackOverrides[trackId] = {};
+      const existing = state.trackOverrides[trackId].tags || [];
+      state.trackOverrides[trackId].tags = [...existing, ...newTags];
+      saveState();
+    }
+    renderTrack(trackId);
+  }
+  inputEl.addEventListener('blur', commit);
+  inputEl.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); inputEl.blur(); }
+    if (e.key === 'Escape') { inputEl.removeEventListener('blur', commit); renderTrack(trackId); }
+  });
+}
+
+function removeTag(trackId, idx) {
+  if (!state.trackOverrides[trackId]) return;
+  const tags = state.trackOverrides[trackId].tags || [];
+  tags.splice(idx, 1);
+  state.trackOverrides[trackId].tags = tags;
+  saveState();
+  renderTrack(trackId);
+}
+
+// Feature 3: cycle urgency
+function cycleUrgency(itemId, context, trackId) {
+  const current = state.urgency[itemId] || null;
+  const next = current === null ? 'important' : current === 'important' ? 'critical' : null;
+  if (next === null) delete state.urgency[itemId];
+  else state.urgency[itemId] = next;
+  saveState();
+  if (context === 'track') renderTrack(trackId);
+  else if (context === 'path') {
+    // re-render path – get current path params from hash
+    const parts = window.location.hash.slice(1).split('/');
+    if (parts[0] === 'path') renderPath(parts[1], parts[2]);
+  } else if (context === 'drawer') {
+    // refresh urgency UI in drawer only
+    renderUrgencyInDrawer(itemId);
+  }
 }
 
 // ---- RENDER: Path (board game) ----
@@ -538,13 +735,15 @@ function renderPath(trackId, milestoneId) {
   if (!ms) { el.innerHTML = '<p>Milestone not found.</p>'; return; }
   const track = trackId || getTrackForMilestone(milestoneId);
   const color = TRACK_COLORS[track];
-  const steps = ms.steps || [];
+  const baseSteps = ms.steps || [];
+  const customSteps = state.customSteps[milestoneId] || [];
+  const steps = [...baseSteps, ...customSteps];
   const blocksLogged = getBlocksForMilestone(milestoneId);
   const totalBlocks = getTotalBlocksForMilestone(milestoneId);
 
   let html = `<div class="path-header">
     <button class="back-btn" onclick="navigate('#track/${track}')">${ICONS.arrowLeft}</button>
-    <div class="path-title"><span class="dot" style="background:${color}"></span> ${ms.title}</div>
+    <div class="path-title"><span class="dot" style="background:${color}"></span> ${escapeHtml(ms.title)}</div>
   </div>
   <div class="path-progress-text">${blocksLogged} / ${totalBlocks} blocks logged</div>
   <div class="winding-path">`;
@@ -559,6 +758,11 @@ function renderPath(trackId, milestoneId) {
     const isActive = activeStep && activeStep.id === step.id;
     const statusClass = ss.status === 'done' ? 'status-done' : (isActive ? 'status-active' : (ss.status === 'locked' ? 'status-locked' : ''));
     const typeBadge = step.type ? `<span class="badge badge-type" style="color:${TYPE_COLORS[step.type] || '#8b8b96'}">${step.type}</span>` : '';
+    const isCustom = !!step.isCustom;
+
+    // Feature 3: urgency indicator
+    const urgLevel = getUrgency(step.id);
+    const urgDot = urgLevel ? `<span class="urgency-dot ${urgLevel}" style="margin-right:4px;"></span>` : '';
 
     // Due date indicator
     let dueIndicator = '';
@@ -569,12 +773,20 @@ function renderPath(trackId, milestoneId) {
       else if (daysLeft < 14) dueIndicator = ' due-soon';
     }
 
+    // Feature 1: reorder buttons (only for custom steps or if reordering enabled)
+    const canMoveUp = idx > 0;
+    const canMoveDown = idx < steps.length - 1;
+    const reorderHtml = `<div class="step-reorder">
+      <button class="step-reorder-btn" title="Move up" onclick="event.stopPropagation();moveStep('${milestoneId}','${step.id}','up')">${ICONS.arrowUp}</button>
+      <button class="step-reorder-btn" title="Move down" onclick="event.stopPropagation();moveStep('${milestoneId}','${step.id}','down')">${ICONS.arrowDown}</button>
+    </div>`;
+
     html += `<div class="path-node">
-      <div class="path-step ${side} ${statusClass}${dueIndicator}" style="--step-accent:${color}" onclick="openStepDrawer('${step.id}','${milestoneId}','${track}')">
+      <div class="path-step ${side} ${statusClass}${dueIndicator}" style="--step-accent:${color}" data-stepid="${step.id}" data-msid="${milestoneId}" data-track="${track}">
         ${isActive ? `<div class="game-piece" style="background:${color}"></div>` : ''}
-        <div class="step-num">Step ${idx + 1}</div>
-        <div class="step-title-text">${step.title}</div>
-        <div class="step-meta">
+        <div class="step-num">Step ${idx + 1}${isCustom ? ' (custom)' : ''}</div>
+        <div class="step-title-text" onclick="openStepDrawer('${step.id}','${milestoneId}','${track}')">${urgDot}<span class="step-title-label">${escapeHtml(step.title)}</span></div>
+        <div class="step-meta" onclick="openStepDrawer('${step.id}','${milestoneId}','${track}')">
           ${typeBadge}
           <div class="step-block-dots">`;
     for (let b = 0; b < estBlocks; b++) {
@@ -583,80 +795,214 @@ function renderPath(trackId, milestoneId) {
     html += `</div>
           ${ss.status === 'done' ? `<span class="done-check">${ICONS.check}</span>` : ''}
         </div>
+        ${reorderHtml}
       </div>`;
     if (idx < steps.length - 1) html += `<div class="path-connector"></div>`;
     html += `</div>`;
   });
 
-  // Gate card
+  // Feature 1: Add step button
+  html += `<div class="path-connector"></div>
+    <div style="display:flex;justify-content:${steps.length % 2 === 0 ? 'flex-start' : 'flex-end'};">
+      <button class="add-step-btn" onclick="showAddStepForm('${milestoneId}','${track}')">
+        ${ICONS.plus} Add custom step
+      </button>
+    </div>`;
+
   if (ms.gate) {
     html += `<div class="path-connector"></div>
     <div class="gate-card">
-      <h4>${ms.gate.title}</h4>`;
+      <h4>${escapeHtml(ms.gate.title)}</h4>`;
     for (const item of ms.gate.items) {
-      html += `<div class="gate-item">${item}</div>`;
+      html += `<div class="gate-item">${escapeHtml(item)}</div>`;
     }
     html += `</div>`;
   }
 
-  // Reward card
   if (ms.reward) {
     html += `<div class="path-connector"></div>
     <div class="reward-card">
-      <div class="reward-text">${ms.reward}</div>
+      <div class="reward-text">${escapeHtml(ms.reward)}</div>
     </div>`;
   }
 
   html += `</div>`; // winding-path
   el.innerHTML = html;
+
+  // Feature 1: inline title editing — click step title label to edit
+  el.querySelectorAll('.path-step').forEach(stepEl => {
+    const stepId = stepEl.dataset.stepid;
+    const msId = stepEl.dataset.msid;
+    const trackId2 = stepEl.dataset.track;
+    const label = stepEl.querySelector('.step-title-label');
+    if (!label) return;
+    // Only allow inline edit for custom steps or base steps
+    label.style.cursor = 'text';
+    label.addEventListener('click', e => {
+      e.stopPropagation();
+      startInlineStepEdit(stepId, msId, trackId2, label);
+    });
+  });
+}
+
+// Feature 1: inline edit step title
+function startInlineStepEdit(stepId, milestoneId, trackId, labelEl) {
+  const current = labelEl.textContent;
+  const isCustom = (state.customSteps[milestoneId] || []).find(s => s.id === stepId);
+  if (!isCustom) {
+    // For base steps, just open drawer — don't allow title edit of base data
+    return;
+  }
+  const input = document.createElement('input');
+  input.className = 'step-title-editable';
+  input.value = current;
+  labelEl.replaceWith(input);
+  input.focus(); input.select();
+  function commit() {
+    const val = input.value.trim();
+    if (val && isCustom) {
+      isCustom.title = val;
+      saveState();
+    }
+    renderPath(trackId, milestoneId);
+  }
+  input.addEventListener('blur', commit);
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+    if (e.key === 'Escape') { input.removeEventListener('blur', commit); renderPath(trackId, milestoneId); }
+  });
+}
+
+// Feature 1: move step up/down
+function moveStep(milestoneId, stepId, direction) {
+  // Determine if this is a custom step
+  const custom = state.customSteps[milestoneId] || [];
+  const ms = getMilestone(milestoneId);
+  const baseSteps = ms ? (ms.steps || []) : [];
+  const allSteps = [...baseSteps, ...custom];
+  const idx = allSteps.findIndex(s => s.id === stepId);
+  if (idx < 0) return;
+
+  const newIdx = direction === 'up' ? idx - 1 : idx + 1;
+  if (newIdx < 0 || newIdx >= allSteps.length) return;
+
+  // Swap in allSteps — but we need to handle base vs custom boundary
+  // Strategy: flatten into one merged order array stored in customSteps for this milestone
+  // We'll store a merged order by creating a full custom override if needed
+  const swapped = [...allSteps];
+  [swapped[idx], swapped[newIdx]] = [swapped[newIdx], swapped[idx]];
+
+  // Store reordered custom as full list (mark base steps included)
+  state.customSteps[milestoneId] = swapped.map(s => {
+    if (custom.find(c => c.id === s.id)) return s; // already custom
+    return { ...s, _base: true }; // mark as base step copy
+  });
+  saveState();
+
+  // Re-render
+  const parts = window.location.hash.slice(1).split('/');
+  renderPath(parts[1], parts[2]);
+}
+
+// Feature 1: add custom step form
+function showAddStepForm(milestoneId, trackId) {
+  // Show a simple prompt-style inline form
+  const el = document.getElementById('view-path');
+  const existing = el.querySelector('.add-step-form');
+  if (existing) { existing.remove(); return; }
+
+  const form = document.createElement('div');
+  form.className = 'add-step-form card';
+  form.style.cssText = 'margin-top:12px;padding:14px;display:flex;flex-direction:column;gap:10px;max-width:320px;';
+  form.innerHTML = `
+    <div style="font-size:13px;font-weight:600;color:var(--text-primary);">Add custom step</div>
+    <input class="idea-input" id="newStepTitle" placeholder="Step title" style="background:var(--bg);">
+    <input class="idea-input" id="newStepBlocks" type="number" placeholder="Estimated blocks (default 1)" min="1" max="20" style="background:var(--bg);">
+    <div style="display:flex;gap:8px;">
+      <button class="btn btn-outline" style="flex:1;" onclick="submitAddStep('${milestoneId}','${trackId}')">Add</button>
+      <button class="btn btn-ghost" onclick="this.closest('.add-step-form').remove()">Cancel</button>
+    </div>`;
+  el.querySelector('.winding-path').appendChild(form);
+  form.querySelector('#newStepTitle').focus();
+}
+
+function submitAddStep(milestoneId, trackId) {
+  const titleInput = document.getElementById('newStepTitle');
+  const blocksInput = document.getElementById('newStepBlocks');
+  const title = (titleInput ? titleInput.value : '').trim();
+  if (!title) return;
+  const estimated_blocks = parseInt(blocksInput ? blocksInput.value : '1') || 1;
+  const newStep = {
+    id: 'custom-' + milestoneId + '-' + Date.now(),
+    title,
+    estimated_blocks,
+    type: null,
+    desc: '',
+    isCustom: true
+  };
+  if (!state.customSteps[milestoneId]) state.customSteps[milestoneId] = [];
+  state.customSteps[milestoneId].push(newStep);
+  saveState();
+  renderPath(trackId, milestoneId);
 }
 
 // ---- Step Drawer ----
 function openStepDrawer(stepId, milestoneId, track) {
   const ms = getMilestone(milestoneId);
   if (!ms) return;
-  const step = (ms.steps || []).find(s => s.id === stepId);
+  // Search in merged steps
+  const allSteps = getAllSteps(milestoneId);
+  const step = allSteps.find(s => s.id === stepId);
   if (!step) return;
   const ss = getStepState(stepId);
   const color = TRACK_COLORS[track];
+  const urgLevel = getUrgency(stepId);
 
   let html = `<button class="drawer-close" onclick="closeDrawer()">${ICONS.x}</button>
-    <h3>${step.title}</h3>
-    <div class="drawer-desc">${step.desc || ''}</div>`;
+    <h3>${escapeHtml(step.title)}</h3>
+    <div class="drawer-desc">${escapeHtml(step.desc || '')}</div>`;
 
-  // Focus button
   html += `<button class="btn btn-primary" style="background:${color};width:100%;margin-bottom:16px;" onclick="closeDrawer();navigate('#focus/${milestoneId}/${stepId}')">
     ${ICONS.play} Start Focus
   </button>`;
 
-  // Checklist
+  // Feature 3: Urgency picker
+  html += `<div class="drawer-section-title">Urgency</div>
+    <div class="urgency-picker">
+      <button class="urgency-option ${!urgLevel ? 'active-none' : ''}" onclick="setUrgencyFromDrawer('${stepId}','${milestoneId}','${track}',null)">None</button>
+      <button class="urgency-option ${urgLevel === 'important' ? 'active-important' : ''}" onclick="setUrgencyFromDrawer('${stepId}','${milestoneId}','${track}','important')"><span class="urgency-dot important"></span> Important</button>
+      <button class="urgency-option ${urgLevel === 'critical' ? 'active-critical' : ''}" onclick="setUrgencyFromDrawer('${stepId}','${milestoneId}','${track}','critical')"><span class="urgency-dot critical"></span> Critical</button>
+    </div>`;
+
   if (step.checklist && step.checklist.length > 0) {
     html += `<div class="drawer-section-title">Checklist</div><div class="drawer-checklist">`;
     step.checklist.forEach((item, i) => {
       const checked = ss.checklist && ss.checklist[i] ? 'checked' : '';
-      html += `<label><input type="checkbox" class="drawer-cb" data-step="${stepId}" data-idx="${i}" ${checked}><span>${item}</span></label>`;
+      html += `<label><input type="checkbox" class="drawer-cb" data-step="${stepId}" data-idx="${i}" ${checked}><span>${escapeHtml(item)}</span></label>`;
     });
     html += `</div>`;
   }
 
-  // Notes
   html += `<div class="drawer-section-title">Notes</div>
-    <textarea class="drawer-notes" id="drawerNotes" placeholder="Your notes...">${ss.notes || ''}</textarea>`;
+    <textarea class="drawer-notes" id="drawerNotes" placeholder="Your notes...">${escapeHtml(ss.notes || '')}</textarea>`;
 
-  // Due date
   html += `<div class="drawer-section-title">Due date</div>
     <input type="date" class="drawer-due-date" id="drawerDue" value="${state.dueDates[stepId] || ''}">`;
 
-  // Mark done
   if (ss.status !== 'done') {
     html += `<button class="btn btn-outline" style="width:100%;margin-top:16px;" onclick="markStepDone('${stepId}','${milestoneId}')">Mark as done</button>`;
+  }
+
+  // Feature 1: delete custom step option
+  const isCustomStep = (state.customSteps[milestoneId] || []).some(s => s.id === stepId);
+  if (isCustomStep) {
+    html += `<button class="btn btn-danger" style="width:100%;margin-top:8px;" onclick="deleteCustomStep('${stepId}','${milestoneId}','${track}')">Delete custom step</button>`;
   }
 
   const drawer = document.getElementById('drawer');
   drawer.innerHTML = html;
   document.getElementById('drawerOverlay').classList.add('open');
 
-  // Listeners
   drawer.querySelectorAll('.drawer-cb').forEach(cb => {
     cb.addEventListener('change', () => {
       const sid = cb.dataset.step;
@@ -667,6 +1013,7 @@ function openStepDrawer(stepId, milestoneId, track) {
       saveState();
     });
   });
+
   const notesEl = document.getElementById('drawerNotes');
   if (notesEl) {
     notesEl.addEventListener('input', () => {
@@ -684,6 +1031,27 @@ function openStepDrawer(stepId, milestoneId, track) {
   }
 }
 
+// Feature 3: set urgency from drawer
+function setUrgencyFromDrawer(stepId, milestoneId, track, level) {
+  if (level === null) delete state.urgency[stepId];
+  else state.urgency[stepId] = level;
+  saveState();
+  openStepDrawer(stepId, milestoneId, track);
+}
+
+// Feature 3: render urgency in drawer (partial update)
+function renderUrgencyInDrawer(itemId) {
+  const picker = document.querySelector('.urgency-picker');
+  if (!picker) return;
+  const urgLevel = getUrgency(itemId);
+  picker.querySelectorAll('.urgency-option').forEach((btn, i) => {
+    btn.className = 'urgency-option';
+    if (i === 0 && !urgLevel) btn.classList.add('active-none');
+    if (i === 1 && urgLevel === 'important') btn.classList.add('active-important');
+    if (i === 2 && urgLevel === 'critical') btn.classList.add('active-critical');
+  });
+}
+
 function closeDrawer() {
   document.getElementById('drawerOverlay').classList.remove('open');
 }
@@ -691,7 +1059,6 @@ function closeDrawer() {
 function markStepDone(stepId, milestoneId) {
   const ss = getStepState(stepId);
   ss.status = 'done';
-  // Check if all steps done → milestone done
   const steps = getAllSteps(milestoneId);
   const allDone = steps.every(s => getStepState(s.id).status === 'done');
   if (allDone) {
@@ -700,17 +1067,25 @@ function markStepDone(stepId, milestoneId) {
   }
   const track = getTrackForMilestone(milestoneId);
   const ms = getMilestone(milestoneId);
-  state.lastAction = `${TRACK_LABELS[track]} → ${ms ? ms.title : ''} → done`;
+  state.lastAction = `${getTrackLabel(track)} → ${ms ? ms.title : ''} → done`;
   saveState();
   closeDrawer();
   handleRoute();
+}
+
+// Feature 1: delete custom step
+function deleteCustomStep(stepId, milestoneId, trackId) {
+  if (!state.customSteps[milestoneId]) return;
+  state.customSteps[milestoneId] = state.customSteps[milestoneId].filter(s => s.id !== stepId);
+  saveState();
+  closeDrawer();
+  renderPath(trackId, milestoneId);
 }
 
 // ---- RENDER: Focus ----
 function renderFocus(milestoneId, stepId) {
   const el = document.getElementById('view-focus');
 
-  // If no params, get next queued
   if (!milestoneId || !stepId) {
     const next = getNextQueuedTask();
     if (next) { milestoneId = next.milestone.id; stepId = next.step.id; }
@@ -718,7 +1093,8 @@ function renderFocus(milestoneId, stepId) {
   }
 
   const ms = getMilestone(milestoneId);
-  const step = ms ? (ms.steps || []).find(s => s.id === stepId) : null;
+  const allSteps = getAllSteps(milestoneId);
+  const step = ms ? allSteps.find(s => s.id === stepId) : null;
   if (!ms || !step) { el.innerHTML = '<div class="focus-view"><p style="color:var(--text-muted)">Task not found.</p></div>'; return; }
 
   const track = getTrackForMilestone(milestoneId);
@@ -743,8 +1119,8 @@ function renderFocus(milestoneId, stepId) {
   const circumference = 2 * Math.PI * radius;
 
   let html = `<div class="focus-view">
-    <div class="focus-breadcrumb">${TRACK_LABELS[track]} → ${ms.title}</div>
-    <div class="focus-step-title">${step.title}</div>
+    <div class="focus-breadcrumb">${escapeHtml(getTrackLabel(track))} → ${escapeHtml(ms.title)}</div>
+    <div class="focus-step-title">${escapeHtml(step.title)}</div>
 
     <div class="timer-ring">
       <svg viewBox="0 0 180 180">
@@ -774,7 +1150,6 @@ function renderFocus(milestoneId, stepId) {
   html += `</div>`;
   el.innerHTML = html;
 
-  // Update ring position if timer is mid-run
   updateTimerRing();
 }
 
@@ -793,7 +1168,6 @@ function setTimerMode(warmup) {
   const display = document.getElementById('timerDisplay');
   if (display) display.textContent = formatTime(timerRemaining);
   updateTimerRing();
-  // Update toggle buttons
   document.querySelectorAll('.focus-toggle button').forEach((btn, i) => {
     btn.classList.toggle('active', i === (warmup ? 1 : 0));
   });
@@ -849,7 +1223,6 @@ function updateTimerRing() {
 }
 
 function completeBlock() {
-  // Log the block
   const logEntry = {
     date: todayStr(),
     stepId: timerStepId,
@@ -860,33 +1233,22 @@ function completeBlock() {
   };
   state.focusLog.push(logEntry);
 
-  // Update step state
   const ss = getStepState(timerStepId);
   ss.blocksCompleted = (ss.blocksCompleted || 0) + 1;
   if (ss.status !== 'done') ss.status = 'active';
 
-  // Check if step is "done" based on blocks
-  const ms = getMilestone(timerMilestoneId);
-  const step = ms ? (ms.steps || []).find(s => s.id === timerStepId) : null;
-  if (step && step.estimated_blocks && ss.blocksCompleted >= step.estimated_blocks) {
-    // Don't auto-complete, but mark as ready
-  }
-
-  // Award points
   const pts = awardPoints(timerIsWarmup);
-
-  // Update streak
   updateStreak();
 
-  // Last action
   const track = getTrackForMilestone(timerMilestoneId);
-  state.lastAction = `${TRACK_LABELS[track]} → ${ms ? ms.title : ''} → ${step ? step.title : ''}`;
+  const ms = getMilestone(timerMilestoneId);
+  const allSteps = getAllSteps(timerMilestoneId);
+  const step = allSteps.find(s => s.id === timerStepId);
+  state.lastAction = `${getTrackLabel(track)} → ${ms ? ms.title : ''} → ${step ? step.title : ''}`;
   saveState();
 
-  // Show points popup
   showPointsPopup(pts);
 
-  // Re-render focus
   const hash = window.location.hash;
   if (hash.startsWith('#focus')) {
     renderFocus(timerMilestoneId, timerStepId);
@@ -923,7 +1285,6 @@ function renderSchedule() {
   el.innerHTML = html;
   el.dataset.tab = currentTab;
 
-  // Add listeners for focus project toggles
   el.querySelectorAll('.focus-proj-toggle').forEach(toggle => {
     toggle.addEventListener('click', () => {
       const track = toggle.dataset.track;
@@ -947,14 +1308,12 @@ function switchScheduleTab(tab) {
 }
 
 function renderScheduleReview() {
-  // Show this week's data (more useful in practice)
   const thisWeekStart = getWeekStart(todayStr());
   const weekBlocks = getWeekBlocks(thisWeekStart);
   const fullBlocks = weekBlocks.filter(l => !l.warmup);
   const weeklyGoal = state.settings.weeklyGoal || 10;
   const totalHours = Math.round(fullBlocks.length * state.settings.blockDurationMin / 60 * 10) / 10;
 
-  // Also check last week
   const d = new Date(thisWeekStart + 'T00:00:00');
   d.setDate(d.getDate() - 7);
   const prevWeekStart = d.toISOString().slice(0, 10);
@@ -963,7 +1322,6 @@ function renderScheduleReview() {
 
   let html = `<div class="review-summary">This week: ${fullBlocks.length} / ${weeklyGoal} blocks completed</div>`;
 
-  // Per-project breakdown
   const breakdown = {};
   for (const log of weekBlocks) {
     const track = getTrackForMilestone(log.milestoneId) || 'unknown';
@@ -973,17 +1331,15 @@ function renderScheduleReview() {
     html += `<div class="review-breakdown">`;
     for (const [track, count] of Object.entries(breakdown)) {
       const color = TRACK_COLORS[track] || '#5a5a66';
-      html += `<div class="review-breakdown-item"><span class="dot" style="background:${color}"></span> ${TRACK_LABELS[track] || track}: ${count} blocks</div>`;
+      html += `<div class="review-breakdown-item"><span class="dot" style="background:${color}"></span> ${escapeHtml(getTrackLabel(track))}: ${count} blocks</div>`;
     }
     html += `</div>`;
   }
 
-  // Morale
   if (totalHours > 0) {
     html += `<div class="morale-msg">You've spent ${totalHours} hours in deep focus this week. That's meaningful progress.</div>`;
   }
 
-  // Last week summary
   if (lastWeekFull.length > 0) {
     html += `<div style="margin-top:24px;padding-top:16px;border-top:1px solid var(--border);">
       <div class="review-summary" style="font-size:13px;color:var(--text-muted);">Last week: ${lastWeekFull.length} / ${weeklyGoal} blocks</div>
@@ -1003,19 +1359,18 @@ function renderSchedulePlan() {
 
   for (const track of ACTIVE_TRACKS) {
     const color = TRACK_COLORS[track];
-    const label = TRACK_LABELS[track];
+    const label = getTrackLabel(track);
     const selected = fps.includes(track);
     const ms = getCurrentMilestone(track);
     const msTitle = ms ? ms.title : 'Complete';
     html += `<div class="focus-proj-toggle${selected ? ' selected' : ''}" data-track="${track}" style="${selected ? `border-color:${color}` : ''}">
       <span class="dot" style="background:${color}"></span>
-      <span class="fp-name">${label}</span>
-      <span style="font-size:11px;color:var(--text-muted);flex:1;text-align:right;">${msTitle}</span>
+      <span class="fp-name">${escapeHtml(label)}</span>
+      <span style="font-size:11px;color:var(--text-muted);flex:1;text-align:right;">${escapeHtml(msTitle)}</span>
     </div>`;
   }
   html += `</div>`;
 
-  // Plan grid
   if (fps.length > 0) {
     html += generatePlanGrid(fps, weeklyGoal);
     if (!state.weeklyPlan.approved) {
@@ -1037,21 +1392,28 @@ function generatePlanGrid(focusProjects, weeklyGoal) {
   const hardPerDay = Math.ceil(hardBlocks / 5);
   const flexPerDay = Math.ceil(flexTotal / 5);
 
-  // Gather steps from focus projects
+  // Feature 3: gather tasks sorted by urgency
   const taskQueue = [];
   for (const track of focusProjects) {
     const ms = getCurrentMilestone(track);
     if (!ms) continue;
-    const steps = ms.steps || [];
+    const steps = getAllSteps(ms.id);
     for (const step of steps) {
       const ss = getStepState(step.id);
       if (ss.status === 'done') continue;
       const remaining = Math.max(0, (step.estimated_blocks || 1) - (ss.blocksCompleted || 0));
+      const urgLevel = getUrgency(step.id) || getUrgency(ms.id);
       for (let i = 0; i < remaining; i++) {
-        taskQueue.push({ track, milestoneId: ms.id, stepId: step.id, stepTitle: step.title });
+        taskQueue.push({ track, milestoneId: ms.id, stepId: step.id, stepTitle: step.title, urgLevel: urgLevel || null });
       }
     }
   }
+
+  // Sort by urgency: critical first, important second, null last
+  taskQueue.sort((a, b) => {
+    const order = { critical: 0, important: 1, null: 2 };
+    return (order[a.urgLevel] ?? 2) - (order[b.urgLevel] ?? 2);
+  });
 
   let html = `<div class="plan-grid">`;
   let taskIdx = 0;
@@ -1062,7 +1424,8 @@ function generatePlanGrid(focusProjects, weeklyGoal) {
         const t = taskQueue[taskIdx];
         const color = TRACK_COLORS[t.track];
         const shortTitle = t.stepTitle.length > 20 ? t.stepTitle.slice(0, 18) + '..' : t.stepTitle;
-        html += `<div class="plan-slot"><span class="dot" style="background:${color}"></span>${shortTitle}</div>`;
+        const urgClass = t.urgLevel ? ` urgency-${t.urgLevel}` : '';
+        html += `<div class="plan-slot${urgClass}"><span class="dot" style="background:${color}"></span>${escapeHtml(shortTitle)}</div>`;
         taskIdx++;
       }
     }
@@ -1118,15 +1481,268 @@ function addIdea() {
 }
 
 function promoteIdea(ideaId) {
-  // Simple promotion — just mark as promoted
   const idea = state.ideas.find(i => i.id === ideaId);
   if (idea) { idea.promoted = true; saveState(); renderIdeas(); }
 }
 
-function escapeHtml(str) {
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
+// ---- RENDER: Admin (Feature 5) ----
+function renderAdmin() {
+  const el = document.getElementById('view-admin');
+  const today = todayStr();
+
+  // Split tasks
+  const allTasks = state.adminTasks || [];
+  const completedToday = allTasks.filter(t => t.completedDate === today);
+  const todayTasks = allTasks.filter(t => t.createdAt && t.createdAt.startsWith(today));
+  const uncompletedOlder = allTasks.filter(t => !t.completedDate && (!t.createdAt || !t.createdAt.startsWith(today)));
+
+  const capCount = completedToday.length;
+  const capReached = capCount >= 2;
+
+  let html = `<div class="section-title">Admin Tasks</div>`;
+
+  // Cap bar
+  html += `<div class="admin-cap-bar">
+    <span class="admin-cap-count">Completed today: <strong>${capCount}/2</strong></span>
+    ${capReached ? '<span class="admin-cap-reached">Admin cap reached. Focus on deep work.</span>' : ''}
+  </div>`;
+
+  // Input
+  html += `<div class="admin-input-wrap">
+    <input class="admin-input" id="adminInput" placeholder="Email, form, meeting..." onkeydown="if(event.key==='Enter')addAdminTask()">
+    <button class="btn btn-outline" onclick="addAdminTask()">Add</button>
+  </div>`;
+
+  // Today section
+  if (todayTasks.length > 0) {
+    html += `<div class="admin-section-label">Today</div>`;
+    for (const task of todayTasks) {
+      const isCompleted = !!task.completedDate;
+      html += renderAdminTaskCard(task, isCompleted);
+    }
+  }
+
+  // Older uncompleted
+  if (uncompletedOlder.length > 0) {
+    html += `<div class="admin-section-label" style="margin-top:16px;">Older — uncompleted</div>`;
+    for (const task of uncompletedOlder) {
+      html += renderAdminTaskCard(task, false);
+    }
+  }
+
+  if (allTasks.length === 0) {
+    html += `<div style="font-size:13px;color:var(--text-muted);padding:24px 0;text-align:center;">No admin tasks. Keep it minimal.</div>`;
+  }
+
+  el.innerHTML = html;
+
+  // Attach checkbox listeners
+  el.querySelectorAll('.admin-task-cb').forEach(cb => {
+    cb.addEventListener('change', () => {
+      const taskId = cb.dataset.id;
+      const task = state.adminTasks.find(t => t.id === taskId);
+      if (!task) return;
+      if (cb.checked) {
+        task.completedDate = today;
+      } else {
+        task.completedDate = null;
+      }
+      saveState();
+      renderAdmin();
+    });
+  });
+}
+
+function renderAdminTaskCard(task, isCompleted) {
+  return `<div class="admin-task-card${isCompleted ? ' completed' : ''}">
+    <input type="checkbox" class="admin-task-cb" data-id="${task.id}" ${isCompleted ? 'checked' : ''}>
+    <span class="admin-task-text">${escapeHtml(task.text)}</span>
+    <button class="admin-task-delete" onclick="deleteAdminTask('${task.id}')" title="Delete">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
+    </button>
+  </div>`;
+}
+
+function addAdminTask() {
+  const input = document.getElementById('adminInput');
+  const text = (input.value || '').trim();
+  if (!text) return;
+  if (!state.adminTasks) state.adminTasks = [];
+  state.adminTasks.push({
+    id: 'admin-' + Date.now(),
+    text,
+    createdAt: new Date().toISOString().slice(0, 10),
+    completedDate: null
+  });
+  saveState();
+  input.value = '';
+  renderAdmin();
+}
+
+function deleteAdminTask(taskId) {
+  state.adminTasks = (state.adminTasks || []).filter(t => t.id !== taskId);
+  saveState();
+  renderAdmin();
+}
+
+// ---- RENDER: Prep (Feature 6) ----
+function renderPrep() {
+  const el = document.getElementById('view-prep');
+  const batches = state.prepBatches || [];
+
+  let html = `<div class="section-title">Sample Prep</div>`;
+
+  // New batch form
+  html += `<div class="prep-batch-new">
+    <h4>Start new batch</h4>
+    <input class="prep-input" id="prepBatchName" placeholder="Sample name / ID (e.g. Batch-04)">
+    <input type="date" class="prep-date-input" id="prepBatchDate" title="Start date">
+    <select class="prep-select" id="prepBatchProject">
+      <option value="">Link to project (optional)</option>
+      ${ACTIVE_TRACKS.map(t => `<option value="${t}">${escapeHtml(getTrackLabel(t))}</option>`).join('')}
+    </select>
+    <button class="btn btn-outline" onclick="startNewBatch()" style="flex:0 0 auto;">Start</button>
+  </div>`;
+
+  // Active batches
+  if (batches.length > 0) {
+    html += `<div style="margin-bottom:24px;">`;
+    for (const batch of batches) {
+      html += renderBatchCard(batch);
+    }
+    html += `</div>`;
+  }
+
+  // Protocol template (reference)
+  html += `<div class="prep-template-header">Protocol Template (reference)</div>`;
+  if (typeof PROTOCOL_PHASES !== 'undefined') {
+    for (const phase of PROTOCOL_PHASES) {
+      html += `<div class="prep-phase">
+        <div class="prep-phase-name">
+          ${escapeHtml(phase.name)}
+          <span class="prep-phase-day">Day ${phase.protocol_day}</span>
+          ${phase.can_stop ? `<span class="prep-phase-stop">Stop ok</span>` : ''}
+        </div>`;
+      for (const step of phase.steps) {
+        html += `<div class="prep-step">
+          <div class="prep-step-info">
+            <div class="prep-step-name">${escapeHtml(step.name)}</div>
+            ${step.note ? `<div class="prep-step-note">${escapeHtml(step.note)}</div>` : ''}
+          </div>
+        </div>`;
+      }
+      html += `</div>`;
+    }
+  }
+
+  el.innerHTML = html;
+
+  // Attach batch toggle listeners
+  el.querySelectorAll('.batch-card-header').forEach(header => {
+    header.addEventListener('click', () => {
+      const card = header.closest('.batch-card');
+      card.classList.toggle('open');
+    });
+  });
+
+  // Attach batch checklist listeners
+  el.querySelectorAll('.prep-step-cb').forEach(cb => {
+    cb.addEventListener('change', () => {
+      const batchId = cb.dataset.batch;
+      const stepId = cb.dataset.step;
+      const batch = (state.prepBatches || []).find(b => b.id === batchId);
+      if (!batch) return;
+      if (!batch.checks) batch.checks = {};
+      batch.checks[stepId] = cb.checked;
+      saveState();
+      // Update progress bar only
+      updateBatchProgress(batchId);
+    });
+  });
+}
+
+function renderBatchCard(batch) {
+  const totalSteps = typeof PROTOCOL_PHASES !== 'undefined'
+    ? PROTOCOL_PHASES.reduce((sum, ph) => sum + ph.steps.length, 0) : 0;
+  const completedSteps = Object.values(batch.checks || {}).filter(Boolean).length;
+  const pct = totalSteps > 0 ? Math.round(completedSteps / totalSteps * 100) : 0;
+  const linkedLabel = batch.linkedProject ? getTrackLabel(batch.linkedProject) : null;
+
+  let html = `<div class="batch-card" id="batch-${batch.id}">
+    <div class="batch-card-header">
+      <div>
+        <div class="batch-name">${escapeHtml(batch.name)}</div>
+        <div class="batch-meta">Started ${batch.startDate || 'unknown'}${linkedLabel ? ` · ${escapeHtml(linkedLabel)}` : ''} · ${pct}% complete</div>
+      </div>
+      <span class="batch-chevron">${ICONS.chevronRight}</span>
+    </div>
+    <div class="batch-body">
+      <div class="batch-progress-bar">
+        <div class="batch-progress-fill" id="batch-prog-${batch.id}" style="width:${pct}%"></div>
+      </div>`;
+
+  // Checklist per phase
+  if (typeof PROTOCOL_PHASES !== 'undefined') {
+    for (const phase of PROTOCOL_PHASES) {
+      html += `<div style="margin-bottom:12px;">
+        <div class="prep-phase-name" style="margin-bottom:4px;">${escapeHtml(phase.name)}</div>`;
+      for (const step of phase.steps) {
+        const checked = batch.checks && batch.checks[step.id] ? 'checked' : '';
+        html += `<div class="prep-step">
+          <input type="checkbox" class="prep-step-cb" data-batch="${batch.id}" data-step="${step.id}" ${checked}>
+          <div class="prep-step-info">
+            <div class="prep-step-name" style="${checked ? 'text-decoration:line-through;color:var(--text-muted);' : ''}">${escapeHtml(step.name)}</div>
+            ${step.note ? `<div class="prep-step-note">${escapeHtml(step.note)}</div>` : ''}
+          </div>
+        </div>`;
+      }
+      html += `</div>`;
+    }
+  }
+
+  html += `<button class="btn btn-danger" style="margin-top:8px;font-size:12px;" onclick="deleteBatch('${batch.id}')">Remove batch</button>`;
+  html += `</div></div>`;
+  return html;
+}
+
+function updateBatchProgress(batchId) {
+  const batch = (state.prepBatches || []).find(b => b.id === batchId);
+  if (!batch) return;
+  const totalSteps = typeof PROTOCOL_PHASES !== 'undefined'
+    ? PROTOCOL_PHASES.reduce((sum, ph) => sum + ph.steps.length, 0) : 0;
+  const completedSteps = Object.values(batch.checks || {}).filter(Boolean).length;
+  const pct = totalSteps > 0 ? Math.round(completedSteps / totalSteps * 100) : 0;
+  const bar = document.getElementById(`batch-prog-${batchId}`);
+  if (bar) bar.style.width = pct + '%';
+  const metaEl = document.querySelector(`#batch-${batchId} .batch-meta`);
+  if (metaEl) {
+    metaEl.textContent = metaEl.textContent.replace(/\d+% complete/, `${pct}% complete`);
+  }
+}
+
+function startNewBatch() {
+  const name = (document.getElementById('prepBatchName')?.value || '').trim();
+  if (!name) { document.getElementById('prepBatchName')?.focus(); return; }
+  const startDate = document.getElementById('prepBatchDate')?.value || todayStr();
+  const linkedProject = document.getElementById('prepBatchProject')?.value || null;
+
+  const batch = {
+    id: 'batch-' + Date.now(),
+    name,
+    startDate,
+    checks: {},
+    linkedProject: linkedProject || null
+  };
+  if (!state.prepBatches) state.prepBatches = [];
+  state.prepBatches.push(batch);
+  saveState();
+  renderPrep();
+}
+
+function deleteBatch(batchId) {
+  state.prepBatches = (state.prepBatches || []).filter(b => b.id !== batchId);
+  saveState();
+  renderPrep();
 }
 
 // ---- RENDER: Settings ----
@@ -1174,6 +1790,18 @@ function renderSettings() {
         <span class="setting-label">Current streak</span>
         <span style="font-size:13px;color:var(--text-primary)">${state.streak.current} days</span>
       </div>
+      <div class="setting-row">
+        <span class="setting-label">Custom steps</span>
+        <span style="font-size:13px;color:var(--text-primary)">${Object.values(state.customSteps || {}).reduce((s,a)=>s+a.length,0)}</span>
+      </div>
+      <div class="setting-row">
+        <span class="setting-label">Admin tasks</span>
+        <span style="font-size:13px;color:var(--text-primary)">${(state.adminTasks || []).length}</span>
+      </div>
+      <div class="setting-row">
+        <span class="setting-label">Prep batches</span>
+        <span style="font-size:13px;color:var(--text-primary)">${(state.prepBatches || []).length}</span>
+      </div>
     </div>
 
     <div class="settings-group">
@@ -1182,7 +1810,6 @@ function renderSettings() {
 
   el.innerHTML = html;
 
-  // Save on change
   ['settingBlockDur', 'settingWarmupDur', 'settingMinBlocks', 'settingMaxBlocks', 'settingWeeklyGoal'].forEach(id => {
     const input = document.getElementById(id);
     if (input) input.addEventListener('change', saveSettings);
@@ -1204,6 +1831,14 @@ function resetAllData() {
     state = defaultState();
     handleRoute();
   }
+}
+
+// ---- Utility ----
+function escapeHtml(str) {
+  if (!str) return '';
+  const div = document.createElement('div');
+  div.textContent = String(str);
+  return div.innerHTML;
 }
 
 // ---- Navigation events ----
@@ -1243,7 +1878,6 @@ window.addEventListener('hashchange', handleRoute);
   if (state.weeklyPlan.weekOf && state.weeklyPlan.weekOf !== currentWeek) {
     state.weeklyPlan.approved = false;
     state.weeklyPlan.blocks = {};
-    // Keep focusProjects so user remembers their choices
     saveState();
   }
 })();
