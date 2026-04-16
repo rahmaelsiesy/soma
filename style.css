@@ -1351,6 +1351,27 @@ a { color: inherit; text-decoration: none; }
 [data-theme="fog"] .done-msg { background: rgba(125,184,138,0.1); border-color: rgba(125,184,138,0.2); }
 
 /* ========================================
+   PLAN MY WEEK BUTTON
+   ======================================== */
+.plan-week-btn {
+  display: flex; align-items: center; gap: var(--sp-2); width: 100%;
+  margin-top: var(--sp-4); padding: var(--sp-3) var(--sp-4);
+  font-family: var(--font); font-size: var(--text-sm); font-weight: 500;
+  color: var(--text-secondary); background: var(--surface);
+  border: 1px dashed var(--border); border-radius: var(--r-lg);
+  cursor: pointer; transition: background var(--t-fast), color var(--t-fast), border-color var(--t-fast);
+  justify-content: center;
+}
+.plan-week-btn:hover {
+  background: var(--surface-hover); color: var(--text-primary);
+  border-color: var(--text-muted);
+}
+.plan-week-btn.copied {
+  background: rgba(125,184,138,0.1); border-color: rgba(125,184,138,0.3);
+  color: var(--c-package); border-style: solid;
+}
+
+/* ========================================
    DOCS VIEW
    ======================================== */
 .docs-filter {

@@ -557,6 +557,12 @@ function renderHome() {
     </div>`;
   }
 
+  // Plan My Week button
+  html += `<button class="plan-week-btn" id="planWeekBtn" onclick="copyWeeklyPrompt()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+    Plan my week with AI
+  </button>`;
+
   el.innerHTML = html;
 }
 
@@ -1818,6 +1824,156 @@ function deleteBatch(batchId) {
   state.prepBatches = (state.prepBatches || []).filter(b => b.id !== batchId);
   saveState();
   renderPrep();
+}
+
+// ---- Plan My Week: AI Prompt Builder ----
+function generateWeeklyPrompt() {
+  const now = new Date();
+  const weekStart = getWeekStart(todayStr());
+  const weekBlocks = getWeekBlocks(weekStart);
+  const todayBlocks = getTodayBlocks();
+  const s = state.settings;
+
+  let prompt = `You are helping a PhD student (computational biology, 5th year, Caltech) prioritize their week. They have ADHD and get overwhelmed seeing everything at once — keep your advice concrete, calm, and focused on "what to do next" rather than listing everything.\n\n`;
+  prompt += `Today: ${formatDate(now)}\n`;
+  prompt += `Weekly goal: ${s.weeklyGoal || 10} focus blocks (${s.blockDurationMin || 90} min each), max ${s.blocksPerDay?.max || 4}/day, weekends off\n`;
+  prompt += `This week so far: ${weekBlocks.length} blocks completed\n`;
+  prompt += `Points: ${state.points} | Streak: ${state.streak.current} days\n\n`;
+
+  // Current weekly plan
+  const fp = state.weeklyPlan.focusProjects || [];
+  if (fp.length > 0) {
+    prompt += `Current week focus: ${fp.map(t => getTrackLabel(t)).join(', ')}\n\n`;
+  } else {
+    prompt += `No weekly focus set yet.\n\n`;
+  }
+
+  // Project status
+  prompt += `--- ACTIVE PROJECTS ---\n\n`;
+  for (const track of ACTIVE_TRACKS) {
+    const label = getTrackLabel(track);
+    const milestones = QUEST_DATA[track] || [];
+    const current = getCurrentMilestone(track);
+    const urg = current ? (getUrgency(current.id) || 'none') : 'none';
+    const dueDate = current ? (state.dueDates[current.id] || 'no due date') : '';
+
+    prompt += `## ${label}\n`;
+
+    // Show all milestones with status
+    for (const ms of milestones) {
+      const msState = getMilestoneState(ms.id);
+      const steps = getAllSteps(ms.id);
+      const doneSteps = steps.filter(st => getStepState(st.id).status === 'done').length;
+      const remaining = getRemainingBlocksForMilestone(ms.id);
+      const isCurrent = current && ms.id === current.id;
+      const marker = msState.status === 'done' ? '[DONE]' : isCurrent ? '[CURRENT]' : '[UPCOMING]';
+      const msUrg = getUrgency(ms.id);
+      const urgStr = msUrg ? ` (urgency: ${msUrg})` : '';
+      const due = state.dueDates[ms.id] ? ` — due ${state.dueDates[ms.id]}` : '';
+      prompt += `  ${marker} ${ms.title} — ${doneSteps}/${steps.length} steps done, ~${remaining} blocks remaining${urgStr}${due}\n`;
+
+      // For current milestone, list active steps
+      if (isCurrent) {
+        for (const step of steps) {
+          const ss = getStepState(step.id);
+          if (ss.status === 'done') continue;
+          const blocks = getBlocksForStep(step.id);
+          const est = step.estimated_blocks || 1;
+          prompt += `    - ${step.title} (${blocks}/${est} blocks)\n`;
+        }
+      }
+    }
+    prompt += `\n`;
+  }
+
+  // Last week's focus log summary
+  const lastWeekStart = new Date(weekStart + 'T00:00:00');
+  lastWeekStart.setDate(lastWeekStart.getDate() - 7);
+  const lwStr = lastWeekStart.toISOString().split('T')[0];
+  const lastWeekBlocks = getWeekBlocks(lwStr);
+  if (lastWeekBlocks.length > 0) {
+    prompt += `--- LAST WEEK ---\n`;
+    prompt += `Completed ${lastWeekBlocks.length} blocks. Breakdown by project:\n`;
+    const byTrack = {};
+    lastWeekBlocks.forEach(l => {
+      const t = getTrackForMilestone(l.milestoneId) || 'unknown';
+      byTrack[t] = (byTrack[t] || 0) + 1;
+    });
+    for (const [t, count] of Object.entries(byTrack)) {
+      prompt += `  ${getTrackLabel(t)}: ${count} blocks\n`;
+    }
+    prompt += `\n`;
+  }
+
+  // This week's blocks by project
+  if (weekBlocks.length > 0) {
+    prompt += `--- THIS WEEK SO FAR ---\n`;
+    const byTrack = {};
+    weekBlocks.forEach(l => {
+      const t = getTrackForMilestone(l.milestoneId) || 'unknown';
+      byTrack[t] = (byTrack[t] || 0) + 1;
+    });
+    for (const [t, count] of Object.entries(byTrack)) {
+      prompt += `  ${getTrackLabel(t)}: ${count} blocks\n`;
+    }
+    prompt += `\n`;
+  }
+
+  // Admin tasks
+  const pendingAdmin = (state.adminTasks || []).filter(t => !t.done);
+  if (pendingAdmin.length > 0) {
+    prompt += `--- ADMIN TASKS (misc, max 2/day) ---\n`;
+    pendingAdmin.slice(0, 5).forEach(t => {
+      prompt += `  - ${t.title}\n`;
+    });
+    prompt += `\n`;
+  }
+
+  // Prep batches in progress
+  const activeBatches = (state.prepBatches || []).filter(b => !b.steps.every(s => s.done));
+  if (activeBatches.length > 0) {
+    prompt += `--- SAMPLE PREP IN PROGRESS ---\n`;
+    activeBatches.forEach(b => {
+      const done = b.steps.filter(s => s.done).length;
+      prompt += `  ${b.label}: ${done}/${b.steps.length} steps done\n`;
+    });
+    prompt += `\n`;
+  }
+
+  prompt += `--- YOUR TASK ---\n`;
+  prompt += `Based on all the above, help me plan this week. Tell me:\n`;
+  prompt += `1. Which 1-2 projects to focus on and why\n`;
+  prompt += `2. A suggested daily breakdown (Mon-Fri, 2 blocks/day)\n`;
+  prompt += `3. What to deprioritize or let go of this week\n`;
+  prompt += `4. Any risks (approaching deadlines, stalled milestones)\n\n`;
+  prompt += `Keep it brief and calming. Don't overwhelm me with options.`;
+
+  return prompt;
+}
+
+async function copyWeeklyPrompt() {
+  const prompt = generateWeeklyPrompt();
+  try {
+    await navigator.clipboard.writeText(prompt);
+    const btn = document.getElementById('planWeekBtn');
+    const orig = btn.innerHTML;
+    btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M20 6L9 17l-5-5"/></svg> Copied — paste into any AI chat`;
+    btn.classList.add('copied');
+    setTimeout(() => { btn.innerHTML = orig; btn.classList.remove('copied'); }, 3000);
+  } catch (e) {
+    // Fallback: open in modal
+    const textarea = document.createElement('textarea');
+    textarea.value = prompt;
+    document.body.appendChild(textarea);
+    textarea.select();
+    document.execCommand('copy');
+    document.body.removeChild(textarea);
+    const btn = document.getElementById('planWeekBtn');
+    const orig = btn.innerHTML;
+    btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M20 6L9 17l-5-5"/></svg> Copied`;
+    btn.classList.add('copied');
+    setTimeout(() => { btn.innerHTML = orig; btn.classList.remove('copied'); }, 3000);
+  }
 }
 
 // ---- RENDER: Docs ----
