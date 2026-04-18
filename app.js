@@ -113,15 +113,36 @@ function loadState() {
       // Task 4 migration: de-dup customSteps that were corrupted by the old
       // moveStep() which wrote both _base copies AND user-added steps.
       // If a customSteps array has any _base entries, dedupe by id.
+      // Round 2 Task A: also drop customSteps for milestones that no longer
+      // exist in QUEST_DATA at all (fully orphaned), and drop _base entries
+      // whose underlying base step id no longer exists.
+      const allMilestoneIds = new Set();
+      const baseIdsByMs = {};
+      if (typeof QUEST_DATA === 'object' && QUEST_DATA) {
+        for (const track of Object.keys(QUEST_DATA)) {
+          for (const ms of (QUEST_DATA[track] || [])) {
+            allMilestoneIds.add(ms.id);
+            baseIdsByMs[ms.id] = new Set((ms.steps || []).map(st => st.id));
+          }
+        }
+      }
       const customSteps = s.customSteps || {};
       for (const msId of Object.keys(customSteps)) {
+        if (!allMilestoneIds.has(msId)) {
+          // Milestone no longer exists — drop the entire entry.
+          delete customSteps[msId];
+          continue;
+        }
         const arr = customSteps[msId];
-        if (!Array.isArray(arr)) continue;
+        if (!Array.isArray(arr)) { delete customSteps[msId]; continue; }
+        const validBaseIds = baseIdsByMs[msId] || new Set();
         const seen = new Set();
         const cleaned = [];
         for (const step of arr) {
           if (!step || !step.id) continue;
           if (seen.has(step.id)) continue;
+          // Drop orphan _base entries whose underlying base step is gone.
+          if (step._base && !validBaseIds.has(step.id)) continue;
           seen.add(step.id);
           cleaned.push(step);
         }
@@ -218,11 +239,10 @@ function weeksUntil(dateStr) {
 
 // ---- Data helpers ----
 // Feature 1: merged steps (base + custom)
-// Task 4 fix: if custom[] contains _base-flagged entries, it's a full override
-// (reordered copy of the base steps) — use it as-is to prevent duplication.
+// Round 2 Task A: self-healing — always dedupe by id and drop orphan _base
+// entries whose underlying base step no longer exists in QUEST_DATA.
 function getAllSteps(milestoneId) {
   const custom = state.customSteps[milestoneId] || [];
-  if (custom.some(s => s && s._base)) return custom;
   let baseSteps = [];
   for (const track of Object.keys(QUEST_DATA)) {
     for (const ms of QUEST_DATA[track]) {
@@ -230,7 +250,23 @@ function getAllSteps(milestoneId) {
     }
     if (baseSteps.length) break;
   }
-  return [...baseSteps, ...custom];
+  let out;
+  if (custom.some(s => s && s._base)) {
+    // custom is a full override; keep it but drop any _base entries
+    // that no longer correspond to a real base step.
+    const baseIds = new Set(baseSteps.map(s => s.id));
+    out = custom.filter(s => !s._base || baseIds.has(s.id));
+  } else {
+    out = [...baseSteps, ...custom];
+  }
+  // Always dedupe by id, preserving first occurrence.
+  const seen = new Set();
+  return out.filter(s => {
+    if (!s || !s.id) return false;
+    if (seen.has(s.id)) return false;
+    seen.add(s.id);
+    return true;
+  });
 }
 
 function getMilestone(milestoneId) {
@@ -585,6 +621,8 @@ function openMoreDrawer() {
 function closeDrawer() {
   const overlay = document.getElementById('drawerOverlay');
   overlay.classList.remove('open');
+  const drawer = document.getElementById('drawer');
+  if (drawer) drawer.removeAttribute('data-drawer-kind');
   // If we closed the More drawer while route=#more, snap back to Home.
   if ((window.location.hash || '').startsWith('#more')) {
     window.location.hash = '#home';
@@ -606,15 +644,78 @@ const ICONS = {
   trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>',
 };
 
-// Task 7: today's planned work blocks as a checklist.
+// ============================================================
+// Round 2 Task D/E — Candy Land icon set for milestones and steps.
+// All icons inherit color via currentColor so they match the theme.
+// ============================================================
+const MILESTONE_ICONS = {
+  target: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" width="22" height="22"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/></svg>',
+  hexagon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" width="22" height="22"><path d="M12 3l7.8 4.5v9L12 21l-7.8-4.5v-9z"/><circle cx="12" cy="12" r="2.2"/></svg>',
+  cluster: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" width="22" height="22"><circle cx="7" cy="8" r="2"/><circle cx="16" cy="7" r="2"/><circle cx="17" cy="15" r="2"/><circle cx="8" cy="16" r="2"/><path d="M9 8l5.5-.5M8 16l8-.5M7.5 10l.5 4M16 9l1 4.5"/></svg>',
+  map: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" width="22" height="22"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v16M15 6v16"/></svg>',
+  bar: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" width="22" height="22"><path d="M4 20V9M10 20V4M16 20v-8M22 20H2"/></svg>',
+  rings: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" width="22" height="22"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.8" fill="currentColor"/></svg>',
+  pen: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" width="22" height="22"><path d="M20 4c-6 0-11 4-13 10l-2 6 6-2c6-2 10-7 10-13z"/><path d="M5 19l7-7"/></svg>',
+  code: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" width="22" height="22"><path d="M9 4c-3 0-4 1.5-4 4v2c0 1-1 2-2 2 1 0 2 1 2 2v2c0 2.5 1 4 4 4"/><path d="M15 4c3 0 4 1.5 4 4v2c0 1 1 2 2 2-1 0-2 1-2 2v2c0 2.5-1 4-4 4"/></svg>',
+  shield: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" width="22" height="22"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/></svg>',
+  flask: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" width="22" height="22"><path d="M9 3h6M10 3v6l-5 9a2 2 0 002 3h10a2 2 0 002-3l-5-9V3"/><path d="M7.5 14h9"/></svg>',
+  book: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" width="22" height="22"><path d="M4 5a2 2 0 012-2h12v16H6a2 2 0 00-2 2V5z"/><path d="M18 3v16"/></svg>',
+  trophy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M8 4h8v4a4 4 0 11-8 0V4z"/><path d="M5 4H3a3 3 0 003 3M19 4h2a3 3 0 01-3 3"/><path d="M10 12v3l-1 3h6l-1-3v-3"/></svg>',
+  dot: '<svg viewBox="0 0 24 24" fill="currentColor" width="22" height="22"><circle cx="12" cy="12" r="5"/></svg>'
+};
+
+function getMilestoneIconKey(milestone) {
+  if (!milestone) return 'dot';
+  if (milestone.icon && MILESTONE_ICONS[milestone.icon]) return milestone.icon;
+  const hay = `${milestone.id || ''} ${milestone.title || ''} ${milestone.category || ''}`.toLowerCase();
+  if (/segment/.test(hay)) return 'hexagon';
+  if (/decod|\bqc\b|quality/.test(hay)) return 'target';
+  if (/cell type|typing|celltyp|cluster/.test(hay)) return 'cluster';
+  if (/spatial|domain|banksy|region|lamin/.test(hay)) return 'map';
+  if (/deg|differential|pathway|analysis|stat/.test(hay)) return 'bar';
+  if (/niche|interaction|neighborhood|\blr\b|cell-?cell|ven/.test(hay)) return 'rings';
+  if (/writ|manuscript|paper|draft|review/.test(hay)) return 'pen';
+  if (/package|repo|setup|pipeline|cursor|packet|code/.test(hay)) return 'code';
+  if (/gate|shield|checks?/.test(hay)) return 'shield';
+  if (/wet|flask|prep|rna-?seq|library/.test(hay)) return 'flask';
+  if (/read|literature|learn/.test(hay)) return 'book';
+  if (/defense|career|thesis/.test(hay)) return 'trophy';
+  return 'dot';
+}
+
+function getMilestoneIcon(milestone) {
+  return MILESTONE_ICONS[getMilestoneIconKey(milestone)] || MILESTONE_ICONS.dot;
+}
+
+function getStepIconKey(step) {
+  if (!step) return 'dot';
+  const t = (step.type || '').toLowerCase();
+  if (t === 'code') return 'code';
+  if (t === 'wet' || t === 'wetlab' || t === 'lab') return 'flask';
+  if (t === 'reading' || t === 'learning') return 'book';
+  if (t === 'writing' || t === 'paper') return 'pen';
+  if (t === 'figure') return 'bar';
+  if (t === 'analysis') return 'bar';
+  if (t === 'qc') return 'shield';
+  if (t === 'career') return 'trophy';
+  return 'dot';
+}
+function getStepIcon(step) {
+  return MILESTONE_ICONS[getStepIconKey(step)] || MILESTONE_ICONS.dot;
+}
+
+// Task 7 + Round 2 Task B: today's planned blocks as a milestone-level
+// checklist. Each row shows the milestone title as the primary label and
+// the next substep (first non-done step) as a secondary line with its own
+// Start Focus shortcut.
 function renderPlannedBlocksChecklist() {
   const todayB = getTodayBlocks().filter(l => !l.warmup);
   const maxToday = state.settings.blocksPerDay.max;
   const fullToday = todayB.length;
 
-  // Pull up to maxToday upcoming steps, starting with active/in-progress.
+  // One row per active milestone (one per focus-track). Cap at maxToday.
   const planned = [];
-  const seen = new Set();
+  const seenMs = new Set();
   const focusProjects = state.weeklyPlan.focusProjects || [];
   const tracks = focusProjects.length > 0
     ? focusProjects.filter(t => ACTIVE_TRACKS.includes(t))
@@ -622,15 +723,11 @@ function renderPlannedBlocksChecklist() {
   for (const track of tracks) {
     const ms = getCurrentMilestone(track);
     if (!ms) continue;
-    const allSteps = getAllSteps(ms.id);
-    for (const step of allSteps) {
-      const ss = getStepState(step.id);
-      if (ss.status === 'done') continue;
-      if (seen.has(step.id)) continue;
-      seen.add(step.id);
-      planned.push({ track, milestone: ms, step, ss });
-      if (planned.length >= maxToday) break;
-    }
+    if (seenMs.has(ms.id)) continue;
+    seenMs.add(ms.id);
+    const step = getActiveStep(ms.id); // may be null if all done
+    const ss = step ? getStepState(step.id) : null;
+    planned.push({ track, milestone: ms, step, ss });
     if (planned.length >= maxToday) break;
   }
 
@@ -641,24 +738,44 @@ function renderPlannedBlocksChecklist() {
     </div>`;
 
   if (planned.length === 0) {
-    html += `<div class="planned-blocks-empty">No queued steps. <a onclick="navigate('#projects')">Pick a project</a>.</div>`;
+    html += `<div class="planned-blocks-empty">No queued milestones. <a onclick="navigate('#projects')">Pick a project</a>.</div>`;
   } else {
     html += `<ul class="planned-list">`;
     for (const p of planned) {
-      const color = TRACK_COLORS[p.track];
+      const color = TRACK_COLORS[p.track] || 'var(--text-muted)';
       const label = getTrackLabel(p.track);
-      const est = p.step.estimated_blocks || 1;
-      const doneBlocks = p.ss.blocksCompleted || 0;
+      const msTitle = p.milestone.title;
+      if (!p.step) {
+        // All steps done — offer mark-milestone-complete shortcut.
+        html += `<li class="planned-row planned-row-complete">
+          <span class="planned-cb-disabled" aria-hidden="true"></span>
+          <div class="planned-row-main">
+            <div class="planned-row-title">${escapeHtml(msTitle)}</div>
+            <div class="planned-row-sub planned-row-sub-muted">All steps done — mark milestone complete</div>
+            <div class="planned-row-meta"><span class="planned-row-track" style="color:${color}">${escapeHtml(label)}</span></div>
+          </div>
+          <button class="planned-row-go" onclick="navigate('#path/${p.track}/${p.milestone.id}')">Open ›</button>
+        </li>`;
+        continue;
+      }
+      const step = p.step;
+      const ss = p.ss || getStepState(step.id);
+      const est = step.estimated_blocks || 1;
+      const doneBlocks = ss.blocksCompleted || 0;
       const pct = Math.min(100, Math.round((doneBlocks / est) * 100));
-      const checked = p.ss.status === 'done';
+      const checked = ss.status === 'done';
       html += `<li class="planned-row">
-        <input type="checkbox" class="planned-cb" data-stepid="${p.step.id}" data-msid="${p.milestone.id}" ${checked ? 'checked' : ''}>
+        <input type="checkbox" class="planned-cb" data-stepid="${step.id}" data-msid="${p.milestone.id}" ${checked ? 'checked' : ''} aria-label="Mark substep done">
         <div class="planned-row-main">
-          <div class="planned-row-title">${escapeHtml(p.step.title)}</div>
+          <div class="planned-row-title">${escapeHtml(msTitle)}</div>
+          <div class="planned-row-sub">${escapeHtml(step.title)}</div>
           <div class="planned-row-meta"><span class="planned-row-track" style="color:${color}">${escapeHtml(label)}</span> · block ${doneBlocks + 1} of ${est}</div>
           <div class="planned-row-bar"><div class="planned-row-bar-fill" style="width:${pct}%; background:${color}"></div></div>
         </div>
-        <a class="planned-row-go" onclick="navigate('#focus/${p.milestone.id}/${p.step.id}')">Go ›</a>
+        <div class="planned-row-actions">
+          <button class="planned-row-details" data-details-step="${step.id}" data-details-ms="${p.milestone.id}">Details ›</button>
+          <button class="planned-row-go" onclick="navigate('#focus/${p.milestone.id}/${step.id}')">Start Focus</button>
+        </div>
       </li>`;
     }
     html += `</ul>`;
@@ -749,10 +866,13 @@ function renderHome() {
     html += `<div class="done-msg">You've done enough today. Rest is productive too.</div>`;
   } else if (next) {
     const color = TRACK_COLORS[next.track];
-    const label = next.step.title.length > 50 ? next.step.title.slice(0, 47) + '...' : next.step.title;
-    html += `<button class="start-block-btn" style="background:${color}" onclick="navigate('#focus/${next.milestone.id}/${next.step.id}')">
+    // Round 2 Task B: hero shows substep (primary) + milestone context (secondary).
+    const substepTxt = next.step.title;
+    const contextTxt = `${next.milestone.title} · ${getTrackLabel(next.track)}`;
+    html += `<button class="start-block-btn start-block-btn-v2" style="background:${color}" onclick="navigate('#focus/${next.milestone.id}/${next.step.id}')">
       <span class="btn-label-sm">Start next block</span>
-      <span>${label}</span>
+      <span class="start-block-substep">${escapeHtml(substepTxt)}</span>
+      <span class="start-block-context">${escapeHtml(contextTxt)}</span>
     </button>`;
   } else {
     html += `<div class="done-msg" style="background:rgba(255,255,255,0.03);border-color:var(--border);">No active tasks queued. Check your <a onclick="navigate('#projects')" style="color:var(--text-primary);text-decoration:underline;cursor:pointer;">projects</a>.</div>`;
@@ -822,6 +942,14 @@ function renderHome() {
   el.querySelectorAll('.planned-cb').forEach(cb => {
     cb.addEventListener('change', () => {
       handlePlannedToggle(cb.dataset.stepid, cb.dataset.msid, cb.checked);
+    });
+  });
+
+  // Round 2 Task B: Details → open step drawer.
+  el.querySelectorAll('.planned-row-details').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openStepDrawer(btn.dataset.detailsMs, btn.dataset.detailsStep);
     });
   });
 }
@@ -949,16 +1077,27 @@ function renderTrack(trackId) {
 
   const weeklyGoal = state.settings.weeklyGoal || 10;
 
-  for (const ms of milestones) {
+  // Round 2 Task D: Candy Land layout — zig-zag candy nodes, one per milestone.
+  html += `<div class="candy-path" data-track="${trackId}" style="--track-accent:${color}">`;
+
+  milestones.forEach((ms, idx) => {
     const msState = getMilestoneState(ms.id);
-    const progress = getMilestoneStepProgress(ms.id);
+    const allStepsList = getAllSteps(ms.id);
+    const qcList = getQcItems(ms.id);
+    const totalSteps = allStepsList.length + qcList.length;
+    const stepsDone = allStepsList.filter(s => getStepState(s.id).status === 'done').length
+      + qcList.filter(it => isQcChecked(ms.id, it.index)).length;
     const blocksLogged = getBlocksForMilestone(ms.id);
     const totalBlocks = getTotalBlocksForMilestone(ms.id);
-    const statusClass = msState.status === 'done' ? ' status-done' : '';
     const urgLevel = getUrgency(ms.id);
     const urgDot = urgLevel ? `<span class="urgency-dot ${urgLevel}"></span>` : '';
+    const side = idx % 2 === 0 ? 'left' : 'right';
 
-    // Feature 4: due date and pace
+    let variantClass = '';
+    if (msState.status === 'done') variantClass = 'candy-node--done';
+    else if (msState.status === 'locked') variantClass = 'candy-node--locked';
+    else if (msState.status === 'active' || stepsDone > 0) variantClass = 'candy-node--active';
+
     const dueDate = state.dueDates[ms.id] || '';
     let paceHtml = '';
     if (dueDate) {
@@ -970,31 +1109,46 @@ function renderTrack(trackId) {
         let paceClass = 'ms-pace-ok';
         if (paceNum > weeklyGoal * 2) paceClass = 'ms-pace-crit';
         else if (paceNum > weeklyGoal) paceClass = 'ms-pace-warn';
-        paceHtml = `<span class="ms-pace-label ${paceClass}" title="${remaining} blocks remaining, ${weeks.toFixed(1)} weeks">~${pace} blocks/week needed</span>`;
+        paceHtml = `<span class="ms-pace-label ${paceClass}" title="${remaining} blocks remaining, ${weeks.toFixed(1)} weeks">~${pace} blocks/week</span>`;
       } else if (weeks === 0) {
         paceHtml = `<span class="ms-pace-label ms-pace-crit">Due today or overdue</span>`;
       }
     }
 
-    html += `<div class="milestone-card${statusClass}" onclick="navigate('#path/${trackId}/${ms.id}')">
-      <span class="dot" style="background:${color};width:6px;height:6px;"></span>
-      <div style="flex:1;min-width:0;">
-        <div class="ms-name">${urgDot}${escapeHtml(ms.title)}</div>
-        <div class="ms-due-wrap" onclick="event.stopPropagation()">
-          <input type="date" class="ms-due-date-input" data-ms="${ms.id}"
-            value="${dueDate}"
-            title="Set due date for this milestone">
-          ${paceHtml}
+    const iconSvg = getMilestoneIcon(ms);
+    const trophyBadge = msState.status === 'done' ? `<span class="candy-trophy" aria-hidden="true">${MILESTONE_ICONS.trophy}</span>` : '';
+
+    html += `<div class="candy-row candy-row--${side}">
+      <div class="candy-node ${variantClass}" data-msid="${ms.id}" onclick="navigate('#path/${trackId}/${ms.id}')" style="--node-accent:${color}">
+        <div class="candy-icon" aria-hidden="true">${iconSvg}</div>
+        <div class="candy-body">
+          <div class="candy-title">${urgDot}<span class="candy-title-text">${escapeHtml(ms.title)}</span></div>
+          <div class="candy-sub">${stepsDone}/${totalSteps} steps · ${blocksLogged}/${totalBlocks} blocks</div>
+          <div class="candy-due-row" onclick="event.stopPropagation()">
+            <input type="date" class="ms-due-date-input candy-due-input" data-ms="${ms.id}" value="${dueDate}" title="Set due date for this milestone">
+            ${paceHtml}
+          </div>
         </div>
-      </div>
-      <div style="display:flex;align-items:center;gap:8px;">
-        <button class="urgency-btn" onclick="event.stopPropagation();cycleUrgency('${ms.id}','track','${trackId}')" title="Set urgency">
-          ${urgLevel === 'critical' ? '<span style="color:#b07070;font-size:11px;">critical</span>' : urgLevel === 'important' ? '<span style="color:var(--c-dlpfc);font-size:11px;">important</span>' : '<span style="font-size:11px;">flag</span>'}
+        <button class="candy-urgency" onclick="event.stopPropagation();cycleUrgency('${ms.id}','track','${trackId}')" title="Set urgency">
+          ${urgLevel === 'critical' ? '<span class="u-critical">critical</span>' : urgLevel === 'important' ? '<span class="u-important">important</span>' : '<span class="u-flag">flag</span>'}
         </button>
-        <span class="ms-progress">${blocksLogged}/${totalBlocks} blocks</span>
+        ${trophyBadge}
       </div>
     </div>`;
-  }
+
+    if (idx < milestones.length - 1) {
+      const nextSide = (idx + 1) % 2 === 0 ? 'left' : 'right';
+      const nextMs = milestones[idx + 1];
+      const nextLocked = getMilestoneState(nextMs.id).status === 'locked';
+      const thisDone = msState.status === 'done';
+      let connClass = 'candy-path-connector';
+      if (thisDone) connClass += ' candy-path-connector--done';
+      else if (nextLocked) connClass += ' candy-path-connector--locked';
+      html += `<div class="${connClass} candy-conn-${side}-to-${nextSide}" aria-hidden="true"></div>`;
+    }
+  });
+
+  html += `</div>`; // /candy-path
 
   el.innerHTML = html;
 
@@ -1099,9 +1253,8 @@ function renderPath(trackId, milestoneId) {
   if (!ms) { el.innerHTML = '<p>Milestone not found.</p>'; return; }
   const track = trackId || getTrackForMilestone(milestoneId);
   const color = TRACK_COLORS[track];
-  const baseSteps = ms.steps || [];
-  const customSteps = state.customSteps[milestoneId] || [];
-  const steps = [...baseSteps, ...customSteps];
+  // Round 2 Task A/E: always go through getAllSteps so rendering is self-healing.
+  const steps = getAllSteps(milestoneId);
   const blocksLogged = getBlocksForMilestone(milestoneId);
   const totalBlocks = getTotalBlocksForMilestone(milestoneId);
 
@@ -1110,7 +1263,7 @@ function renderPath(trackId, milestoneId) {
     <div class="path-title"><span class="dot" style="background:${color}"></span> ${escapeHtml(ms.title)}</div>
   </div>
   <div class="path-progress-text">${blocksLogged} / ${totalBlocks} blocks logged</div>
-  <div class="winding-path">`;
+  <div class="winding-path candy-path" style="--track-accent:${color}">`;
 
   const activeStep = getActiveStep(milestoneId);
 
@@ -1120,8 +1273,11 @@ function renderPath(trackId, milestoneId) {
     const estBlocks = step.estimated_blocks || 1;
     const completed = getBlocksForStep(step.id);
     const isActive = activeStep && activeStep.id === step.id;
-    const statusClass = ss.status === 'done' ? 'status-done' : (isActive ? 'status-active' : (ss.status === 'locked' ? 'status-locked' : ''));
-    const typeBadge = step.type ? `<span class="badge badge-type" style="color:${TYPE_COLORS[step.type] || '#8b8b96'}">${step.type}</span>` : '';
+    let variantClass = '';
+    if (ss.status === 'done') variantClass = 'candy-node--done';
+    else if (isActive) variantClass = 'candy-node--active';
+    else if (ss.status === 'locked') variantClass = 'candy-node--locked';
+    const typeBadge = step.type ? `<span class="badge badge-type" style="color:${TYPE_COLORS[step.type] || 'var(--text-muted)'}">${step.type}</span>` : '';
     const isCustom = !!step.isCustom;
 
     // Feature 3: urgency indicator
@@ -1137,32 +1293,46 @@ function renderPath(trackId, milestoneId) {
       else if (daysLeft < 14) dueIndicator = ' due-soon';
     }
 
-    // Feature 1: reorder buttons (only for custom steps or if reordering enabled)
-    const canMoveUp = idx > 0;
-    const canMoveDown = idx < steps.length - 1;
     const reorderHtml = `<div class="step-reorder">
       <button class="step-reorder-btn" title="Move up" onclick="event.stopPropagation();moveStep('${milestoneId}','${step.id}','up')">${ICONS.arrowUp}</button>
       <button class="step-reorder-btn" title="Move down" onclick="event.stopPropagation();moveStep('${milestoneId}','${step.id}','down')">${ICONS.arrowDown}</button>
     </div>`;
 
-    html += `<div class="path-node">
-      <div class="path-step ${side} ${statusClass}${dueIndicator}" style="--step-accent:${color}" data-stepid="${step.id}" data-msid="${milestoneId}" data-track="${track}">
-        ${isActive ? `<div class="game-piece" style="background:${color}"></div>` : ''}
-        <div class="step-num">Step ${idx + 1}${isCustom ? ' (custom)' : ''}</div>
-        <div class="step-title-text" onclick="openStepDrawer('${step.id}','${milestoneId}','${track}')">${urgDot}<span class="step-title-label">${escapeHtml(step.title)}</span></div>
-        <div class="step-meta" onclick="openStepDrawer('${step.id}','${milestoneId}','${track}')">
-          ${typeBadge}
-          <div class="step-block-dots">`;
+    let dotsHtml = '';
     for (let b = 0; b < estBlocks; b++) {
-      html += `<div class="step-block-dot${b < completed ? ' filled' : ''}"></div>`;
+      dotsHtml += `<span class="step-block-dot${b < completed ? ' filled' : ''}"></span>`;
     }
-    html += `</div>
-          ${ss.status === 'done' ? `<span class="done-check">${ICONS.check}</span>` : ''}
+
+    const trophyBadge = ss.status === 'done' ? `<span class="candy-trophy" aria-hidden="true">${MILESTONE_ICONS.trophy}</span>` : '';
+    const iconSvg = getStepIcon(step);
+
+    html += `<div class="candy-row candy-row--${side}">
+      <div class="candy-node candy-node--step ${variantClass}${dueIndicator}" style="--node-accent:${color}" data-stepid="${step.id}" data-msid="${milestoneId}" data-track="${track}">
+        ${isActive ? `<div class="game-piece" style="background:${color}"></div>` : ''}
+        <div class="candy-icon" aria-hidden="true">${iconSvg}</div>
+        <div class="candy-body">
+          <div class="candy-step-num">Step ${idx + 1}${isCustom ? ' · custom' : ''}</div>
+          <div class="candy-title" onclick="openStepDrawer('${milestoneId}','${step.id}')">${urgDot}<span class="step-title-label">${escapeHtml(step.title)}</span></div>
+          <div class="candy-step-meta" onclick="openStepDrawer('${milestoneId}','${step.id}')">
+            ${typeBadge}
+            <div class="step-block-dots">${dotsHtml}</div>
+            ${ss.status === 'done' ? `<span class="done-check">${ICONS.check}</span>` : ''}
+          </div>
         </div>
         ${reorderHtml}
-      </div>`;
-    if (idx < steps.length - 1) html += `<div class="path-connector"></div>`;
-    html += `</div>`;
+        ${trophyBadge}
+      </div>
+    </div>`;
+    if (idx < steps.length - 1) {
+      const nextSide = (idx + 1) % 2 === 0 ? 'left' : 'right';
+      const nextStep = steps[idx + 1];
+      const nextLocked = getStepState(nextStep.id).status === 'locked';
+      const thisDone = ss.status === 'done';
+      let connClass = 'candy-path-connector';
+      if (thisDone) connClass += ' candy-path-connector--done';
+      else if (nextLocked) connClass += ' candy-path-connector--locked';
+      html += `<div class="${connClass} candy-conn-${side}-to-${nextSide}" aria-hidden="true"></div>`;
+    }
   });
 
   // Feature 1: Add step button
@@ -1191,18 +1361,22 @@ function renderPath(trackId, milestoneId) {
       qcItems.forEach((qc, i) => {
         const side = (steps.length + i) % 2 === 0 ? 'left' : 'right';
         const checked = isQcChecked(milestoneId, qc.index);
-        html += `<div class="path-node qc-node">
-          <div class="path-step qc-step ${side} ${checked ? 'status-done' : ''}" data-qc="1" data-msid="${milestoneId}" data-qcindex="${qc.index}">
-            <div class="step-num qc-step-num">QC ${i + 1}</div>
-            <div class="step-title-text"><span class="step-title-label">${escapeHtml(qc.label)}</span></div>
-            <div class="step-meta">
-              <span class="badge badge-type" style="color:${TYPE_COLORS.qc}">qc</span>
-              <label class="qc-check"><input type="checkbox" class="qc-cb" data-msid="${milestoneId}" data-qcindex="${qc.index}" ${checked ? 'checked' : ''}> <span>Mark checked</span></label>
-              ${checked ? `<span class="done-check">${ICONS.check}</span>` : ''}
+        const trophyQc = checked ? `<span class="candy-trophy" aria-hidden="true">${MILESTONE_ICONS.trophy}</span>` : '';
+        html += `<div class="candy-row candy-row--${side}">
+          <div class="candy-node candy-node--step candy-node--qc${checked ? ' candy-node--done' : ''}" data-qc="1" data-msid="${milestoneId}" data-qcindex="${qc.index}">
+            <div class="candy-icon" aria-hidden="true">${MILESTONE_ICONS.shield}</div>
+            <div class="candy-body">
+              <div class="candy-step-num">QC ${i + 1}</div>
+              <div class="candy-title"><span class="step-title-label">${escapeHtml(qc.label)}</span></div>
+              <div class="candy-step-meta">
+                <span class="badge badge-type" style="color:${TYPE_COLORS.qc || 'var(--c-gold, var(--text-secondary))'}">qc</span>
+                <label class="qc-check"><input type="checkbox" class="qc-cb" data-msid="${milestoneId}" data-qcindex="${qc.index}" ${checked ? 'checked' : ''}> <span>Mark checked</span></label>
+                ${checked ? `<span class="done-check">${ICONS.check}</span>` : ''}
+              </div>
             </div>
+            ${trophyQc}
           </div>
-          ${i < qcItems.length - 1 ? '<div class="path-connector"></div>' : ''}
-        </div>`;
+        </div>${i < qcItems.length - 1 ? '<div class="candy-path-connector" aria-hidden="true"></div>' : ''}`;
       });
       html += `</div>`;
     }
@@ -1218,15 +1392,17 @@ function renderPath(trackId, milestoneId) {
   html += `</div>`; // winding-path
   el.innerHTML = html;
 
-  // Feature 1: inline title editing — click step title label to edit
-  el.querySelectorAll('.path-step').forEach(stepEl => {
+  // Feature 1: inline title editing — click step title label to edit.
+  // Note: only custom steps are editable inline; base steps open drawer via step-title-text onclick.
+  el.querySelectorAll('.candy-node--step[data-stepid]').forEach(stepEl => {
     if (stepEl.dataset.qc === '1') return; // QC steps: no inline edit
     const stepId = stepEl.dataset.stepid;
     const msId = stepEl.dataset.msid;
     const trackId2 = stepEl.dataset.track;
     const label = stepEl.querySelector('.step-title-label');
     if (!label) return;
-    // Only allow inline edit for custom steps or base steps
+    const custom = (state.customSteps[msId] || []).find(s => s.id === stepId && !s._base);
+    if (!custom) return;
     label.style.cursor = 'text';
     label.addEventListener('click', e => {
       e.stopPropagation();
@@ -1345,7 +1521,14 @@ function submitAddStep(milestoneId, trackId) {
 }
 
 // ---- Step Drawer ----
-function openStepDrawer(stepId, milestoneId, track) {
+// Round 2 Task C: primary signature is (milestoneId, stepId).
+// A legacy shim swaps arg order if an old caller still passes (stepId, milestoneId, track).
+function openStepDrawer(milestoneId, stepId) {
+  // Legacy-shim detection: if the first arg doesn't resolve to a milestone
+  // but the second arg does, swap them.
+  if (milestoneId && stepId && !getMilestone(milestoneId) && getMilestone(stepId)) {
+    const tmp = milestoneId; milestoneId = stepId; stepId = tmp;
+  }
   const ms = getMilestone(milestoneId);
   if (!ms) return;
   // Search in merged steps
@@ -1353,7 +1536,8 @@ function openStepDrawer(stepId, milestoneId, track) {
   const step = allSteps.find(s => s.id === stepId);
   if (!step) return;
   const ss = getStepState(stepId);
-  const color = TRACK_COLORS[track];
+  const track = getTrackForMilestone(milestoneId);
+  const color = TRACK_COLORS[track] || 'var(--c-dlpfc)';
   const urgLevel = getUrgency(stepId);
 
   let html = `<button class="drawer-close" onclick="closeDrawer()">${ICONS.x}</button>
@@ -1398,6 +1582,7 @@ function openStepDrawer(stepId, milestoneId, track) {
   }
 
   const drawer = document.getElementById('drawer');
+  drawer.setAttribute('data-drawer-kind', 'step');
   drawer.innerHTML = html;
   document.getElementById('drawerOverlay').classList.add('open');
 
@@ -1434,8 +1619,11 @@ function setUrgencyFromDrawer(stepId, milestoneId, track, level) {
   if (level === null) delete state.urgency[stepId];
   else state.urgency[stepId] = level;
   saveState();
-  openStepDrawer(stepId, milestoneId, track);
+  openStepDrawer(milestoneId, stepId);
 }
+
+// Round 2 Task C: expose on window for cross-render callsites.
+window.openStepDrawer = openStepDrawer;
 
 // Feature 3: render urgency in drawer (partial update)
 function renderUrgencyInDrawer(itemId) {
@@ -1517,8 +1705,9 @@ function renderFocus(milestoneId, stepId) {
   // Task 6: split layout — timer on left, workflow chart on right.
   let html = `<div class="focus-view focus-view-split">
     <div class="focus-main">
-      <div class="focus-breadcrumb">${escapeHtml(getTrackLabel(track))} → ${escapeHtml(ms.title)}</div>
+      <div class="focus-breadcrumb">${escapeHtml(getTrackLabel(track))} → ${escapeHtml(ms.title)} → ${escapeHtml(step.title)}</div>
       <div class="focus-step-title">${escapeHtml(step.title)}</div>
+      ${step.desc ? `<div class="focus-step-desc">${escapeHtml(String(step.desc).length > 140 ? String(step.desc).slice(0, 140).trim() + '…' : step.desc)}</div>` : ''}
 
       <div class="timer-ring">
         <svg viewBox="0 0 180 180">
@@ -1593,14 +1782,13 @@ function renderFocus(milestoneId, stepId) {
   html += `</div>`; // /focus-view
   el.innerHTML = html;
 
-  // Click-to-switch on workflow steps.
+  // Round 2 Task C: workflow step click opens the step drawer.
+  // User can then press Start Focus from the drawer to switch.
   el.querySelectorAll('.focus-workflow-step[data-stepid]').forEach(stepEl => {
     stepEl.addEventListener('click', () => {
       const sid = stepEl.dataset.stepid;
       const mid = stepEl.dataset.msid;
-      if (sid === stepId) return;
-      // If timer is running, commit current remaining to avoid losing progress — just switch.
-      window.location.hash = `#focus/${mid}/${sid}`;
+      openStepDrawer(mid, sid);
     });
   });
 
@@ -3164,6 +3352,16 @@ document.querySelectorAll('.nav-item').forEach(item => {
 // Drawer close on overlay click
 document.getElementById('drawerOverlay').addEventListener('click', (e) => {
   if (e.target === document.getElementById('drawerOverlay')) closeDrawer();
+});
+
+// Round 2 Task C: Esc key closes any open drawer.
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' || e.key === 'Esc') {
+    const overlay = document.getElementById('drawerOverlay');
+    if (overlay && overlay.classList.contains('open')) {
+      closeDrawer();
+    }
+  }
 });
 
 // Hash change

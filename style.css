@@ -1799,3 +1799,311 @@ a { color: inherit; text-decoration: none; }
 [data-theme="fog"] .qc-section-count,
 [data-theme="sand"] .fw-qc-label,
 [data-theme="fog"] .fw-qc-label { color: #8a6a1c; }
+
+/* ============================================================
+   ROUND 2 — Candy Land path nodes (shared by Projects & Path views)
+   ============================================================ */
+
+/* Subtle shadow token (fallback if not defined elsewhere) */
+:root { --shadow-subtle: 0 2px 8px rgba(0,0,0,0.25); }
+[data-theme="sand"], [data-theme="fog"] { --shadow-subtle: 0 2px 10px rgba(30,30,40,0.10); }
+
+.candy-path {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-4) var(--sp-3);
+  position: relative;
+}
+
+.candy-row {
+  display: flex;
+  width: 100%;
+}
+.candy-row--left  { justify-content: flex-start; }
+.candy-row--right { justify-content: flex-end; }
+
+.candy-node {
+  --node-accent: var(--track-accent, var(--text-secondary));
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  width: min(100%, 420px);
+  padding: var(--sp-4) var(--sp-5);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  box-shadow: var(--shadow-subtle);
+  cursor: pointer;
+  transition: transform var(--t-fast), border-color var(--t-fast), background var(--t-fast), box-shadow var(--t-fast);
+}
+.candy-node:hover {
+  background: var(--surface-hover);
+  border-color: var(--node-accent);
+  transform: translateY(-1px);
+}
+
+.candy-icon {
+  flex: 0 0 auto;
+  width: 38px; height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--node-accent) 14%, var(--surface));
+  color: var(--node-accent);
+  border: 1px solid color-mix(in srgb, var(--node-accent) 30%, var(--border));
+}
+.candy-icon svg { display: block; }
+
+.candy-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+.candy-title {
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.3;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  flex-wrap: wrap;
+}
+.candy-title-text { display: inline-block; }
+.candy-sub {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+.candy-step-num {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.candy-step-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+  margin-top: var(--sp-1);
+}
+
+.candy-due-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+  margin-top: var(--sp-1);
+}
+.candy-due-input {
+  background: var(--bg);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 2px 6px;
+  font-size: var(--text-xs);
+}
+
+.candy-urgency {
+  flex: 0 0 auto;
+  align-self: flex-start;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 3px 8px;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: var(--text-xs);
+  transition: border-color var(--t-fast), color var(--t-fast);
+}
+.candy-urgency:hover { border-color: var(--text-secondary); color: var(--text-secondary); }
+.candy-urgency .u-critical { color: var(--c-bd2); }
+.candy-urgency .u-important { color: var(--node-accent); }
+.candy-urgency .u-flag { color: var(--text-muted); }
+
+.candy-trophy {
+  position: absolute;
+  right: 10px;
+  bottom: 8px;
+  width: 18px; height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--c-gold);
+  filter: drop-shadow(0 0 3px color-mix(in srgb, var(--c-gold) 50%, transparent));
+}
+
+/* Variants */
+.candy-node--active {
+  border-color: var(--node-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--node-accent) 28%, transparent), var(--shadow-subtle);
+  animation: step-pulse 2.8s ease-in-out infinite;
+}
+
+.candy-node--done {
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--c-gold) 18%, var(--surface)) 0%,
+    color-mix(in srgb, var(--node-accent) 16%, var(--surface)) 100%);
+  border-color: color-mix(in srgb, var(--c-gold) 40%, var(--border));
+}
+.candy-node--done .candy-title { color: var(--text-primary); }
+.candy-node--done .candy-icon {
+  background: color-mix(in srgb, var(--c-gold) 22%, var(--surface));
+  border-color: color-mix(in srgb, var(--c-gold) 50%, var(--border));
+  color: var(--c-gold);
+}
+
+.candy-node--locked {
+  filter: saturate(0.4) brightness(0.92);
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.candy-node--locked:hover { transform: none; background: var(--surface); border-color: var(--border); }
+
+.candy-node--qc .candy-icon {
+  color: var(--c-gold);
+  background: color-mix(in srgb, var(--c-gold) 14%, var(--surface));
+  border-color: color-mix(in srgb, var(--c-gold) 30%, var(--border));
+}
+.candy-node--qc {
+  border-color: color-mix(in srgb, var(--c-gold) 30%, var(--border));
+}
+
+/* Connectors between candy nodes — vertical dashed line, alternating soft curve via margin */
+.candy-path-connector {
+  height: 20px;
+  width: 2px;
+  margin: 0 auto;
+  background-image: linear-gradient(var(--border) 60%, transparent 0);
+  background-size: 2px 8px;
+  background-repeat: repeat-y;
+  opacity: 0.8;
+}
+.candy-path-connector--done {
+  background-image: linear-gradient(var(--c-gold) 100%, transparent 0);
+  width: 3px;
+  opacity: 0.85;
+}
+.candy-path-connector--locked {
+  opacity: 0.35;
+}
+/* Soft S-curve offset: connectors that go from left->right or right->left nudge slightly */
+.candy-conn-left-to-right  { margin-left: 25%; margin-right: auto; }
+.candy-conn-right-to-left  { margin-right: 25%; margin-left: auto; }
+.candy-conn-left-to-left   { margin-left: 12%; margin-right: auto; }
+.candy-conn-right-to-right { margin-right: 12%; margin-left: auto; }
+
+/* Step variant tweaks */
+.candy-node--step .candy-title { font-size: var(--text-base); }
+.candy-node--step .step-block-dots { display: inline-flex; gap: 4px; }
+.candy-node--step .done-check { color: var(--c-gold); display: inline-flex; align-items: center; }
+
+/* Mobile: single column, vertical dotted connector */
+@media (max-width: 640px) {
+  .candy-row--left, .candy-row--right { justify-content: stretch; }
+  .candy-node { width: 100%; padding: var(--sp-3) var(--sp-4); border-radius: 16px; }
+  .candy-path-connector { margin-left: auto !important; margin-right: auto !important; }
+  .candy-conn-left-to-right,
+  .candy-conn-right-to-left,
+  .candy-conn-left-to-left,
+  .candy-conn-right-to-right { margin-left: auto; margin-right: auto; }
+}
+
+/* ============================================================
+   ROUND 2 — Home planned block rows (per Task B)
+   ============================================================ */
+.planned-row-sub {
+  display: block;
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  margin-top: 2px;
+  line-height: 1.35;
+}
+.planned-row-sub-muted {
+  display: block;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+.planned-row-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-left: var(--sp-2);
+}
+.planned-row-details,
+.planned-row-go {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  border-radius: var(--r-md);
+  padding: 4px 10px;
+  font-size: var(--text-xs);
+  cursor: pointer;
+  transition: border-color var(--t-fast), color var(--t-fast), background var(--t-fast);
+}
+.planned-row-details:hover,
+.planned-row-go:hover {
+  border-color: var(--text-secondary);
+  color: var(--text-primary);
+  background: var(--surface-hover);
+}
+.planned-row-go {
+  border-color: color-mix(in srgb, var(--c-gold) 40%, var(--border));
+  color: var(--c-gold);
+}
+.planned-row-go:hover {
+  background: color-mix(in srgb, var(--c-gold) 14%, var(--surface));
+  color: var(--c-gold);
+}
+.planned-row-complete {
+  color: var(--text-secondary);
+  font-style: normal;
+}
+.planned-cb-disabled {
+  display: inline-block;
+  width: 16px; height: 16px;
+  border: 1px dashed var(--border);
+  border-radius: 4px;
+  opacity: 0.5;
+}
+
+/* Home hero "Start next block v2" */
+.start-block-btn-v2 {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: var(--sp-3) var(--sp-5);
+  text-align: left;
+}
+.start-block-btn-v2 .btn-label-sm {
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  opacity: 0.85;
+}
+.start-block-substep {
+  font-size: var(--text-base);
+  font-weight: 600;
+  line-height: 1.3;
+}
+.start-block-context {
+  font-size: var(--text-xs);
+  opacity: 0.8;
+}
+
+/* Focus step description under H2 */
+.focus-step-desc {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  margin-top: 2px;
+  margin-bottom: var(--sp-3);
+  max-width: 520px;
+  line-height: 1.45;
+}
