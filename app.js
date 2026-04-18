@@ -8,20 +8,22 @@
 
 // ---- Constants ----
 const ACTIVE_TRACKS = ['dlpfc', 'package', 'bd2', 'dg'];
-const INACTIVE_TRACKS = ['fic', 'eef2', 'network', 'cursor', 'learning', 'career'];
+const INACTIVE_TRACKS = ['fic', 'eef2', 'network', 'cursor', 'learning', 'career', 'concord_sae', 'assortativity', 'dementia_review'];
 const TRACK_COLORS = {
   dlpfc: '#c49a6c', package: '#7db88a', bd2: '#b07da8', dg: '#6ba3b5',
   fic: '#c49a6c', eef2: '#9a9a6c', network: '#9ca3af', cursor: '#6ba3b5',
-  learning: '#8b8b96', career: '#9ca3af'
+  learning: '#8b8b96', career: '#9ca3af',
+  concord_sae: '#b07da8', assortativity: '#9a9a6c', dementia_review: '#8b8b96'
 };
 const TRACK_LABELS = {
   dlpfc: 'DLPFC AD Project', package: 'txomics Package', bd2: 'BD2 ACC', dg: 'DG Neurogenesis',
   fic: 'RUSH FIC AD', eef2: 'EEF2 Methods', network: 'Network & ML', cursor: 'Cursor Plan',
-  learning: 'Learning Plan', career: 'Career Path'
+  learning: 'Learning Plan', career: 'Career Path',
+  concord_sae: 'CONCORD SAE', assortativity: 'Tissue Assortativity', dementia_review: 'Dementia Review'
 };
 const TYPE_COLORS = {
   code: '#7db88a', figure: '#b07da8', writing: '#c49a6c', lab: '#6ba3b5', wetlab: '#6ba3b5',
-  career: '#9ca3af', paper: '#c49a6c', learning: '#8b8b96'
+  career: '#9ca3af', paper: '#c49a6c', learning: '#8b8b96', qc: '#d4a44c'
 };
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
 const STORAGE_KEY = 'questboard_v3';
@@ -65,9 +67,15 @@ applyTheme(getTheme());
 
 // ---- State helpers ----
 function defaultState() {
+  // Task 12: seed dementia_review as done — it's a completed retrospective track.
+  const demSteps = {};
+  for (const id of ['dem-ad','dem-ftd-als','dem-lewy-vasc','dem-prion-cte','dem-molecular','dem-convergence']) {
+    demSteps[id] = { status: 'done', blocksCompleted: 1, notes: '', checklist: {} };
+  }
   return {
-    steps: {},
-    milestones: {},
+    steps: { ...demSteps },
+    milestones: { 'dem-review-1': { status: 'done', notes: '' } },
+    _demReviewSeeded: true,
     focusLog: [],
     weeklyPlan: { weekOf: null, blocks: {}, approved: false, focusProjects: [] },
     ideas: [],
@@ -90,7 +98,9 @@ function defaultState() {
     // Feature 9: rewards
     rewards: { tiers: {}, claimedHistory: [] },
     // Feature 11: weekly reviews
-    weeklyReviews: []
+    weeklyReviews: [],
+    // Task 10: QC gate item checks, keyed by `${milestoneId}.${gateIndex}`
+    qcChecks: {}
   };
 }
 
@@ -100,18 +110,53 @@ function loadState() {
     if (raw) {
       const s = JSON.parse(raw);
       const d = defaultState();
+      // Task 4 migration: de-dup customSteps that were corrupted by the old
+      // moveStep() which wrote both _base copies AND user-added steps.
+      // If a customSteps array has any _base entries, dedupe by id.
+      const customSteps = s.customSteps || {};
+      for (const msId of Object.keys(customSteps)) {
+        const arr = customSteps[msId];
+        if (!Array.isArray(arr)) continue;
+        const seen = new Set();
+        const cleaned = [];
+        for (const step of arr) {
+          if (!step || !step.id) continue;
+          if (seen.has(step.id)) continue;
+          seen.add(step.id);
+          cleaned.push(step);
+        }
+        customSteps[msId] = cleaned;
+      }
+      // Task 12 migration: dementia_review is a completed retrospective track.
+      // Pre-mark its step statuses as done so the progress bars reflect reality.
+      // Only runs once — guarded by a version flag on state.
+      const demStepIds = ['dem-ad','dem-ftd-als','dem-lewy-vasc','dem-prion-cte','dem-molecular','dem-convergence'];
+      if (!s._demReviewSeeded) {
+        s.steps = s.steps || {};
+        for (const id of demStepIds) {
+          if (!s.steps[id] || s.steps[id].status !== 'done') {
+            s.steps[id] = { status: 'done', blocksCompleted: 1, notes: '', checklist: {} };
+          }
+        }
+        s.milestones = s.milestones || {};
+        if (!s.milestones['dem-review-1'] || s.milestones['dem-review-1'].status !== 'done') {
+          s.milestones['dem-review-1'] = { status: 'done', notes: '' };
+        }
+        s._demReviewSeeded = true;
+      }
       return {
         ...d, ...s,
         settings: { ...d.settings, ...(s.settings || {}) },
         streak: { ...d.streak, ...(s.streak || {}) },
         weeklyPlan: { ...d.weeklyPlan, ...(s.weeklyPlan || {}) },
-        customSteps: s.customSteps || {},
+        customSteps: customSteps,
         trackOverrides: s.trackOverrides || {},
         urgency: s.urgency || {},
         adminTasks: s.adminTasks || [],
         prepBatches: s.prepBatches || [],
         rewards: s.rewards || { tiers: {}, claimedHistory: [] },
-        weeklyReviews: s.weeklyReviews || []
+        weeklyReviews: s.weeklyReviews || [],
+        qcChecks: s.qcChecks || {}
       };
     }
   } catch (e) { console.warn('State load error', e); }
@@ -173,7 +218,11 @@ function weeksUntil(dateStr) {
 
 // ---- Data helpers ----
 // Feature 1: merged steps (base + custom)
+// Task 4 fix: if custom[] contains _base-flagged entries, it's a full override
+// (reordered copy of the base steps) — use it as-is to prevent duplication.
 function getAllSteps(milestoneId) {
+  const custom = state.customSteps[milestoneId] || [];
+  if (custom.some(s => s && s._base)) return custom;
   let baseSteps = [];
   for (const track of Object.keys(QUEST_DATA)) {
     for (const ms of QUEST_DATA[track]) {
@@ -181,7 +230,6 @@ function getAllSteps(milestoneId) {
     }
     if (baseSteps.length) break;
   }
-  const custom = state.customSteps[milestoneId] || [];
   return [...baseSteps, ...custom];
 }
 
@@ -230,26 +278,84 @@ function getBlocksForMilestone(milestoneId) {
   return steps.reduce((sum, s) => sum + getBlocksForStep(s.id), 0);
 }
 
+// Task 10: QC gate item count (1 block each, checkbox-trackable)
+function getQcItems(milestoneId) {
+  const ms = getMilestone(milestoneId);
+  if (!ms || !ms.gate || !Array.isArray(ms.gate.items)) return [];
+  return ms.gate.items.map((label, i) => ({
+    id: `${milestoneId}-qc-${i}`,
+    milestoneId,
+    index: i,
+    label,
+    estimated_blocks: 1,
+    type: 'qc'
+  }));
+}
+
+function isQcChecked(milestoneId, index) {
+  return !!(state.qcChecks && state.qcChecks[`${milestoneId}.${index}`]);
+}
+
+function setQcChecked(milestoneId, index, val) {
+  if (!state.qcChecks) state.qcChecks = {};
+  const key = `${milestoneId}.${index}`;
+  if (val) state.qcChecks[key] = true;
+  else delete state.qcChecks[key];
+  saveState();
+}
+
+function getQcProgress(milestoneId) {
+  const items = getQcItems(milestoneId);
+  const done = items.filter(it => isQcChecked(milestoneId, it.index)).length;
+  return { done, total: items.length };
+}
+
+// Task 10: include QC items so totals stay accurate.
 function getTotalBlocksForMilestone(milestoneId) {
   const steps = getAllSteps(milestoneId);
-  return steps.reduce((sum, s) => sum + (s.estimated_blocks || 1), 0);
+  const stepBlocks = steps.reduce((sum, s) => sum + (s.estimated_blocks || 1), 0);
+  const qc = getQcItems(milestoneId).length; // 1 block each
+  return stepBlocks + qc;
 }
 
 function getRemainingBlocksForMilestone(milestoneId) {
   const steps = getAllSteps(milestoneId);
-  return steps.reduce((sum, s) => {
+  const stepRem = steps.reduce((sum, s) => {
     const ss = getStepState(s.id);
     if (ss.status === 'done') return sum;
     const est = s.estimated_blocks || 1;
     const done = ss.blocksCompleted || 0;
     return sum + Math.max(0, est - done);
   }, 0);
+  const qc = getQcItems(milestoneId);
+  const qcRem = qc.filter(it => !isQcChecked(milestoneId, it.index)).length;
+  return stepRem + qcRem;
 }
 
 function getMilestoneStepProgress(milestoneId) {
   const steps = getAllSteps(milestoneId);
-  const done = steps.filter(s => getStepState(s.id).status === 'done').length;
-  return `${done}/${steps.length}`;
+  const qc = getQcItems(milestoneId);
+  const total = steps.length + qc.length;
+  if (total === 0) return '—';
+  const stepsDone = steps.filter(s => getStepState(s.id).status === 'done').length;
+  const qcDone = qc.filter(it => isQcChecked(milestoneId, it.index)).length;
+  return `${stepsDone + qcDone}/${total}`;
+}
+
+// Task 3: aggregate progress across ALL milestones of a track.
+function getTrackProgressSummary(trackId) {
+  const milestones = QUEST_DATA[trackId] || [];
+  let stepsDone = 0, stepsTotal = 0, blocksDone = 0, blocksTotal = 0;
+  for (const ms of milestones) {
+    const steps = getAllSteps(ms.id);
+    const qcItems = getQcItems(ms.id);
+    stepsTotal += steps.length + qcItems.length;
+    stepsDone += steps.filter(s => getStepState(s.id).status === 'done').length;
+    stepsDone += qcItems.filter(it => isQcChecked(ms.id, it.index)).length;
+    blocksTotal += getTotalBlocksForMilestone(ms.id);
+    blocksDone += (getTotalBlocksForMilestone(ms.id) - getRemainingBlocksForMilestone(ms.id));
+  }
+  return { stepsDone, stepsTotal, blocksDone, blocksTotal };
 }
 
 function getTodayBlocks() {
@@ -343,14 +449,8 @@ function showConfetti() {
 }
 
 // ---- Router ----
+// Task 5: timer persists across navigation — no more anti-switch modal.
 function navigate(hash) {
-  if (timerRunning && !hash.startsWith('#focus')) {
-    pendingNavHash = hash;
-    const mins = Math.ceil(timerRemaining / 60);
-    document.getElementById('antiSwitchMsg').textContent = `You have ${mins} min left. Navigate away?`;
-    document.getElementById('antiSwitchModal').classList.add('open');
-    return;
-  }
   window.location.hash = hash;
 }
 
@@ -361,12 +461,15 @@ function handleRoute() {
 
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
 
+  // Map secondary routes back onto primary nav items for highlight.
+  const navMap = {
+    path: 'projects', track: 'projects', prep: 'projects',
+    schedule: 'progress', rewards: 'progress',
+    ideas: 'more', admin: 'more', docs: 'more', settings: 'more'
+  };
   document.querySelectorAll('.nav-item').forEach(n => {
-    const active =
-      n.dataset.nav === route ||
-      (route === 'path' && n.dataset.nav === 'projects') ||
-      (route === 'track' && n.dataset.nav === 'projects');
-    n.classList.toggle('active', active);
+    const target = navMap[route] || route;
+    n.classList.toggle('active', n.dataset.nav === target);
   });
 
   switch (route) {
@@ -377,6 +480,10 @@ function handleRoute() {
     case 'projects':
       renderProjects();
       document.getElementById('view-projects').classList.add('active');
+      // Task 2: if ?template=prep, auto-open prep drawer.
+      if (hash.indexOf('template=prep') !== -1) {
+        openPrepDrawer();
+      }
       break;
     case 'track':
       renderTrack(parts[1]);
@@ -403,9 +510,9 @@ function handleRoute() {
       document.getElementById('view-admin').classList.add('active');
       break;
     case 'prep':
-      renderPrep();
-      document.getElementById('view-prep').classList.add('active');
-      break;
+      // Task 2: redirect standalone #prep to Projects with drawer open.
+      window.location.hash = '#projects?template=prep';
+      return;
     case 'rewards':
       renderRewards();
       document.getElementById('view-rewards').classList.add('active');
@@ -422,9 +529,65 @@ function handleRoute() {
       renderSettings();
       document.getElementById('view-settings').classList.add('active');
       break;
+    case 'more':
+      // Task 1: More opens an overflow drawer; fall back view = Home.
+      renderHome();
+      document.getElementById('view-home').classList.add('active');
+      openMoreDrawer();
+      break;
     default:
       renderHome();
       document.getElementById('view-home').classList.add('active');
+  }
+
+  // Update timer pill visibility after every route change (Task 5).
+  updateTimerPill();
+}
+
+// Task 1: More drawer — overflow for Ideas, Admin, Docs, Rewards, Schedule, Settings.
+function openMoreDrawer() {
+  const overlay = document.getElementById('drawerOverlay');
+  const drawer = document.getElementById('drawer');
+  const items = [
+    { hash: '#schedule', label: 'Schedule', desc: 'Weekly plan and blocks' },
+    { hash: '#rewards', label: 'Rewards', desc: 'Claim milestone rewards' },
+    { hash: '#ideas', label: 'Ideas', desc: 'Capture and triage ideas' },
+    { hash: '#admin', label: 'Admin', desc: 'Admin tasks and inbox' },
+    { hash: '#docs', label: 'Docs', desc: 'Reference and help' },
+    { hash: '#settings', label: 'Settings', desc: 'Themes, blocks, preferences' }
+  ];
+  drawer.innerHTML = `
+    <div class="drawer-header">
+      <h2>More</h2>
+      <button class="btn btn-ghost" id="closeMore" aria-label="Close">×</button>
+    </div>
+    <div class="drawer-body">
+      <div class="more-list">
+        ${items.map(it => `
+          <a class="more-row" href="${it.hash}" data-more-link>
+            <div class="more-row-main">
+              <div class="more-row-label">${it.label}</div>
+              <div class="more-row-desc">${it.desc}</div>
+            </div>
+            <span class="more-row-caret">${ICONS ? (ICONS.chevronRight || '›') : '›'}</span>
+          </a>
+        `).join('')}
+      </div>
+    </div>
+  `;
+  overlay.classList.add('open');
+  document.getElementById('closeMore').onclick = closeDrawer;
+  drawer.querySelectorAll('[data-more-link]').forEach(a => {
+    a.addEventListener('click', () => { closeDrawer(); });
+  });
+}
+
+function closeDrawer() {
+  const overlay = document.getElementById('drawerOverlay');
+  overlay.classList.remove('open');
+  // If we closed the More drawer while route=#more, snap back to Home.
+  if ((window.location.hash || '').startsWith('#more')) {
+    window.location.hash = '#home';
   }
 }
 
@@ -442,6 +605,107 @@ const ICONS = {
   plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M12 5v14M5 12h14"/></svg>',
   trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>',
 };
+
+// Task 7: today's planned work blocks as a checklist.
+function renderPlannedBlocksChecklist() {
+  const todayB = getTodayBlocks().filter(l => !l.warmup);
+  const maxToday = state.settings.blocksPerDay.max;
+  const fullToday = todayB.length;
+
+  // Pull up to maxToday upcoming steps, starting with active/in-progress.
+  const planned = [];
+  const seen = new Set();
+  const focusProjects = state.weeklyPlan.focusProjects || [];
+  const tracks = focusProjects.length > 0
+    ? focusProjects.filter(t => ACTIVE_TRACKS.includes(t))
+    : ACTIVE_TRACKS;
+  for (const track of tracks) {
+    const ms = getCurrentMilestone(track);
+    if (!ms) continue;
+    const allSteps = getAllSteps(ms.id);
+    for (const step of allSteps) {
+      const ss = getStepState(step.id);
+      if (ss.status === 'done') continue;
+      if (seen.has(step.id)) continue;
+      seen.add(step.id);
+      planned.push({ track, milestone: ms, step, ss });
+      if (planned.length >= maxToday) break;
+    }
+    if (planned.length >= maxToday) break;
+  }
+
+  let html = `<div class="planned-blocks">
+    <div class="planned-blocks-header">
+      <div class="planned-blocks-title">Today’s planned blocks</div>
+      <div class="planned-blocks-count">${fullToday} / ${maxToday} completed</div>
+    </div>`;
+
+  if (planned.length === 0) {
+    html += `<div class="planned-blocks-empty">No queued steps. <a onclick="navigate('#projects')">Pick a project</a>.</div>`;
+  } else {
+    html += `<ul class="planned-list">`;
+    for (const p of planned) {
+      const color = TRACK_COLORS[p.track];
+      const label = getTrackLabel(p.track);
+      const est = p.step.estimated_blocks || 1;
+      const doneBlocks = p.ss.blocksCompleted || 0;
+      const pct = Math.min(100, Math.round((doneBlocks / est) * 100));
+      const checked = p.ss.status === 'done';
+      html += `<li class="planned-row">
+        <input type="checkbox" class="planned-cb" data-stepid="${p.step.id}" data-msid="${p.milestone.id}" ${checked ? 'checked' : ''}>
+        <div class="planned-row-main">
+          <div class="planned-row-title">${escapeHtml(p.step.title)}</div>
+          <div class="planned-row-meta"><span class="planned-row-track" style="color:${color}">${escapeHtml(label)}</span> · block ${doneBlocks + 1} of ${est}</div>
+          <div class="planned-row-bar"><div class="planned-row-bar-fill" style="width:${pct}%; background:${color}"></div></div>
+        </div>
+        <a class="planned-row-go" onclick="navigate('#focus/${p.milestone.id}/${p.step.id}')">Go ›</a>
+      </li>`;
+    }
+    html += `</ul>`;
+  }
+  html += `</div>`;
+  return html;
+}
+
+function handlePlannedToggle(stepId, milestoneId, checked) {
+  const ss = getStepState(stepId);
+  if (checked) {
+    ss.status = 'done';
+  } else if (ss.status === 'done') {
+    ss.status = (ss.blocksCompleted || 0) > 0 ? 'active' : 'pending';
+  }
+  saveState();
+  renderHome();
+}
+
+// Task 2: Prep drawer — reuse the prep view inside the overlay.
+function openPrepDrawer() {
+  const overlay = document.getElementById('drawerOverlay');
+  const drawer = document.getElementById('drawer');
+  drawer.innerHTML = `
+    <div class="drawer-header">
+      <h2>Sample prep batch</h2>
+      <button class="btn btn-ghost" id="closePrep" aria-label="Close">×</button>
+    </div>
+    <div class="drawer-body" id="prepDrawerBody"></div>
+  `;
+  overlay.classList.add('open');
+  // Render prep content into the drawer body by temporarily swapping view id.
+  renderPrepInto(document.getElementById('prepDrawerBody'));
+  document.getElementById('closePrep').onclick = closeDrawer;
+}
+
+// Render the full prep UI into any container (used by drawer).
+function renderPrepInto(container) {
+  const originalEl = document.getElementById('view-prep');
+  // Give our target element the id expected by renderPrep(), swap back after.
+  const prevId = container.id;
+  if (originalEl && originalEl !== container) originalEl.id = 'view-prep-orig';
+  container.id = 'view-prep';
+  renderPrep();
+  container.id = prevId;
+  if (originalEl && originalEl !== container) originalEl.id = 'view-prep';
+}
 
 // ---- RENDER: Home ----
 function renderHome() {
@@ -494,19 +758,8 @@ function renderHome() {
     html += `<div class="done-msg" style="background:rgba(255,255,255,0.03);border-color:var(--border);">No active tasks queued. Check your <a onclick="navigate('#projects')" style="color:var(--text-primary);text-decoration:underline;cursor:pointer;">projects</a>.</div>`;
   }
 
-  html += `<div class="block-section">
-    <div class="block-section-label">Today</div>
-    <div class="block-circles">`;
-  for (let i = 0; i < maxToday; i++) {
-    if (i < todayB.length) {
-      const log = todayB[i];
-      const color = TRACK_COLORS[getTrackForMilestone(log.milestoneId)] || '#5a5a66';
-      html += `<div class="block-circle filled" style="background:${color}"></div>`;
-    } else {
-      html += `<div class="block-circle"></div>`;
-    }
-  }
-  html += `</div></div>`;
+  // Task 7: planned blocks checklist (replaces today block-circles).
+  html += renderPlannedBlocksChecklist();
 
   html += `<div class="block-section">
     <div class="block-section-label">This week</div>
@@ -564,6 +817,13 @@ function renderHome() {
   </button>`;
 
   el.innerHTML = html;
+
+  // Task 7: bind planned-blocks checkboxes.
+  el.querySelectorAll('.planned-cb').forEach(cb => {
+    cb.addEventListener('change', () => {
+      handlePlannedToggle(cb.dataset.stepid, cb.dataset.msid, cb.checked);
+    });
+  });
 }
 
 // ---- RENDER: Projects ----
@@ -576,14 +836,34 @@ function renderProjects() {
     const color = TRACK_COLORS[track];
     const label = getTrackLabel(track); // Feature 2
     const msTitle = ms ? ms.title : 'Complete';
-    const progress = ms ? getMilestoneStepProgress(ms.id) : '--';
+    // Task 3: summed progress across ALL milestones of this track.
+    const sum = getTrackProgressSummary(track);
+    const stepsLabel = sum.stepsTotal > 0
+      ? `${sum.stepsDone} / ${sum.stepsTotal} steps`
+      : '—';
+    const blocksLabel = sum.blocksTotal > 0
+      ? `${sum.blocksDone} / ${sum.blocksTotal} blocks`
+      : '';
+    const pct = sum.blocksTotal > 0 ? Math.round((sum.blocksDone / sum.blocksTotal) * 100) : 0;
     html += `<div class="project-card" onclick="navigate('#track/${track}')">
       <span class="dot" style="background:${color}"></span>
       <span class="proj-name proj-name-editable" data-track="${track}" ondblclick="startEditProjectName(event,'${track}')">${escapeHtml(label)}</span>
       <span class="proj-milestone">${escapeHtml(msTitle)}</span>
-      <span class="proj-progress">${progress}</span>
+      <span class="proj-progress">${stepsLabel}${blocksLabel ? ` · ${blocksLabel}` : ''}</span>
+      <div class="proj-progress-bar"><div class="proj-progress-bar-fill" style="width:${pct}%; background:${color}"></div></div>
     </div>`;
   }
+
+  // Task 2: Templates section (Sample Prep as template).
+  html += `<div class="section-title section-title-sub" style="margin-top:2rem;">Templates</div>`;
+  html += `<div class="template-card" onclick="openPrepDrawer()">
+    <span class="dot" style="background:#6ba3b5"></span>
+    <div class="template-card-main">
+      <div class="template-card-title">Sample prep batch</div>
+      <div class="template-card-desc">Run the RNA-seq / library prep protocol checklist</div>
+    </div>
+    <span class="template-card-cta">Start ›</span>
+  </div>`;
 
   html += `<div class="archive-toggle" id="archiveToggle" onclick="toggleArchive()">
     ${ICONS.chevronRight}
@@ -595,10 +875,13 @@ function renderProjects() {
     const color = TRACK_COLORS[track];
     const label = getTrackLabel(track);
     const msTitle = ms ? ms.title : 'Complete';
+    const sum = getTrackProgressSummary(track);
+    const stepsLabel = sum.stepsTotal > 0 ? `${sum.stepsDone} / ${sum.stepsTotal} steps` : '—';
     html += `<div class="project-card" onclick="navigate('#track/${track}')">
       <span class="dot" style="background:${color}"></span>
       <span class="proj-name">${escapeHtml(label)}</span>
       <span class="proj-milestone">${escapeHtml(msTitle)}</span>
+      <span class="proj-progress">${stepsLabel}</span>
     </div>`;
   }
   html += `</div>`;
@@ -890,14 +1173,39 @@ function renderPath(trackId, milestoneId) {
       </button>
     </div>`;
 
+  // Task 10: render each gate item as a time-tracked QC task with checkbox.
   if (ms.gate) {
-    html += `<div class="path-connector"></div>
-    <div class="gate-card">
-      <h4>${escapeHtml(ms.gate.title)}</h4>`;
-    for (const item of ms.gate.items) {
-      html += `<div class="gate-item">${escapeHtml(item)}</div>`;
+    const qcItems = getQcItems(milestoneId);
+    const allChecked = qcItems.length > 0 && qcItems.every(it => isQcChecked(milestoneId, it.index));
+    html += `<div class="path-connector"></div>`;
+    if (allChecked) {
+      html += `<div class="gate-card gate-passed">
+        <h4>${escapeHtml(ms.gate.title)} — Gate passed ✓</h4>
+      </div>`;
+    } else {
+      html += `<div class="qc-section">
+        <div class="qc-section-head">
+          <span class="qc-section-title">${escapeHtml(ms.gate.title)}</span>
+          <span class="qc-section-count">${qcItems.filter(it => isQcChecked(milestoneId, it.index)).length} / ${qcItems.length} checks</span>
+        </div>`;
+      qcItems.forEach((qc, i) => {
+        const side = (steps.length + i) % 2 === 0 ? 'left' : 'right';
+        const checked = isQcChecked(milestoneId, qc.index);
+        html += `<div class="path-node qc-node">
+          <div class="path-step qc-step ${side} ${checked ? 'status-done' : ''}" data-qc="1" data-msid="${milestoneId}" data-qcindex="${qc.index}">
+            <div class="step-num qc-step-num">QC ${i + 1}</div>
+            <div class="step-title-text"><span class="step-title-label">${escapeHtml(qc.label)}</span></div>
+            <div class="step-meta">
+              <span class="badge badge-type" style="color:${TYPE_COLORS.qc}">qc</span>
+              <label class="qc-check"><input type="checkbox" class="qc-cb" data-msid="${milestoneId}" data-qcindex="${qc.index}" ${checked ? 'checked' : ''}> <span>Mark checked</span></label>
+              ${checked ? `<span class="done-check">${ICONS.check}</span>` : ''}
+            </div>
+          </div>
+          ${i < qcItems.length - 1 ? '<div class="path-connector"></div>' : ''}
+        </div>`;
+      });
+      html += `</div>`;
     }
-    html += `</div>`;
   }
 
   if (ms.reward) {
@@ -912,6 +1220,7 @@ function renderPath(trackId, milestoneId) {
 
   // Feature 1: inline title editing — click step title label to edit
   el.querySelectorAll('.path-step').forEach(stepEl => {
+    if (stepEl.dataset.qc === '1') return; // QC steps: no inline edit
     const stepId = stepEl.dataset.stepid;
     const msId = stepEl.dataset.msid;
     const trackId2 = stepEl.dataset.track;
@@ -922,6 +1231,14 @@ function renderPath(trackId, milestoneId) {
     label.addEventListener('click', e => {
       e.stopPropagation();
       startInlineStepEdit(stepId, msId, trackId2, label);
+    });
+  });
+
+  // Task 10: bind QC checkboxes.
+  el.querySelectorAll('.qc-cb').forEach(cb => {
+    cb.addEventListener('change', () => {
+      setQcChecked(cb.dataset.msid, parseInt(cb.dataset.qcindex, 10), cb.checked);
+      renderPath(trackId, milestoneId);
     });
   });
 }
@@ -1133,9 +1450,7 @@ function renderUrgencyInDrawer(itemId) {
   });
 }
 
-function closeDrawer() {
-  document.getElementById('drawerOverlay').classList.remove('open');
-}
+// (closeDrawer defined earlier — Task 1 version handles the More drawer too.)
 
 function markStepDone(stepId, milestoneId) {
   const ss = getStepState(stepId);
@@ -1199,37 +1514,95 @@ function renderFocus(milestoneId, stepId) {
   const radius = 80;
   const circumference = 2 * Math.PI * radius;
 
-  let html = `<div class="focus-view">
-    <div class="focus-breadcrumb">${escapeHtml(getTrackLabel(track))} → ${escapeHtml(ms.title)}</div>
-    <div class="focus-step-title">${escapeHtml(step.title)}</div>
+  // Task 6: split layout — timer on left, workflow chart on right.
+  let html = `<div class="focus-view focus-view-split">
+    <div class="focus-main">
+      <div class="focus-breadcrumb">${escapeHtml(getTrackLabel(track))} → ${escapeHtml(ms.title)}</div>
+      <div class="focus-step-title">${escapeHtml(step.title)}</div>
 
-    <div class="timer-ring">
-      <svg viewBox="0 0 180 180">
-        <circle class="ring-bg" cx="90" cy="90" r="${radius}"/>
-        <circle class="ring-fill" id="timerRing" cx="90" cy="90" r="${radius}"
-          stroke="${color}" stroke-dasharray="${circumference}" stroke-dashoffset="0"/>
-      </svg>
-      <div class="timer-time" id="timerDisplay">${formatTime(timerRemaining)}</div>
-    </div>
+      <div class="timer-ring">
+        <svg viewBox="0 0 180 180">
+          <circle class="ring-bg" cx="90" cy="90" r="${radius}"/>
+          <circle class="ring-fill" id="timerRing" cx="90" cy="90" r="${radius}"
+            stroke="${color}" stroke-dasharray="${circumference}" stroke-dashoffset="0"/>
+        </svg>
+        <div class="timer-time" id="timerDisplay">${formatTime(timerRemaining)}</div>
+      </div>
 
-    <div class="focus-block-info" id="focusBlockInfo">Block ${blocksOnStep + 1}${estBlocks ? ` of ~${estBlocks}` : ''}</div>
+      <div class="focus-block-info" id="focusBlockInfo">Block ${blocksOnStep + 1}${estBlocks ? ` of ~${estBlocks}` : ''}</div>
 
-    <div class="focus-toggle">
-      <button class="${!timerIsWarmup ? 'active' : ''}" onclick="setTimerMode(false)">Full (${state.settings.blockDurationMin}m)</button>
-      <button class="${timerIsWarmup ? 'active' : ''}" onclick="setTimerMode(true)">Warm-up (${state.settings.warmupDurationMin}m)</button>
-    </div>
+      <div class="focus-toggle">
+        <button class="${!timerIsWarmup ? 'active' : ''}" onclick="setTimerMode(false)">Full (${state.settings.blockDurationMin}m)</button>
+        <button class="${timerIsWarmup ? 'active' : ''}" onclick="setTimerMode(true)">Warm-up (${state.settings.warmupDurationMin}m)</button>
+      </div>
 
-    <div class="focus-controls">
-      <button class="btn btn-primary" style="background:${color};padding:8px 24px;" id="timerStartBtn" onclick="toggleTimer()">${timerRunning ? 'Pause' : 'Start'}</button>
-      <button class="btn btn-outline" onclick="resetTimer()">Reset</button>
-    </div>`;
+      <div class="focus-controls">
+        <button class="btn btn-primary" style="background:${color};padding:8px 24px;" id="timerStartBtn" onclick="toggleTimer()">${timerRunning ? 'Pause' : 'Start'}</button>
+        <button class="btn btn-outline" onclick="resetTimer()">Reset</button>
+      </div>`;
 
   if (tooMany) {
     html += `<div class="focus-done-msg">You've done great today. Rest is productive too.</div>`;
   }
 
-  html += `</div>`;
+  html += `</div>`; // /focus-main
+
+  // Right-hand workflow panel — compressed step list for this milestone.
+  html += `<aside class="focus-workflow" aria-label="Milestone workflow">
+    <div class="focus-workflow-header">
+      <div class="focus-workflow-title">${escapeHtml(ms.title)}</div>
+      <div class="focus-workflow-sub">${allSteps.length} step${allSteps.length === 1 ? '' : 's'}</div>
+    </div>
+    <div class="focus-workflow-list">`;
+  allSteps.forEach((s, i) => {
+    const ss = getStepState(s.id);
+    const statusClass = ss.status === 'done' ? 'done' : (ss.status === 'active' ? 'active' : 'pending');
+    const isCurrent = s.id === stepId;
+    const est = s.estimated_blocks || 1;
+    const doneBlocks = ss.blocksCompleted || 0;
+    const checklist = s.checklist || [];
+    const checkedCount = checklist.filter((_, j) => (ss.checklist || {})[j]).length;
+    let dotsHtml = '';
+    for (let b = 0; b < est; b++) {
+      dotsHtml += `<span class="step-block-dot${b < doneBlocks ? ' filled' : ''}" style="${b < doneBlocks ? `background:${color};` : ''}"></span>`;
+    }
+    html += `<div class="focus-workflow-step ${statusClass}${isCurrent ? ' current' : ''}" data-stepid="${s.id}" data-msid="${milestoneId}" data-track="${track}">
+      <div class="fw-step-head">
+        <span class="fw-step-num" style="background:${color}22;color:${color}">${i + 1}</span>
+        <span class="fw-step-title">${escapeHtml(s.title)}</span>
+      </div>
+      <div class="fw-step-dots">${dotsHtml}</div>
+      ${checklist.length ? `<div class="fw-step-meta">${checkedCount}/${checklist.length} checks</div>` : ''}
+    </div>`;
+  });
+  // Include QC tasks in the workflow panel (Task 10 preview)
+  const qcItems = getQcItems(milestoneId);
+  if (qcItems.length) {
+    html += `<div class="fw-qc-label">Quality Checks</div>`;
+    qcItems.forEach((qc, i) => {
+      const checked = isQcChecked(milestoneId, qc.index);
+      html += `<div class="focus-workflow-step qc ${checked ? 'done' : 'pending'}" data-qc="1" data-msid="${milestoneId}" data-qcindex="${qc.index}">
+        <div class="fw-step-head">
+          <span class="fw-step-num qc-num">QC</span>
+          <span class="fw-step-title">${escapeHtml(qc.label)}</span>
+        </div>
+      </div>`;
+    });
+  }
+  html += `</div></aside>`; // /focus-workflow
+  html += `</div>`; // /focus-view
   el.innerHTML = html;
+
+  // Click-to-switch on workflow steps.
+  el.querySelectorAll('.focus-workflow-step[data-stepid]').forEach(stepEl => {
+    stepEl.addEventListener('click', () => {
+      const sid = stepEl.dataset.stepid;
+      const mid = stepEl.dataset.msid;
+      if (sid === stepId) return;
+      // If timer is running, commit current remaining to avoid losing progress — just switch.
+      window.location.hash = `#focus/${mid}/${sid}`;
+    });
+  });
 
   updateTimerRing();
 }
@@ -1266,6 +1639,7 @@ function toggleTimer() {
     if (btn) btn.textContent = 'Pause';
     timerInterval = setInterval(timerTick, 1000);
   }
+  updateTimerPill();
 }
 
 function resetTimer() {
@@ -1279,6 +1653,7 @@ function resetTimer() {
   updateTimerRing();
   const btn = document.getElementById('timerStartBtn');
   if (btn) btn.textContent = 'Start';
+  updateTimerPill();
 }
 
 function timerTick() {
@@ -1292,6 +1667,29 @@ function timerTick() {
   const display = document.getElementById('timerDisplay');
   if (display) display.textContent = formatTime(timerRemaining);
   updateTimerRing();
+  updateTimerPill();
+}
+
+// Task 5: top-right persistent timer pill (visible whenever timer is running).
+function updateTimerPill() {
+  const pill = document.getElementById('timerPill');
+  if (!pill) return;
+  if (!timerRunning || !timerStepId || !timerMilestoneId) {
+    pill.hidden = true;
+    return;
+  }
+  pill.hidden = false;
+  const allSteps = getAllSteps(timerMilestoneId);
+  const step = allSteps.find(s => s.id === timerStepId);
+  const label = step ? step.title : 'Focus';
+  pill.href = `#focus/${timerMilestoneId}/${timerStepId}`;
+  const timeEl = document.getElementById('timerPillTime');
+  const labelEl = document.getElementById('timerPillLabel');
+  if (timeEl) timeEl.textContent = formatTime(timerRemaining);
+  if (labelEl) labelEl.textContent = label;
+  const track = getTrackForMilestone(timerMilestoneId);
+  const color = track ? TRACK_COLORS[track] : null;
+  if (color) pill.style.setProperty('--pill-color', color);
 }
 
 function updateTimerRing() {
@@ -2760,20 +3158,8 @@ document.querySelectorAll('.nav-item').forEach(item => {
   });
 });
 
-// Anti-switch modal
-document.getElementById('modalStay').addEventListener('click', () => {
-  document.getElementById('antiSwitchModal').classList.remove('open');
-  pendingNavHash = null;
-});
-document.getElementById('modalLeave').addEventListener('click', () => {
-  document.getElementById('antiSwitchModal').classList.remove('open');
-  clearInterval(timerInterval);
-  timerRunning = false;
-  if (pendingNavHash) {
-    window.location.hash = pendingNavHash;
-    pendingNavHash = null;
-  }
-});
+// Task 5: anti-switch modal retired — timer now persists across routes.
+// (Legacy stay/leave handlers removed; modal element is hidden in index.html.)
 
 // Drawer close on overlay click
 document.getElementById('drawerOverlay').addEventListener('click', (e) => {
@@ -2795,3 +3181,4 @@ window.addEventListener('hashchange', handleRoute);
 
 // Init
 handleRoute();
+updateTimerPill();

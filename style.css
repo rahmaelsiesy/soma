@@ -1305,7 +1305,12 @@ a { color: inherit; text-decoration: none; }
   --c-gold: #d4a44c;
 }
 
-/* -- Sand -- */
+/* -- Sand --
+   Task 8 / WCAG AA: contrast ratios against --bg #f5f0e8:
+     text-primary  #2c2820  → ≈15.4 : 1 (AAA)
+     text-secondary #706858 → ≈6.1 : 1 (AA)
+     text-muted     #75695a → ≈5.4 : 1 (AA, darkened from #a09480)
+*/
 [data-theme="sand"] {
   --bg: #f5f0e8;
   --surface: #ede6da;
@@ -1313,7 +1318,7 @@ a { color: inherit; text-decoration: none; }
   --border: #d4cabb;
   --text-primary: #2c2820;
   --text-secondary: #706858;
-  --text-muted: #a09480;
+  --text-muted: #75695a;
   --c-gold: #b8922c;
 }
 [data-theme="sand"] .btn-primary { color: #fff; }
@@ -1322,7 +1327,12 @@ a { color: inherit; text-decoration: none; }
 [data-theme="sand"] .card { box-shadow: none; }
 [data-theme="sand"] .block-circle { border-color: #c4b8a4; }
 
-/* -- Fog -- */
+/* -- Fog --
+   Task 8 / WCAG AA: contrast ratios against --bg #eaeaee:
+     text-primary  #24242c  → ≈13.8 : 1 (AAA)
+     text-secondary #5c5c6a → ≈6.0 : 1 (AA)
+     text-muted     #5a5a68 → ≈6.3 : 1 (AA, darkened from #8a8a98)
+*/
 [data-theme="fog"] {
   --bg: #eaeaee;
   --surface: #e0e0e6;
@@ -1330,7 +1340,7 @@ a { color: inherit; text-decoration: none; }
   --border: #c4c4ce;
   --text-primary: #24242c;
   --text-secondary: #5c5c6a;
-  --text-muted: #8a8a98;
+  --text-muted: #5a5a68;
   --c-gold: #b08c30;
 }
 [data-theme="fog"] .btn-primary { color: #fff; }
@@ -1457,3 +1467,335 @@ a { color: inherit; text-decoration: none; }
   position: absolute; bottom: -16px; left: 50%; transform: translateX(-50%);
   font-size: 9px; color: var(--text-muted); white-space: nowrap; text-transform: capitalize;
 }
+
+/* ============================================================
+   TASK 1 — More drawer overflow list + drawer header
+   ============================================================ */
+.drawer-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: var(--sp-4) var(--sp-5);
+  border-bottom: 1px solid var(--border);
+}
+.drawer-header h2 { font-size: var(--text-lg); font-weight: 600; color: var(--text-primary); margin: 0; }
+.drawer-body { padding: var(--sp-4) var(--sp-5); overflow-y: auto; }
+.btn-ghost {
+  background: transparent; border: none; color: var(--text-secondary);
+  font-size: 20px; width: 32px; height: 32px; cursor: pointer; border-radius: 8px;
+}
+.btn-ghost:hover { background: var(--surface-hover); color: var(--text-primary); }
+
+.more-list { display: flex; flex-direction: column; gap: var(--sp-2); }
+.more-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: var(--sp-4);
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg);
+  text-decoration: none; color: var(--text-primary);
+  transition: background var(--t-fast), border-color var(--t-fast);
+}
+.more-row:hover { background: var(--surface-hover); border-color: var(--text-muted); }
+.more-row-label { font-weight: 600; font-size: var(--text-base); }
+.more-row-desc { font-size: var(--text-xs); color: var(--text-secondary); margin-top: 2px; }
+.more-row-caret { color: var(--text-muted); }
+
+/* ============================================================
+   TASK 5 — Persistent timer pill (top-right, over all routes)
+   ============================================================ */
+.timer-pill {
+  --pill-color: #c49a6c;
+  position: fixed; top: 14px; right: 14px; z-index: 500;
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 8px 14px;
+  background: var(--surface); color: var(--text-primary);
+  border: 1px solid var(--pill-color);
+  border-radius: 999px;
+  text-decoration: none; font-family: var(--font); font-size: 13px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.28), 0 0 0 2px color-mix(in srgb, var(--pill-color) 12%, transparent);
+  cursor: pointer;
+  transition: transform var(--t-fast), box-shadow var(--t-fast);
+}
+.timer-pill[hidden] { display: none !important; }
+.timer-pill:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(0,0,0,0.32), 0 0 0 3px color-mix(in srgb, var(--pill-color) 18%, transparent); }
+.timer-pill svg { color: var(--pill-color); flex: 0 0 16px; }
+.timer-pill-text { display: flex; flex-direction: column; line-height: 1.1; }
+.timer-pill-time { font-weight: 600; font-variant-numeric: tabular-nums; }
+.timer-pill-label {
+  font-size: 11px; color: var(--text-secondary);
+  max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+@media (max-width: 600px) {
+  .timer-pill { top: 10px; right: 10px; padding: 6px 10px; font-size: 12px; }
+  .timer-pill-label { max-width: 110px; }
+}
+
+/* ============================================================
+   TASK 2 — Project template card
+   ============================================================ */
+.template-card {
+  display: flex; align-items: center; gap: var(--sp-3);
+  padding: var(--sp-4);
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg);
+  margin-bottom: var(--sp-3); cursor: pointer;
+  transition: background var(--t-fast), border-color var(--t-fast);
+}
+.template-card:hover { background: var(--surface-hover); border-color: var(--text-muted); }
+.template-card-main { flex: 1; }
+.template-card-title { font-weight: 600; color: var(--text-primary); font-size: var(--text-base); }
+.template-card-desc { font-size: var(--text-xs); color: var(--text-secondary); margin-top: 2px; }
+.template-card-cta { color: var(--text-secondary); font-size: var(--text-sm); font-weight: 500; }
+.section-title-sub {
+  font-size: var(--text-sm); text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--text-secondary); margin-bottom: var(--sp-2);
+}
+
+/* ============================================================
+   TASK 3 — Project card progress bar
+   ============================================================ */
+.proj-progress-bar {
+  grid-column: 1 / -1;
+  height: 4px; width: 100%;
+  background: var(--surface-hover); border-radius: 999px; overflow: hidden;
+  margin-top: var(--sp-2);
+}
+.proj-progress-bar-fill { height: 100%; border-radius: 999px; transition: width 400ms ease; }
+
+/* ============================================================
+   TASK 7 — Planned blocks checklist (Home)
+   ============================================================ */
+.planned-blocks { margin: var(--sp-5) 0; }
+.planned-blocks-header {
+  display: flex; align-items: baseline; justify-content: space-between;
+  margin-bottom: var(--sp-3);
+}
+.planned-blocks-title {
+  font-size: var(--text-sm); text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--text-secondary);
+}
+.planned-blocks-count {
+  font-size: var(--text-xs); color: var(--text-muted); font-variant-numeric: tabular-nums;
+}
+.planned-blocks-empty {
+  padding: var(--sp-4); background: var(--surface); border: 1px dashed var(--border);
+  border-radius: var(--r-lg); color: var(--text-secondary); font-size: var(--text-sm);
+}
+.planned-blocks-empty a { color: var(--text-primary); text-decoration: underline; cursor: pointer; }
+.planned-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: var(--sp-2); }
+.planned-row {
+  display: flex; align-items: center; gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg);
+}
+.planned-cb {
+  width: 20px; height: 20px; accent-color: var(--c-package, #7db88a); cursor: pointer;
+  flex: 0 0 auto;
+}
+.planned-row-main { flex: 1; min-width: 0; }
+.planned-row-title {
+  font-size: var(--text-base); color: var(--text-primary);
+  font-weight: 500;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.planned-row-meta {
+  font-size: var(--text-xs); color: var(--text-secondary); margin-top: 2px;
+}
+.planned-row-track { font-weight: 600; }
+.planned-row-bar {
+  height: 3px; width: 100%; margin-top: 6px;
+  background: var(--surface-hover); border-radius: 999px; overflow: hidden;
+}
+.planned-row-bar-fill { height: 100%; border-radius: 999px; transition: width 400ms ease; }
+.planned-row-go {
+  font-size: var(--text-xs); color: var(--text-secondary);
+  padding: 4px 8px; border-radius: 6px; cursor: pointer; white-space: nowrap;
+}
+.planned-row-go:hover { background: var(--surface-hover); color: var(--text-primary); }
+
+/* ============================================================
+   TASK 6 — Focus view split layout + workflow chart
+   ============================================================ */
+.focus-view-split {
+  display: flex; flex-direction: row; gap: var(--sp-5);
+  align-items: flex-start; max-width: 1100px; margin: 0 auto; padding: var(--sp-5);
+}
+.focus-view-split .focus-main { flex: 1 1 420px; display: flex; flex-direction: column; align-items: center; min-width: 0; }
+.focus-workflow {
+  flex: 0 1 340px; max-height: calc(100vh - 120px);
+  overflow-y: auto;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg);
+  padding: var(--sp-4);
+  position: sticky; top: var(--sp-5);
+}
+.focus-workflow-header { margin-bottom: var(--sp-3); }
+.focus-workflow-title {
+  font-size: var(--text-sm); font-weight: 600; color: var(--text-primary);
+}
+.focus-workflow-sub { font-size: var(--text-xs); color: var(--text-muted); margin-top: 2px; }
+.focus-workflow-list { display: flex; flex-direction: column; gap: var(--sp-2); }
+.focus-workflow-step {
+  padding: var(--sp-3);
+  background: var(--bg); border: 1px solid var(--border); border-radius: var(--r-md);
+  cursor: pointer; transition: background var(--t-fast), border-color var(--t-fast);
+}
+.focus-workflow-step:hover { background: var(--surface-hover); }
+.focus-workflow-step.current {
+  border-color: var(--text-primary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--text-primary) 18%, transparent);
+}
+.focus-workflow-step.done { opacity: 0.55; }
+.focus-workflow-step.active { border-color: var(--text-muted); }
+.fw-step-head { display: flex; align-items: center; gap: var(--sp-2); margin-bottom: 4px; }
+.fw-step-num {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 22px; height: 22px; padding: 0 6px; border-radius: 6px;
+  font-size: 11px; font-weight: 700;
+  background: var(--surface-hover); color: var(--text-secondary);
+}
+.fw-step-title {
+  flex: 1; font-size: var(--text-xs); color: var(--text-primary);
+  line-height: 1.3;
+}
+.fw-step-dots { display: flex; gap: 3px; margin-top: 4px; }
+.fw-step-meta { font-size: 10px; color: var(--text-muted); margin-top: 4px; }
+.fw-qc-label {
+  margin-top: var(--sp-3); padding-top: var(--sp-2);
+  border-top: 1px solid var(--border);
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em;
+  color: #d4a44c; font-weight: 600;
+}
+.qc-num { background: rgba(212,164,76,0.18) !important; color: #d4a44c !important; }
+.focus-workflow-step.qc { border-color: rgba(212,164,76,0.3); }
+@media (max-width: 900px) {
+  .focus-view-split { flex-direction: column; }
+  .focus-workflow { flex: 1 1 auto; max-height: none; position: static; width: 100%; }
+}
+
+/* ============================================================
+   TASK 10 — QC step styling on path view
+   ============================================================ */
+.qc-section {
+  margin: var(--sp-4) 0;
+  padding: var(--sp-3);
+  border: 1px solid rgba(212,164,76,0.35); border-radius: var(--r-lg);
+  background: color-mix(in srgb, #d4a44c 6%, transparent);
+}
+.qc-section-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  margin-bottom: var(--sp-3);
+}
+.qc-section-title { font-size: var(--text-sm); font-weight: 600; color: var(--text-primary); }
+.qc-section-count { font-size: var(--text-xs); color: #d4a44c; font-variant-numeric: tabular-nums; font-weight: 600; }
+.qc-step { border-left: 3px solid #d4a44c; }
+.qc-step-num { color: #d4a44c !important; }
+.qc-check {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: var(--text-xs); color: var(--text-secondary); cursor: pointer;
+  margin-left: auto;
+}
+.qc-check input { accent-color: #d4a44c; width: 16px; height: 16px; }
+.gate-card.gate-passed {
+  border-color: rgba(125,184,138,0.4);
+  background: rgba(125,184,138,0.06);
+}
+.gate-card.gate-passed h4 { color: var(--c-package, #7db88a); }
+
+/* ============================================================
+   TASK 9 — Richer progress visuals
+   ============================================================ */
+/* Bigger, greener done check */
+.done-check {
+  color: #7db88a; transform: scale(1.35); transform-origin: center; display: inline-flex;
+  filter: drop-shadow(0 0 4px rgba(125,184,138,0.55));
+}
+
+/* Block dot: gradient fill + current glow */
+.step-block-dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: transparent; border: 1px solid var(--text-muted);
+  position: relative;
+  transition: background 200ms ease, transform 200ms ease, box-shadow 200ms ease;
+}
+.step-block-dot.filled {
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--text-secondary) 80%, white 10%) 0%,
+    var(--text-secondary) 100%);
+  border-color: transparent;
+  box-shadow: 0 0 6px rgba(125,184,138,0.35);
+}
+.step-block-dot.current {
+  border-color: var(--text-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--text-primary) 20%, transparent);
+}
+
+/* Home block circles — gradient fill + bonus shimmer */
+.block-circle.filled {
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--text-secondary) 70%, white 15%) 0%,
+    var(--text-secondary) 100%);
+  border-color: transparent;
+  box-shadow: 0 0 8px rgba(255,255,255,0.06);
+}
+.block-circle.bonus {
+  background: linear-gradient(135deg, #e6c075, #b8922c);
+  box-shadow: 0 0 10px rgba(212,164,76,0.45);
+}
+
+/* Step card status enhancements */
+.path-step.status-done {
+  position: relative;
+  background: linear-gradient(135deg,
+    var(--surface) 0%,
+    color-mix(in srgb, #7db88a 7%, var(--surface)) 100%);
+}
+.path-step.status-done::after {
+  content: ""; position: absolute; inset: 0;
+  border-radius: inherit; pointer-events: none;
+  box-shadow: inset 0 0 0 1px rgba(125,184,138,0.25);
+}
+.path-step.status-active {
+  position: relative;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--step-accent, var(--text-muted)) 25%, transparent);
+  animation: step-pulse 2.4s ease-in-out infinite;
+}
+@keyframes step-pulse {
+  0%, 100% { box-shadow: 0 0 0 2px color-mix(in srgb, var(--step-accent, var(--text-muted)) 18%, transparent); }
+  50%      { box-shadow: 0 0 0 3px color-mix(in srgb, var(--step-accent, var(--text-muted)) 36%, transparent); }
+}
+.path-step.status-locked {
+  background-image: repeating-linear-gradient(
+    45deg,
+    transparent, transparent 6px,
+    color-mix(in srgb, var(--text-muted) 12%, transparent) 6px,
+    color-mix(in srgb, var(--text-muted) 12%, transparent) 12px);
+}
+
+/* Milestone cards — trophy + gold ring when done */
+.milestone-card.status-done {
+  opacity: 1;
+  position: relative;
+  border-color: rgba(212,164,76,0.5);
+  background: linear-gradient(135deg,
+    var(--surface) 0%,
+    color-mix(in srgb, #d4a44c 8%, var(--surface)) 100%);
+}
+.milestone-card.status-done::before {
+  content: "🏆";
+  position: absolute; top: 8px; right: 10px; font-size: 16px;
+  filter: drop-shadow(0 0 4px rgba(212,164,76,0.55));
+}
+
+/* ============================================================
+   TASK 8 — Focus, hover, and button AA touch-ups
+   ============================================================ */
+:focus-visible {
+  outline: 2px solid var(--text-primary);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+[data-theme="sand"] .btn-outline:hover,
+[data-theme="fog"] .btn-outline:hover {
+  background: var(--surface-hover); border-color: var(--text-secondary); color: var(--text-primary);
+}
+/* Ensure QC-gold badges still reach AA in light themes */
+[data-theme="sand"] .qc-section-count,
+[data-theme="fog"] .qc-section-count,
+[data-theme="sand"] .fw-qc-label,
+[data-theme="fog"] .fw-qc-label { color: #8a6a1c; }

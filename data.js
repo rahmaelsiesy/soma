@@ -37,6 +37,9 @@ const CATEGORY_META = {
   cursor:   { label: "Cursor Plan (Pipeline)",color: "var(--c-dg)",      emoji: "🤖", required: false, goal: "P0–P8 AI-assisted implementation packets — executes the DLPFC/FIC analyses" },
   learning: { label: "Learning Plan",         color: "var(--c-learning)",emoji: "📚", required: false, goal: "12 priority papers + methods mastery" },
   career:   { label: "Career Path",           color: "var(--c-career)",  emoji: "🚀", required: false, goal: "Thesis → Defense → Altos/Genentech/Illumina" },
+  concord_sae:     { label: "CONCORD SAE",         color: "#b07da8",          emoji: "🧬", required: false, goal: "Sparse autoencoder interpretability over the CONCORD latent space — publishable methods paper" },
+  assortativity:   { label: "Tissue Assortativity", color: "#9a9a6c",         emoji: "🕸️", required: false, goal: "Newman assortativity as a tissue-architecture biomarker across Braak stages and brain regions" },
+  dementia_review: { label: "Dementia Review",     color: "#8b8b96",          emoji: "📖", required: false, goal: "Completed six-part dementia literature review (AD, FTD/ALS-FTD, Lewy/Vascular, Prion/CTE, molecular regulation, convergence)" },
 };
 
 // ---- DETAILED MILESTONE DATA ----
@@ -405,7 +408,7 @@ const QUEST_DATA = {
       gate: { title: "FIC DEG Gate", items: ["FIC DE result stable in both UCSF + RUSH cohorts","Top convergent targets are not efficiency artifacts","At least 3 convergent genes have prior AD literature support (cite papers)"] }
     },
     {
-      id: "f-ven",
+      id: "fic-ven",
       depends_on: ["f-celltyping", "fic-spatial-domains"],
       title: "VEN Loss Analysis (FIC)",
       emoji: "🔺",
@@ -423,7 +426,7 @@ const QUEST_DATA = {
     },
     {
       id: "fic-write",
-      depends_on: ["fic-deg", "f-ven", "c-p8"],
+      depends_on: ["fic-deg", "fic-ven", "c-p8"],
       title: "FIC AD Paper: Write & Submit",
       emoji: "✍️",
       desc: "FIC AD manuscript. Emphasizes: (1) agranular cortex vulnerability, (2) VEN loss, (3) convergent AD targets with DLPFC. Nature Neuroscience format.",
@@ -693,7 +696,7 @@ const QUEST_DATA = {
       depends_on: ["f-celltyping", "f-spatial-domains"],
       title: "Spatial LR Custom Kernel",
       emoji: "📡",
-      desc: "LR analysis with spatially-aware distance kernel.",
+      desc: "Ligand-receptor interactions scored with a distance-decay kernel exp(-d/lambda) instead of a binary proximity cutoff. Sweep lambda across 25-200um, benchmark top interactions against CellChat and NicheNet, and report the three-way intersection as high-confidence calls.",
       category: "methods", priority: "Mid",
       xp: 35,
       reward: "📡 Spatially-aware cell communication method published as txomics tool.",
@@ -748,7 +751,7 @@ const QUEST_DATA = {
       depends_on: ["f-celltyping", "l-gnn"],
       title: "Network Motifs Paper",
       emoji: "🔺",
-      desc: "Spatial co-expression network motifs as tissue fingerprints.",
+      desc: "Spatial co-expression networks built from pairwise correlations (|r|>0.3, BH-FDR<0.05), mined for recurring 3- and 4-node motifs. Tests whether AD, control, and FTD brains carry distinguishable motif frequencies that work as tissue fingerprints.",
       category: "network", priority: "Mid",
       xp: 40,
       reward: "🔺 Tissue fingerprint method published. AD/CN/FTD distinguishable from network structure alone.",
@@ -861,7 +864,7 @@ const QUEST_DATA = {
       depends_on: ["pkg-setup", "pkg-decoding"],
       title: "txomics: Extended DEG",
       emoji: "📊",
-      desc: "5-level extended DEG framework as reusable module.",
+      desc: "Five-level DEG framework packaged in txomics: pseudo-bulk DESeq2, per-cell mixed models, efficiency-corrected tests, spatial-aware DEGs, and cross-region meta-analysis. Every level takes efficiency_residual as a covariate so seqFISH detection bias cannot masquerade as biology.",
       category: "package", priority: "P3",
       xp: 25,
       reward: "📊 The most rigorous DE method for seqFISH. Published and used by others.",
@@ -892,7 +895,7 @@ const QUEST_DATA = {
       depends_on: ["pkg-setup", "l-sir"],
       title: "txomics: Network Analysis",
       emoji: "🕸️",
-      desc: "Spatial graph, assortativity, LR kernel, SIR model, PageRank.",
+      desc: "Unified network module in txomics: k-NN spatial graph builder, Newman assortativity, distance-kernel LR scoring, spatial SIR solver, and PageRank/influence maximization. One import path for every network analysis the lab uses downstream.",
       category: "package", priority: "P5",
       xp: 20,
       reward: "🕸️ All network methods packaged and ready for the field.",
@@ -924,7 +927,7 @@ const QUEST_DATA = {
       depends_on: ["pkg-plotting", "c-p8"],
       title: "txomics: Dashboard Components",
       emoji: "📱",
-      desc: "5 interactive GitPages dashboards. Quarto + Observable JS.",
+      desc: "Five Quarto + Observable JS dashboards hosted on GitHub Pages: QC overview, cell-type atlas, spatial domains, disease contrasts, and LR/network explorer. Click-through from any figure to the exact cells and genes behind it.",
       category: "package", priority: "P7",
       xp: 25,
       reward: "📱 Interactive spatial atlas live on GitPages. Shareable with the world.",
@@ -1001,7 +1004,7 @@ const QUEST_DATA = {
     {
       id: "c-p5",
       depends_on: ["c-p4", "m-lr"], title: "P5: Spatial Domains & LR", emoji: "🗺️", category: "cursor", priority: "P5", xp: 30, reward: "🗺️ Tissue map complete. Cell-cell communication characterized.",
-      desc: "BANKSY domains, LR kernel analysis, subcellular RNA.",
+      desc: "Cursor packet P5: BANKSY spatial domains at multiple lambda, distance-kernel LR interactions, and subcellular RNA localization. Outputs DESDs (disease-enriched spatial domains) and DAM-neuron niche calls ready for the flagship figures.",
       steps: [{ id: "c-p5-1", title: "Cursor packet: P5_spatial_domains_and_LR.md", type: "code", desc: "BANKSY run, DESDs identified, LR kernel analysis completed.", checklist: ["BANKSY domains computed","DESDs identified and annotated","LR interactions computed with distance kernel","DAM-neuron niche analysis done"], xp: 30, cognitive_type: "deep" }],
       estimated_blocks: 6,
       gate: { title: "P5 Gate", items: ["DESDs replicate in both cohorts","BANKSY lambda chosen via ARI on benchmark data","Top LR interactions validated against CellChat"]}
@@ -1009,7 +1012,7 @@ const QUEST_DATA = {
     {
       id: "c-p6",
       depends_on: ["c-p2", "l-concord"], title: "P6: Integration & Embedding", emoji: "🔮", category: "cursor", priority: "P6", xp: 25, reward: "🔮 Multi-sample integration locked. SAE features interpretable.",
-      desc: "Multi-sample CONCORD, LISI validation, sparse autoencoder.",
+      desc: "Cursor packet P6: multi-sample CONCORD integration with LISI>0.5, then a sparse autoencoder over the latent space. Labels the top disease-relevant SAE features and flags any driven by efficiency so interpretation is not an artifact of technical batch.",
       steps: [{ id: "c-p6-1", title: "Cursor packet: P6_integration_and_embedding.md", type: "code", desc: "Full multi-sample CONCORD, LISI validation, SAE training and feature interpretation.", checklist: ["CONCORD LISI > 0.5","SAE stable features identified","Top 5 disease-relevant features labeled","Efficiency-technical features flagged"], xp: 25, cognitive_type: "deep" }],
       estimated_blocks: 6,
       gate: { title: "P6 Gate", items: ["LISI > 0.5 after integration","≥5 stable SAE features with biological labels","No top features driven by efficiency (|r| < 0.3)"]}
@@ -1025,7 +1028,7 @@ const QUEST_DATA = {
     {
       id: "c-p8",
       depends_on: ["c-p4", "c-p5", "c-p6", "c-p7"], title: "P8: Snakemake & HPC + Dashboards", emoji: "🚀", category: "cursor", priority: "P8", xp: 30, reward: "🚀 Reproducible pipeline. Everything deployed. Code on GitHub.",
-      desc: "Full Snakefile, SLURM config, GitPages dashboards deployed.",
+      desc: "Cursor packet P8: Snakemake s00-s20 pipeline with a Caltech-HPC SLURM config, dry-run green, and all five dashboards live on GitHub Pages. txomics + analysis repos public with a Zenodo DOI for the data release.",
       steps: [
         { id: "c-p8-1", title: "Cursor packet: P8_snakemake_and_hpc.md", type: "code", desc: "Snakemake pipeline s00-s20. SLURM configuration for Caltech HPC. Full dry-run passes.", checklist: ["Snakemake dry-run passes","SLURM config tested on cluster","Pipeline runs from raw data to final figures"], xp: 15, cognitive_type: "deep", compute_lead_hrs: 8, estimated_blocks: 6 },
         { id: "c-p8-2", title: "GitPages dashboards live", type: "code", desc: "All 5 dashboards deployed. txomics package on GitHub. Analysis repo documentation complete.", checklist: ["All 5 dashboards live on GitPages","txomics README clear for external users","Analysis repo README has reproduction instructions","Zenodo DOI created for data release"], xp: 15, cognitive_type: "deep", estimated_blocks: 6 },
@@ -1039,7 +1042,7 @@ const QUEST_DATA = {
     {
       id: "l-seqfish", title: "seqFISH+ (Eng 2019)", emoji: "📄", category: "learning", priority: "Foundation", xp: 10,
       reward: "📄 Platform foundation locked. You understand your data at the method level.",
-      desc: "Lubeck lab foundational seqFISH+ paper. Must know deeply.",
+      desc: "Long Cai / Lubeck lab's foundational seqFISH+ paper (Eng et al. 2019 Science). Read it closely, then implement a single-hyb toy decoder so the encoding, barcode matching, and FDR math are truly understood at a reviewer-grade level.",
       steps: [
         { id: "l-sf-1", title: "Read full paper + methods", type: "learning", desc: "Read Eng et al. 2019 Science. Focus: encoding strategy, barcode design, error correction, FDR computation, decoding pipeline. Take notes on every step that generates a parameter you use.", checklist: ["Paper read with active notes","Encoding strategy understood","FDR computation understood","Notes: how does the decoder fail?"], xp: 5, cognitive_type: "medium", estimated_blocks: 2 },
         { id: "l-sf-2", title: "Implement a toy decoder (1 hyb round)", type: "code", desc: "Implement a simplified version of the seqFISH barcode matching for 1 hybridization round from scratch (Python). This forces deep understanding of the decoding logic.", checklist: ["Toy decoder implemented","Correct barcodes decoded from synthetic data","Error rate tested at different noise levels"], xp: 5, cognitive_type: "deep", compute_lead_hrs: 24 , estimated_blocks: 2, },
@@ -1106,7 +1109,7 @@ const QUEST_DATA = {
     },
     {
       id: "l-sir", title: "SIR / Network Epidemiology", emoji: "📄", category: "learning", priority: "Mid", xp: 7,
-      desc: "SIR epidemic model fundamentals. Foundation for Paper 4.",
+      desc: "Classical SIR dynamics from Keeling & Rohani Ch 2-3: derive R_0, implement the ODEs with scipy, and plot S/I/R curves across a range of R_0. Foundation for the spatial microglial-spread epidemic paper.",
       reward: "📄 SIR model mastered. Neuroinflammation-as-epidemic paper can be implemented.",
       steps: [
         { id: "l-sir-1", title: "Read Keeling & Rohani Chapters 2-3", type: "learning", desc: "Textbook: 'Modeling Infectious Diseases' Ch 2-3. Derive R_0 from first principles. Understand stability analysis (endemic equilibrium).", checklist: ["Chapters 2-3 read","R_0 derived from scratch (on paper)","Stability condition understood: R_0 > 1 = epidemic"], xp: 4, cognitive_type: "medium", estimated_blocks: 2 },
@@ -1146,7 +1149,7 @@ const QUEST_DATA = {
     },
     {
       id: "l-figdesign", title: "Figure Design (Nature/Science)", emoji: "📄", category: "learning", priority: "Mid", xp: 5,
-      desc: "Best practices for scientific figure design.",
+      desc: "Rougier 2014 PLoS CB 'Ten Simple Rules for Better Figures' plus the Krzywinski & Altman Points of View series, then reproduce one published Nature Methods figure in matplotlib via the FigureStyle class. Calibrates the 3-second 'looks like Nature' test.",
       reward: "📄 Figure design mastered. FigureStyle class reflects real expertise.",
       steps: [
         { id: "l-fd-1", title: "Read Rougier et al. 2014 + Krzywinski & Altman", type: "learning", desc: "Rougier et al. 2014 PLoS Comp Biol 'Ten Simple Rules for Better Figures'. Krzywinski & Altman 2013 Nature Methods 'Points of View' series.", checklist: ["Rougier 2014 read","Krzywinski series read (at least 5 columns)","Checklist: 5 rules implemented in your FigureStyle class"], xp: 3, cognitive_type: "medium", estimated_blocks: 2 },
@@ -1161,7 +1164,7 @@ const QUEST_DATA = {
     {
       id: "car-thesis",
       depends_on: ["f-write"], title: "Thesis Chapter 1 Draft", emoji: "📝", category: "career", priority: "Nov 2026", xp: 40,
-      desc: "First flagship paper results as thesis chapter 1.",
+      desc: "Flagship DLPFC+FIC AD spatial atlas results written up as thesis Chapter 1. Advisor-approved outline first, then a full draft that leans on BIO_BACKGROUND.md for intro and cites the txomics methods paper for its pipeline.",
       reward: "📝 First thesis chapter submitted to advisor.",
       steps: [
         { id: "car-t-1", title: "Thesis outline approved", type: "writing", desc: "Submit thesis outline to advisor. Get approval on chapter organization before writing.", checklist: ["Outline includes 3-4 chapters","Chapter 1 = flagship paper","Chapters 2-3 = methods papers","Advisor has approved outline in writing"], xp: 5, cognitive_type: "deep", estimated_blocks: 3 },
@@ -1171,7 +1174,7 @@ const QUEST_DATA = {
     },
     {
       id: "car-github", title: "Code on GitHub", emoji: "🐙", category: "career", priority: "ASAP", xp: 15,
-      desc: "Get all code off remote server and onto GitHub. Both repos.",
+      desc: "Move both repos off the Caltech server and into GitHub: txomics public with a green CI badge and working pip install from main, ad_seqfish_analysis private with pinned txomics version. Portfolio piece for Altos, Genentech, and Illumina applications.",
       reward: "🐙 Code is backed up, version-controlled, and ready for job applications.",
       steps: [
         { id: "car-g-1", title: "txomics repo: public on GitHub", type: "code", desc: "Initialize txomics repo, push to GitHub as PUBLIC. This is your portfolio piece for Altos/Genentech/Illumina.", checklist: ["git init + push done","README is clear for external users","pip install from GitHub works","CI badge in README"], xp: 8, cognitive_type: "deep", estimated_blocks: 3 },
@@ -1193,7 +1196,7 @@ const QUEST_DATA = {
     {
       id: "car-defense",
       depends_on: ["car-thesis", "car-preprint"], title: "PhD Defense", emoji: "🎓", category: "career", priority: "Nov 2026", xp: 80,
-      desc: "PhD defense at Caltech Bioengineering. Target: November 2026.",
+      desc: "Caltech Bioengineering PhD defense targeting November 2026. Thesis submitted to the committee at least two weeks ahead, public talk scheduled, and closed-door Q&A passed.",
       reward: "🎓 DR. RAHMA. You did it.",
       steps: [
         { id: "car-d-1", title: "Thesis submitted to committee", type: "writing", desc: "Full thesis (3-4 chapters) submitted to committee. Minimum 2 weeks before defense.", checklist: ["All chapters approved by advisor","Formatting requirements met","Submitted to committee 2+ weeks before defense"], xp: 30, cognitive_type: "deep", estimated_blocks: 6 },
@@ -1232,6 +1235,153 @@ const QUEST_DATA = {
         { id: "car-o-2", title: "Start date confirmed. YOU DID IT. 🎉", type: "career", desc: "Start date confirmed. Give yourself 2 weeks off. You spent 5+ years on this. Celebrate properly.", checklist: ["Start date confirmed","2 weeks off taken","Celebrate with people who matter"], xp: 50, cognitive_type: "deep", estimated_blocks: 2 },
       ],
       gate: { title: "Final Gate", items: ["This is the last gate. There are no more gates. YOU WIN."]}
+    },
+  ],
+
+  // ============================================================
+  // OPTIONAL METHODS PAPER: CONCORD SAE Interpretability
+  // Sparse autoencoder over the CONCORD latent space.
+  // Ranked third additional paper in the portfolio (methods, medium-risk).
+  // ============================================================
+  concord_sae: [
+    {
+      id: "sae-arch",
+      depends_on: ["c-p6"],
+      title: "SAE Architecture & Training",
+      emoji: "🧠",
+      desc: "PyTorch sparse autoencoder on frozen CONCORD embeddings. Top-k or L1 sparsity, width 4-16x latent dim, multi-seed training for feature stability.",
+      category: "concord_sae", priority: "Mid",
+      xp: 25,
+      reward: "🧠 Stable SAE features trained on CONCORD latents. Feature dictionary saved for downstream interpretation.",
+      steps: [
+        { id: "sae-a-1", title: "PyTorch SAE implemented", type: "code", desc: "Encoder + decoder + top-k or L1 sparsity. Width sweep 4x, 8x, 16x latent dim. Reconstruction loss + sparsity regularizer. Train on frozen CONCORD embeddings.", checklist: ["Top-k and L1 variants implemented", "Width sweep run", "Reconstruction R² > 0.9 at chosen width", "Dead-feature rate < 10%"], xp: 12, cognitive_type: "deep", estimated_blocks: 5 },
+        { id: "sae-a-2", title: "Multi-seed stability analysis", type: "code", desc: "Train 5 seeds. Match features across seeds by cosine similarity. Only features stable across ≥4 seeds (cos>0.8) enter the final feature set.", checklist: ["5 seeds trained", "Feature matching implemented", "Stability threshold applied", "Final feature count reported"], xp: 13, cognitive_type: "deep", estimated_blocks: 5 },
+      ],
+      gate: { title: "SAE Training Gate", items: ["Reconstruction R² > 0.9", "At least 5 seeds trained with >80% feature overlap", "Dead-feature rate documented"] }
+    },
+    {
+      id: "sae-interp",
+      depends_on: ["sae-arch"],
+      title: "Sparse Feature Interpretation",
+      emoji: "🔍",
+      desc: "Map each stable SAE feature to cell types, spatial domains, and disease states. Flag features that correlate with efficiency_residual so they can be excluded from biological claims.",
+      category: "concord_sae", priority: "Mid",
+      xp: 25,
+      reward: "🔍 Top features labeled. Disease-relevant features separated from technical efficiency features.",
+      steps: [
+        { id: "sae-i-1", title: "Feature-to-biology mapping", type: "code", desc: "For each stable feature: top activating cells → enriched cell types, layers, domains, donors, disease. Cross-tabulate with cell-type annotations and BANKSY domains.", checklist: ["Top activating cells extracted per feature", "Cell-type enrichment computed", "Spatial domain enrichment computed", "Disease association tested"], xp: 12, cognitive_type: "deep", estimated_blocks: 4 },
+        { id: "sae-i-2", title: "Efficiency confound check", type: "code", desc: "Correlate each feature's activation with efficiency_residual. Any |r| > 0.3 is flagged as efficiency-driven and excluded from biological interpretation (robustness_and_validation.md rule).", checklist: ["|r| with efficiency_residual computed per feature", "Flagged features listed", "Remaining biological features written up"], xp: 13, cognitive_type: "deep", estimated_blocks: 4 },
+      ],
+      gate: { title: "Interpretation Gate", items: ["≥5 biologically labeled features", "No top features driven by efficiency (|r| < 0.3)", "Feature dictionary saved as parquet"] }
+    },
+    {
+      id: "sae-bench",
+      depends_on: ["sae-interp"],
+      title: "Benchmark vs PCA & NMF",
+      emoji: "📉",
+      desc: "Head-to-head on the same CONCORD latents: PCA, NMF, and the SAE. Compare reconstruction, sparsity, feature stability, and how cleanly each decomposition separates disease from technical batch.",
+      category: "concord_sae", priority: "Mid",
+      xp: 20,
+      reward: "📉 SAE's advantage over classical decompositions quantified for the reviewer.",
+      steps: [
+        { id: "sae-b-1", title: "PCA + NMF baselines", type: "code", desc: "Fit PCA and NMF on the same CONCORD latents at matched component count. Evaluate reconstruction, sparsity, stability across seeds.", checklist: ["PCA fit at matched k", "NMF fit at matched k", "Reconstruction + sparsity + stability reported"], xp: 8, cognitive_type: "deep", estimated_blocks: 3 },
+        { id: "sae-b-2", title: "Disease vs technical separability", type: "code", desc: "For each method: fraction of top components driven by disease vs efficiency/donor. Report clear win condition for SAE.", checklist: ["Metric defined and documented", "SAE vs PCA vs NMF table produced", "Winner called with effect size"], xp: 12, cognitive_type: "deep", estimated_blocks: 4 },
+      ],
+      gate: { title: "Benchmark Gate", items: ["Matched-k comparison reported", "SAE advantage quantified on ≥1 published dataset in addition to our own"] }
+    },
+    {
+      id: "sae-manuscript",
+      depends_on: ["sae-bench"],
+      title: "Nature Methods Manuscript",
+      emoji: "📝",
+      desc: "Full methods paper: SAE architecture, interpretability protocol, efficiency-confound audit, PCA/NMF benchmark, public code in txomics. Target Nature Methods or Cell Systems.",
+      category: "concord_sae", priority: "Mid",
+      xp: 30,
+      reward: "📝 CONCORD SAE preprint on bioRxiv. Submission to Nature Methods.",
+      steps: [
+        { id: "sae-m-1", title: "Manuscript draft complete", type: "writing", desc: "Intro, methods, results, discussion with Nature-style figures. Methods reference txomics. All robustness gates passed.", checklist: ["Intro frames SAE interpretability gap", "All 4 main figures finalized", "Supplementary benchmarks included", "Advisor-approved draft"], xp: 20, cognitive_type: "deep", estimated_blocks: 6 },
+        { id: "sae-m-2", title: "Preprint + submission", type: "writing", desc: "bioRxiv preprint, then submit to Nature Methods. Code tagged release in txomics, Zenodo DOI for data.", checklist: ["bioRxiv preprint live", "Nature Methods submission confirmed", "txomics release tagged", "Zenodo DOI obtained"], xp: 10, cognitive_type: "deep", estimated_blocks: 4 },
+      ],
+      gate: { title: "Submission Gate", items: ["bioRxiv DOI", "Nature Methods submission confirmed", "Public code + data with DOI"] }
+    },
+  ],
+
+  // ============================================================
+  // OPTIONAL METHODS PAPER: Tissue Assortativity
+  // Newman assortativity as a tissue-architecture biomarker.
+  // Top-tier spinout — near-zero extra work beyond flagship pipeline.
+  // ============================================================
+  assortativity: [
+    {
+      id: "assort-compute",
+      depends_on: ["c-p5"],
+      title: "Compute Newman Assortativity",
+      emoji: "🕸️",
+      desc: "Build k-NN spatial graphs per section, compute Newman assortativity coefficient r over cell-type labels, and benchmark robustness to k, radius, and label resolution.",
+      category: "assortativity", priority: "Mid",
+      xp: 25,
+      reward: "🕸️ Assortativity pipeline in txomics. r values computed for every section with robustness envelopes.",
+      steps: [
+        { id: "as-c-1", title: "Spatial graph + r implementation", type: "code", desc: "k-NN spatial graph in txomics.network. Implement Newman r from scratch, then validate against NetworkX to 1e-4 tolerance.", checklist: ["k-NN builder in txomics.network", "Manual Newman r matches NetworkX", "Unit tests pass", "Runs on 1M+ cell section in <2 min"], xp: 10, cognitive_type: "deep", estimated_blocks: 4 },
+        { id: "as-c-2", title: "Robustness to k and radius", type: "code", desc: "Sweep k ∈ {5,10,20,30}, radius ∈ {25,50,100µm}, and cell-type resolution (broad vs subtype). Report r ± CI across choices per section.", checklist: ["Sweep complete", "CIs reported", "Choice justified by highest stability", "Results saved as parquet"], xp: 15, cognitive_type: "deep", estimated_blocks: 5 },
+      ],
+      gate: { title: "Computation Gate", items: ["Newman r matches NetworkX within 1e-4", "Choice of k/radius survives robustness sweep", "r and CI reported for every section"] }
+    },
+    {
+      id: "assort-braak",
+      depends_on: ["assort-compute"],
+      title: "Benchmark Across Braak Stages & Regions",
+      emoji: "📊",
+      desc: "Model r ~ Braak + region + APOE with donor random effects. Show whether tissue architecture becomes measurably more disordered along Braak progression across DLPFC, FIC, and DG.",
+      category: "assortativity", priority: "Mid",
+      xp: 25,
+      reward: "📊 Clear Braak-stage trend in r, region-stratified, APOE-controlled. Publication-grade effect sizes.",
+      steps: [
+        { id: "as-b-1", title: "Braak + region LMM", type: "code", desc: "r ~ Braak_stage + region + APOE + (1|donor). Report effect size, CI, and partial R² for each term.", checklist: ["LMM fit with donor RE", "Braak effect size with CI reported", "Region interaction tested", "APOE confound controlled"], xp: 12, cognitive_type: "deep", estimated_blocks: 4 },
+        { id: "as-b-2", title: "Cross-dataset replication", type: "code", desc: "Run identical pipeline on a published spatial dataset (e.g. MERFISH AD cohort) and show the Braak trend replicates.", checklist: ["External dataset pipeline run", "Direction of effect matches", "Magnitude reported", "Figure prepared"], xp: 13, cognitive_type: "deep", estimated_blocks: 5 },
+      ],
+      gate: { title: "Benchmark Gate", items: ["Braak effect survives LMM with donor RE", "Replicates direction on ≥1 external spatial dataset", "APOE confound reported explicitly"] }
+    },
+    {
+      id: "assort-paper",
+      depends_on: ["assort-braak"],
+      title: "Methods Paper Submission",
+      emoji: "📬",
+      desc: "Short methods paper: graph construction, Newman r, robustness envelope, Braak trend with external replication. Positioned as near-zero-cost biomarker extractable from any spatial dataset.",
+      category: "assortativity", priority: "Mid",
+      xp: 25,
+      reward: "📬 Tissue assortativity paper preprinted and submitted. High-ROI first solo publication.",
+      steps: [
+        { id: "as-p-1", title: "Manuscript + figures", type: "writing", desc: "Compact methods paper, 3-4 main figures. Methods references txomics. Advisor approval before submission.", checklist: ["Manuscript draft", "3-4 main figures finalized", "All robustness gates cited in methods", "Advisor sign-off"], xp: 15, cognitive_type: "deep", estimated_blocks: 5 },
+        { id: "as-p-2", title: "bioRxiv + journal submission", type: "writing", desc: "Preprint on bioRxiv, submit to Nature Methods / Bioinformatics / Genome Biology. Tagged code release in txomics.", checklist: ["bioRxiv DOI", "Journal submission confirmed", "txomics tag released", "Zenodo DOI for data"], xp: 10, cognitive_type: "deep", estimated_blocks: 4 },
+      ],
+      gate: { title: "Submission Gate", items: ["bioRxiv DOI", "Journal submission confirmed", "txomics release tag public"] }
+    },
+  ],
+
+  // ============================================================
+  // DEMENTIA LITERATURE REVIEW (Completed retrospective track)
+  // Six-part synthesis used as hypothesis source for the flagship paper.
+  // All parts already done — migration pre-marks them complete on load.
+  // ============================================================
+  dementia_review: [
+    {
+      id: "dem-review-1",
+      title: "Six-Part Dementia Synthesis",
+      emoji: "📖",
+      desc: "Completed review covering AD history + biomarkers, FTD/ALS-FTD, Lewy body and vascular dementias, prion disease and CTE, molecular regulation (tau isoforms, insulin/CNR/apoptosis), and convergence toward unified therapeutic targets. Serves as the hypothesis engine and introduction scaffolding for every disease-focused paper in the portfolio.",
+      category: "dementia_review", priority: "Done",
+      xp: 60,
+      reward: "📖 Dementia review logged. Acts as reusable intro and scientist-lineage map for AD, FTD, and convergence papers.",
+      steps: [
+        { id: "dem-ad", title: "Part 1: Alzheimer's Disease", type: "learning", desc: "Auguste Deter and Alois Alzheimer, diagnostic evolution NINCDS-ADRDA 1984 → NIA-AA 2011 → ATN 2018, biomarkers (Aβ42/40, p-tau181, p-tau217, NfL, amyloid PET, tau PET, plasma p-tau217), clinical phenotypes (amnestic, PCA, logopenic PPA, bvAD), genetics (APP/PSEN1/PSEN2, APOE/TREM2/BIN1/PICALM/CLU/CD33/ABCA7/SORL1), neuropathology (plaques, ABC scoring, Braak staging).", checklist: ["Historical origins covered", "Diagnostic criteria evolution mapped", "Biomarker panel documented", "Clinical phenotypes included", "Genetic risk architecture summarized", "Neuropathology and Braak staging covered"], xp: 12, cognitive_type: "deep", estimated_blocks: 1 },
+        { id: "dem-ftd-als", title: "Part 2: FTD & ALS-FTD", type: "learning", desc: "bvFTD, PPA subtypes, semantic dementia, FTD-MND overlap, TDP-43 and tau pathology, C9orf72 / GRN / MAPT genetics, and the bvFTD vs bvAD diagnostic tension that the FIC VEN work directly addresses.", checklist: ["bvFTD clinical profile", "PPA subtypes", "TDP-43 and tau pathology", "C9orf72 / GRN / MAPT genetics", "bvFTD vs bvAD overlap"], xp: 10, cognitive_type: "deep", estimated_blocks: 1 },
+        { id: "dem-lewy-vasc", title: "Part 3: Lewy Body & Vascular Dementias", type: "learning", desc: "DLB, PDD, α-synuclein biology, autonomic + REM-sleep features, vascular dementia subtypes, small-vessel disease, mixed pathologies, and the fact that most late-life dementia is mixed rather than pure.", checklist: ["DLB / PDD criteria", "α-synuclein pathology", "Vascular dementia subtypes", "Mixed-pathology reality documented"], xp: 8, cognitive_type: "deep", estimated_blocks: 1 },
+        { id: "dem-prion-cte", title: "Part 4: Prion Disease & CTE", type: "learning", desc: "Sporadic / familial / iatrogenic / variant CJD, GSS, FFI, prion biology and protein templating. CTE staging, repetitive head-impact epidemiology, and how prion-like tau and α-synuclein spread link back to Braak staging.", checklist: ["CJD subtypes", "Prion templating mechanism", "CTE staging", "Prion-like spread of tau / α-syn connected to other chapters"], xp: 8, cognitive_type: "deep", estimated_blocks: 1 },
+        { id: "dem-molecular", title: "Part 5: Molecular Regulation", type: "learning", desc: "Tau isoforms (3R/4R) and MAPT splicing, insulin / IGF-1 signaling and 'type 3 diabetes' framing, cannabinoid CNR1/CNR2 biology, apoptosis and necroptosis pathways, UPR branches, NLRP3, autophagy, NRF2, and how these map onto the gene modules used in the flagship paper.", checklist: ["Tau isoform biology", "Insulin / CNR pathway links", "Apoptosis / necroptosis", "UPR / NLRP3 / autophagy / NRF2", "Mapped to probeset gene modules"], xp: 12, cognitive_type: "deep", estimated_blocks: 1 },
+        { id: "dem-convergence", title: "Part 6: Convergence & Cure Strategy", type: "learning", desc: "Shared endpoints across dementias — reactive glia, BBB failure, mitochondrial stress, proteostasis collapse — and why a convergence-targeting strategy is the editorial frame for the flagship atlas, the FIC VEN paper, and the SIR microglial-epidemic paper.", checklist: ["Convergent mechanisms identified", "Therapeutic target logic", "Links to flagship / VEN / SIR framing", "Review finalized and filed"], xp: 10, cognitive_type: "deep", estimated_blocks: 1 },
+      ],
+      gate: { title: "Review Complete", items: ["All 6 parts written and filed as dementia-review-enhanced.md", "Scientist-lineage sections included", "Ready to reuse as intro material for flagship / VEN / SIR papers"] }
     },
   ],
 
