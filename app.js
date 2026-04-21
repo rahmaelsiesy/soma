@@ -1311,12 +1311,14 @@ function renderPlannedBlocksChecklist() {
       ? `${blockMin}-min block · ${blockNo} of ${totalBlocks} for this substep`
       : `${blockMin}-min block`;
 
-    html += `<li class="planned-row planned-row-today">
+    // Round 5.1: show only 'N-min block · Project' on Home. Specifics
+    // (milestone title, substep title, checklist) are visible after clicking
+    // into the focus view. Keeps Home low-cognitive-load.
+    html += `<li class="planned-row planned-row-today planned-row-calm">
       <span class="planned-row-colordot" style="background:${color}" aria-hidden="true"></span>
       <div class="planned-row-main">
-        <div class="planned-row-title">${escapeHtml(msTitle)}</div>
-        <div class="planned-row-sub">${escapeHtml(step.title)}</div>
-        <div class="planned-row-meta"><span class="planned-row-track" style="color:${color}">${escapeHtml(label)}</span> · ${metaBlockLabel}</div>
+        <div class="planned-row-title-calm">${blockMin} min block</div>
+        <div class="planned-row-meta"><span class="planned-row-track" style="color:${color}">${escapeHtml(label)}</span></div>
       </div>
       <div class="planned-row-actions">
         <button class="planned-row-details" data-details-step="${step.id}" data-details-ms="${p.milestone.id}">Details ›</button>
@@ -1496,11 +1498,16 @@ function renderHome() {
       const current = (i === heroDone);
       heroDots += `<span class="step-block-dot${filled ? ' filled' : ''}${current ? ' current' : ''}" aria-hidden="true"></span>`;
     }
-    html += `<button class="start-block-btn start-block-btn-v2" style="background:${color}" onclick="navigate('#focus/${next.milestone.id}/${next.step.id}')">
+    // Round 5.1: calm hero — no substep text, no context. Just the action +
+    // project dot so Home carries zero decision-making surface.
+    const blockMin = state.settings.blockDurationMin || 90;
+    const trackLabel = getTrackLabel(next.track);
+    html += `<button class="start-block-btn start-block-btn-v2 start-block-btn-calm" style="background:${color}" onclick="navigate('#focus/${next.milestone.id}/${next.step.id}')">
       <span class="btn-label-sm">Start next block</span>
-      <span class="start-block-substep">${escapeHtml(substepTxt)}</span>
-      <span class="start-block-dots" aria-label="${heroDone} of ${heroEst} blocks done">${heroDots}</span>
-      <span class="start-block-context">${escapeHtml(contextTxt)}</span>
+      <span class="start-block-calm-main">
+        <span class="start-block-calm-dot" style="background:${color}" aria-hidden="true"></span>
+        <span class="start-block-calm-text">${blockMin} min block · ${escapeHtml(trackLabel)}</span>
+      </span>
     </button>`;
   } else {
     html += `<div class="done-msg" style="background:rgba(255,255,255,0.03);border-color:var(--border);">No active tasks queued. Check your <a onclick="navigate('#projects')" style="color:var(--text-primary);text-decoration:underline;cursor:pointer;">projects</a>.</div>`;

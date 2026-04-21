@@ -1503,28 +1503,47 @@ a { color: inherit; text-decoration: none; }
   text-transform: uppercase; letter-spacing: 0.3px;
 }
 
-/* Theme picker styles */
+/* Theme picker styles (labels in-flow so they never overlap) */
 .theme-picker {
-  display: flex; gap: 10px; flex-wrap: wrap; padding-top: var(--sp-2);
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 14px 12px;
+  padding-top: var(--sp-2);
 }
 .theme-swatch {
-  width: 44px; height: 44px; border-radius: var(--r-lg);
-  border: 2px solid transparent; cursor: pointer;
-  position: relative; transition: border-color var(--t-fast), transform var(--t-fast);
-  display: flex; align-items: center; justify-content: center;
+  border-radius: var(--r-lg);
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: border-color var(--t-fast), transform var(--t-fast);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 6px 10px;
+  min-width: 0;
 }
-.theme-swatch:hover { transform: scale(1.08); }
+.theme-swatch:hover { transform: scale(1.04); }
 .theme-swatch.active { border-color: var(--c-gold); }
 .theme-swatch .swatch-inner {
-  width: 36px; height: 36px; border-radius: 6px;
+  width: 56px; height: 56px; border-radius: 10px;
   display: flex; flex-direction: column; overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.12);
 }
 .theme-swatch .swatch-top { flex: 1; }
 .theme-swatch .swatch-bot { flex: 1; }
 .theme-swatch .swatch-label {
-  position: absolute; bottom: -16px; left: 50%; transform: translateX(-50%);
-  font-size: 9px; color: var(--text-muted); white-space: nowrap; text-transform: capitalize;
+  position: static;
+  transform: none;
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: center;
+  line-height: 1.25;
+  max-width: 100%;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
+.theme-swatch.active .swatch-label { color: var(--text-primary); font-weight: 600; }
 
 /* ============================================================
    TASK 1 — More drawer overflow list + drawer header
@@ -2843,4 +2862,112 @@ a { color: inherit; text-decoration: none; }
     flex: 1 1 100%; justify-content: flex-start;
   }
   .planned-row-dots { max-width: 100%; }
+}
+
+/* ------------------------------------------------------------------ */
+/* Round 5.1 — Calm Home (labels only show project + block duration)  */
+/* Intent: Home never shows step/substep text. Specifics are visible  */
+/* after clicking into Focus. Removes decision-making surface.        */
+/* ------------------------------------------------------------------ */
+
+/* Hero 'Start next block' button: calm variant */
+.start-block-btn-calm {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 20px 22px;
+  text-align: left;
+  width: 100%;
+  border-radius: var(--r-lg);
+}
+.start-block-btn-calm .btn-label-sm {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.85);
+}
+.start-block-btn-calm .start-block-calm-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+}
+.start-block-btn-calm .start-block-calm-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  border: 2px solid rgba(255,255,255,0.55);
+  box-shadow: inset 0 0 0 2px rgba(255,255,255,0.08);
+}
+.start-block-btn-calm .start-block-calm-text {
+  font-size: 22px;
+  font-weight: 600;
+  color: #fff;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+/* Planned-row: calm variant (overrides the 3-dot multiline layout) */
+.planned-row-calm {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  min-width: 0;
+}
+.planned-row-calm .planned-row-colordot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+.planned-row-calm .planned-row-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.planned-row-calm .planned-row-title-calm {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.planned-row-calm .planned-row-meta {
+  font-size: 13px;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+.planned-row-calm .planned-row-actions {
+  display: flex;
+  gap: 8px;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+/* Stack buttons under text on narrow screens so nothing overlaps */
+@media (max-width: 540px) {
+  .planned-row-calm {
+    flex-wrap: wrap;
+  }
+  .planned-row-calm .planned-row-main {
+    flex: 1 1 100%;
+  }
+  .planned-row-calm .planned-row-actions {
+    flex: 1 1 100%;
+    justify-content: flex-start;
+  }
 }
