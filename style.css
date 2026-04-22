@@ -1416,6 +1416,73 @@ a { color: inherit; text-decoration: none; }
   border-color: rgba(182, 221, 74, 0.45);
 }
 
+/* --- Remote Lime: make the lime the hero (like the Framer template) --- */
+/* The hero 'Start next block' gets inline background:${projectColor} from JS.
+   Override it with the signature lime and force ink text, matching the template's
+   yellow-green headline frame. !important is required to beat the inline style. */
+[data-theme="remote-lime"] .start-block-btn-calm,
+[data-theme="remote-lime"] .start-block-btn {
+  background: #c6ee5c !important;
+  color: #121212 !important;
+  border: 1px solid #b6dd4a;
+}
+[data-theme="remote-lime"] .start-block-btn-calm:hover,
+[data-theme="remote-lime"] .start-block-btn:hover {
+  background: #b6dd4a !important;
+}
+[data-theme="remote-lime"] .start-block-btn-calm .btn-label-sm,
+[data-theme="remote-lime"] .start-block-btn .btn-label-sm {
+  color: #121212; opacity: 0.65;
+}
+
+/* Planned-today rows: lime left-accent stripe + crisp ink text, mirroring the
+   template's bordered cards. Keeps the per-project dot as the secondary marker. */
+[data-theme="remote-lime"] .planned-row-calm {
+  background: #fffdf8;
+  border: 1px solid #d9d5cc;
+  border-left: 4px solid #c6ee5c;
+}
+[data-theme="remote-lime"] .planned-row-calm .planned-row-title-calm {
+  color: #121212;
+}
+
+/* 'This week' summary card: soft lime surface so the week plan pops like the
+   template's pale-lime section blocks. */
+[data-theme="remote-lime"] .week-summary-card,
+[data-theme="remote-lime"] .week-plan-panel,
+[data-theme="remote-lime"] .week-plan-summary {
+  background: #eaf5c1;
+  border-color: #cfe28a;
+}
+
+/* Week-dots and block-circles: lime fill + ink border when active, like the
+   template's highlight chips. */
+[data-theme="remote-lime"] .block-circle.filled { background: #c6ee5c; }
+[data-theme="remote-lime"] .block-circle.bonus { background: #8a6a1c; }
+
+/* 'Plan my week with AI' CTA: lime-tinted so it reads as an action, not chrome. */
+[data-theme="remote-lime"] .plan-week-btn {
+  background: #eaf5c1;
+  border: 1px solid #cfe28a;
+  border-style: solid;
+  color: #121212;
+}
+[data-theme="remote-lime"] .plan-week-btn:hover {
+  background: #dfee9a;
+  border-color: #b6dd4a;
+  color: #121212;
+}
+
+/* Active tab indicator in the side nav gets the lime accent. */
+[data-theme="remote-lime"] .nav-item.active,
+[data-theme="remote-lime"] .tab-active {
+  color: #121212;
+}
+[data-theme="remote-lime"] .nav-item.active::before,
+[data-theme="remote-lime"] .nav-item.active::after {
+  background: #c6ee5c;
+}
+
 /* Light theme shared tweaks */
 [data-theme="catppuccin-latte"] .btn-primary,
 [data-theme="solarized-light"] .btn-primary,
