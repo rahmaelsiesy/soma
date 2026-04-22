@@ -1483,6 +1483,112 @@ a { color: inherit; text-decoration: none; }
   background: #c6ee5c;
 }
 
+/* ============================================================
+   Remote Lime — Candy Land path, Focus view, and step drawer
+   Consistent lime accent while preserving per-project color dots.
+   ============================================================ */
+
+/* --- Candy Land path nodes --- */
+/* Active milestone/step: lime ring + lime-tinted surface (replaces the per-track
+   colored glow). The project-color dot in the title still shows track identity. */
+[data-theme="remote-lime"] .candy-node--active {
+  border-color: #b6dd4a;
+  background: #f6fce0;
+  box-shadow: 0 0 0 2px rgba(198, 238, 92, 0.55), var(--shadow-subtle);
+}
+[data-theme="remote-lime"] .candy-node--active .candy-icon {
+  background: #c6ee5c;
+  border-color: #b6dd4a;
+  color: #121212;
+}
+/* Done milestone/step: solid lime gradient + deep-ink glyph, like the template's
+   highlight section blocks. */
+[data-theme="remote-lime"] .candy-node--done {
+  background: linear-gradient(135deg, #eaf5c1 0%, #c6ee5c 100%);
+  border-color: #b6dd4a;
+}
+[data-theme="remote-lime"] .candy-node--done .candy-icon {
+  background: #c6ee5c;
+  border-color: #a6cd3a;
+  color: #121212;
+}
+[data-theme="remote-lime"] .candy-node--done .candy-title,
+[data-theme="remote-lime"] .candy-node--done .candy-sub {
+  color: #121212;
+}
+[data-theme="remote-lime"] .candy-trophy {
+  color: #121212;
+  filter: drop-shadow(0 0 3px rgba(198, 238, 92, 0.6));
+}
+/* Connectors between nodes: lime when the segment is complete. */
+[data-theme="remote-lime"] .candy-path-connector--done {
+  background-image: linear-gradient(#c6ee5c 100%, transparent 0);
+}
+/* Hover border on any node uses lime instead of the per-track accent, so the
+   feedback stays visually consistent across projects. */
+[data-theme="remote-lime"] .candy-node:hover {
+  border-color: #b6dd4a;
+}
+
+/* --- Focus view: timer + workflow checklist --- */
+/* Timer ring progress stroke: lime, matching the hero CTA. */
+[data-theme="remote-lime"] .timer-ring .ring-fill {
+  stroke: #c6ee5c;
+}
+[data-theme="remote-lime"] .timer-ring .ring-bg {
+  stroke: #d9d5cc;
+}
+[data-theme="remote-lime"] .timer-time {
+  color: #121212;
+}
+/* Focus-done message: lime wash instead of the default green tint. */
+[data-theme="remote-lime"] .focus-done-msg {
+  background: rgba(198, 238, 92, 0.22);
+  border-color: rgba(182, 221, 74, 0.45);
+  color: #121212;
+}
+/* Current step in the workflow checklist: lime left-accent stripe. */
+[data-theme="remote-lime"] .focus-workflow-step.current {
+  background: #f6fce0;
+  border-color: #b6dd4a;
+  border-left: 4px solid #c6ee5c;
+}
+[data-theme="remote-lime"] .focus-workflow-step.done {
+  opacity: 0.55;
+}
+/* Floating timer pill: lime glyph + subtle lime ring on hover. */
+[data-theme="remote-lime"] .timer-pill {
+  --pill-color: #8fb81a;
+}
+/* Project picker: selected card gets a lime left-accent. */
+[data-theme="remote-lime"] .focus-proj-toggle.selected {
+  background: #f6fce0;
+  border-color: #b6dd4a;
+  border-left: 4px solid #c6ee5c;
+}
+
+/* --- Step drawer --- */
+/* Checked checkbox: lime fill with deep-ink check, so completion reads instantly. */
+[data-theme="remote-lime"] .drawer-cb:checked {
+  background: #c6ee5c;
+  border-color: #b6dd4a;
+}
+[data-theme="remote-lime"] .drawer-cb:checked::after {
+  border-color: #121212;
+}
+/* Textarea focus ring in lime for continuity with other focused states. */
+[data-theme="remote-lime"] .drawer-notes:focus {
+  border-color: #b6dd4a;
+  box-shadow: 0 0 0 3px rgba(198, 238, 92, 0.25);
+}
+/* Section title: small lime underline to echo the template's text-highlight move. */
+[data-theme="remote-lime"] .drawer-section-title {
+  color: #121212;
+  padding-bottom: 4px;
+  border-bottom: 2px solid #c6ee5c;
+  display: inline-block;
+}
+
 /* Light theme shared tweaks */
 [data-theme="catppuccin-latte"] .btn-primary,
 [data-theme="solarized-light"] .btn-primary,
