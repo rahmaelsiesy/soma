@@ -118,6 +118,85 @@ const TYPE_COLORS = {
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
 const STORAGE_KEY = 'questboard_v3';
 
+// ── GITHUB SYNC ──────────────────────────────────────────────────────────────
+// State is pushed to state.json in the repo 4 seconds after any change.
+// Token is stored in localStorage only — never committed to the repo.
+const GITHUB_TOKEN_KEY = 'soma_github_pat';
+const GITHUB_REPO_ID   = 'rahmaelsiesy/soma';
+const GITHUB_STATE_FILE = 'state.json';
+let _ghPushTimer  = null;
+let _ghSyncStatus = 'idle'; // 'idle' | 'syncing' | 'synced' | 'error'
+
+function getGithubToken()        { return localStorage.getItem(GITHUB_TOKEN_KEY) || ''; }
+function saveGithubToken(token)  { localStorage.setItem(GITHUB_TOKEN_KEY, token.trim()); }
+
+function scheduleGithubPush() {
+  if (!getGithubToken()) return;
+  clearTimeout(_ghPushTimer);
+  _ghPushTimer = setTimeout(pushStateToGitHub, 4000);
+}
+
+async function pushStateToGitHub() {
+  const token = getGithubToken();
+  if (!token) return;
+  _ghSyncStatus = 'syncing';
+  updateSyncBadge();
+  try {
+    const headers = {
+      'Authorization': `token ${token}`,
+      'Accept': 'application/vnd.github+json',
+      'X-GitHub-Api-Version': '2022-11-28'
+    };
+    let sha = null;
+    const existing = await fetch(
+      `https://api.github.com/repos/${GITHUB_REPO_ID}/contents/${GITHUB_STATE_FILE}`,
+      { headers }
+    );
+    if (existing.ok) { sha = (await existing.json()).sha; }
+    const content = btoa(unescape(encodeURIComponent(JSON.stringify(state, null, 2))));
+    const body = { message: `state: ${new Date().toISOString().slice(0,16)} auto-sync`, content };
+    if (sha) body.sha = sha;
+    const resp = await fetch(
+      `https://api.github.com/repos/${GITHUB_REPO_ID}/contents/${GITHUB_STATE_FILE}`,
+      { method: 'PUT', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
+    );
+    _ghSyncStatus = resp.ok ? 'synced' : 'error';
+  } catch (e) {
+    _ghSyncStatus = 'error';
+    console.warn('GitHub sync error:', e);
+  }
+  updateSyncBadge();
+}
+
+async function pullStateFromGitHub() {
+  const token = getGithubToken();
+  if (!token) return;
+  try {
+    const headers = { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github.v3.raw' };
+    const resp = await fetch(
+      `https://api.github.com/repos/${GITHUB_REPO_ID}/contents/${GITHUB_STATE_FILE}`,
+      { headers }
+    );
+    if (!resp.ok) return;
+    const remote = await resp.json();
+    if (typeof remote === 'object' && remote !== null) {
+      Object.assign(state, remote);
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch(e) {}
+    }
+  } catch(e) { console.warn('GitHub pull error:', e); }
+}
+
+function updateSyncBadge() {
+  const badge = document.getElementById('githubSyncBadge');
+  if (!badge) return;
+  const labels = { idle: '○ Not synced', syncing: '↻ Syncing…', synced: '✓ Synced to GitHub', error: '✗ Sync error' };
+  const colors = { idle: 'var(--text-muted)', syncing: 'var(--c-dg)', synced: 'var(--c-package)', error: '#b07070' };
+  badge.textContent = labels[_ghSyncStatus] || '';
+  badge.style.color  = colors[_ghSyncStatus] || 'var(--text-muted)';
+}
+// ── END GITHUB SYNC ───────────────────────────────────────────────────────────
+
+
 // ---- State ----
 // Round 5: declare `state` before invoking loadState() — loadState assigns
 // to the outer binding so rollover helpers can read it via the closure.
@@ -325,6 +404,7 @@ function loadState() {
 
 function saveState() {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) { console.warn('State save error', e); }
+  scheduleGithubPush();
 }
 
 function getStepState(stepId) {
@@ -3807,6 +3887,31 @@ function renderSettings() {
     </div>
 
     <div class="settings-group">
+      <h4>GitHub Sync</h4>
+      <p style="font-size:var(--text-xs);color:var(--text-muted);margin-bottom:var(--sp-3);">Your progress auto-syncs to <code style="font-size:11px;background:rgba(255,255,255,0.06);padding:1px 4px;border-radius:3px;">state.json</code> in your repo 4 seconds after any change. Paste a classic GitHub PAT with <code style="font-size:11px;background:rgba(255,255,255,0.06);padding:1px 4px;border-radius:3px;">repo</code> scope.</p>
+      <div class="setting-row" style="gap:8px;">
+        <input class="setting-input" type="password" id="githubTokenInput"
+          placeholder="ghp_…" value="${getGithubToken()}"
+          style="flex:1;font-family:monospace;font-size:12px;letter-spacing:0.5px;">
+        <button class="btn btn-outline" style="white-space:nowrap;"
+          onclick="saveGithubToken(document.getElementById('githubTokenInput').value); renderSettings(); scheduleGithubPush();">
+          Save token
+        </button>
+      </div>
+      <div class="setting-row" style="margin-top:var(--sp-2);">
+        <span class="setting-label">Status</span>
+        <span id="githubSyncBadge" style="font-size:12px;"></span>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:var(--sp-3);">
+        <button class="btn btn-outline" style="font-size:12px;" onclick="pushStateToGitHub()">Push now</button>
+        <button class="btn btn-outline" style="font-size:12px;"
+          onclick="pullStateFromGitHub().then(()=>{ handleRoute(); renderSettings(); })">
+          Pull from GitHub
+        </button>
+      </div>
+    </div>
+
+    <div class="settings-group">
       <button class="btn btn-outline" style="width:100%;" onclick="resetAllData()">Reset all data</button>
     </div>`;
 
@@ -4480,3 +4585,7 @@ window.addEventListener('hashchange', handleRoute);
 // Init
 handleRoute();
 updateTimerPill();
+// Pull latest state from GitHub on startup (merges remote → local, then re-renders)
+if (getGithubToken()) {
+  pullStateFromGitHub().then(() => { handleRoute(); updateSyncBadge(); });
+}
