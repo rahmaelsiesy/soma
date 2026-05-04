@@ -1,0 +1,1962 @@
+{
+  "steps": {
+    "f-decoding-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "f-decoding-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "f-decoding-3": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "f-decoding-4": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "f-decoding-5": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "pkg-s-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {
+        "0": true
+      }
+    },
+    "pkg-s-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {
+        "0": true
+      }
+    },
+    "pkg-s-3": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "bd2-qc-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "bd2-qc-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "bd2-qc-3": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "dg-qc-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "dg-qc-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "pkg-d-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "pkg-d-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "pkg-d-3": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "pkg-sp-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "pkg-sp-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "pkg-sp-3": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "pkg-de-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "pkg-de-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "pkg-de-3": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "pkg-co-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "pkg-co-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "pkg-n-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "pkg-n-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "pkg-n-3": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "pkg-pl-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "pkg-pl-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "pkg-pl-3": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "pkg-db-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "pkg-db-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "pkg-db-3": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "pkg-sing-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "pkg-sing-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "f-seg-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "f-seg-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "f-seg-3": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "f-seg-4": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "f-ct-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "f-ct-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "f-ct-3": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "f-ct-4": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "f-sd-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "f-sd-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "f-sd-3": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "f-sd-4": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "f-deg-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "f-deg-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "f-deg-3": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "f-deg-4": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "f-deg-5": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "f-cps-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "f-cps-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "f-cps-3": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "f-ven-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "f-ven-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "f-ven-3": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "f-ven-4": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "f-niche-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "f-niche-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "f-niche-3": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "f-write-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "f-write-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "f-write-3": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "f-write-4": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "dem-ad": {
+      "status": "done",
+      "blocksCompleted": 1,
+      "notes": "",
+      "checklist": {}
+    },
+    "dem-ftd-als": {
+      "status": "done",
+      "blocksCompleted": 1,
+      "notes": "",
+      "checklist": {}
+    },
+    "dem-lewy-vasc": {
+      "status": "done",
+      "blocksCompleted": 1,
+      "notes": "",
+      "checklist": {}
+    },
+    "dem-prion-cte": {
+      "status": "done",
+      "blocksCompleted": 1,
+      "notes": "",
+      "checklist": {}
+    },
+    "dem-molecular": {
+      "status": "done",
+      "blocksCompleted": 1,
+      "notes": "",
+      "checklist": {}
+    },
+    "dem-convergence": {
+      "status": "done",
+      "blocksCompleted": 1,
+      "notes": "",
+      "checklist": {}
+    },
+    "bd2-ct-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "bd2-ct-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "bd2-ct-3": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "bd2-deg-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "bd2-deg-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "bd2-deg-3": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "bd2-sp-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "bd2-sp-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "bd2-w-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "bd2-w-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "bd2-w-3": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "dg-ng-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "dg-ng-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "dg-ng-3": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "dg-ng-4": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "dg-ct-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "dg-ct-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "dg-w-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "dg-w-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "dg-w-3": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "fic-sd-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "fic-sd-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "fic-deg-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "fic-deg-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "fic-w-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "fic-w-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "fic-w-3": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "m-eef2-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "m-eef2-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "m-eef2-3": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "m-eef2-4": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "m-eef2-5": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "m-dapi-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "m-dapi-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "m-dapi-3": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "m-dapi-4": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "m-ass-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "m-ass-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "m-ass-3": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "m-ass-4": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "m-ass-5": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "m-conc-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "m-conc-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "m-conc-3": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "m-conc-4": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "m-lr-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "m-lr-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "m-lr-3": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "m-sub-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "m-sub-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "m-sub-3": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "n-sir-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "n-sir-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "n-sir-3": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "n-sir-4": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "n-sir-5": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "n-mot-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "n-mot-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "n-mot-3": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "n-mot-4": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "n-pr-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "n-pr-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "n-tgn-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "n-tgn-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "n-ven-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "n-ven-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "n-ven-3": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "c-p0-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "c-p0-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "c-p1-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "c-p2-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "c-p3-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "c-p3-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "c-p4-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "c-p5-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "c-p6-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "c-p7-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "c-p8-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "c-p8-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "l-sf-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "l-sf-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "l-m19-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "l-m19-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "l-b-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "l-b-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "l-c-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "l-c-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "l-e-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "l-e-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "l-g-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "l-n-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "l-n-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "l-sir-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "l-sir-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "l-gnn-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "l-gnn-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "l-sae-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "l-sae-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "l-ass-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "l-ass-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "l-fd-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "l-fd-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "car-t-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "car-t-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "car-g-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "car-g-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "car-pre-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "car-pre-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "car-d-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "car-d-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "car-d-3": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "car-tx-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "car-tx-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "car-a-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "car-a-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "car-o-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "car-o-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "sae-a-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "sae-a-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "sae-i-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "sae-i-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "sae-b-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "sae-b-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "sae-m-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "sae-m-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "as-c-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "as-c-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "as-b-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "as-b-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "as-p-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "as-p-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "ml-p0-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "ml-p0-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "ml-p1-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "ml-p1-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "ml-p1-3": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "ml-p1-4": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "ml-p2-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "ml-p2-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "ml-p2-3": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "ml-p2-4": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "ml-p2-5": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "ml-p2-6": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "ml-p2-7": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "ml-p3-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "ml-p3-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "ml-p3-3": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "ml-p3-4": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "ml-p3-5": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "ml-p3-6": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "ml-p4a-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "ml-p4a-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "ml-p4a-3": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "ml-p4a-4": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "ml-p4b-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "ml-p4b-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "ml-p4b-3": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "ml-p4b-4": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "ml-p4b-5": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    }
+  },
+  "milestones": {
+    "f-decoding": {
+      "status": "pending",
+      "notes": ""
+    },
+    "pkg-setup": {
+      "status": "pending",
+      "notes": ""
+    },
+    "bd2-qc": {
+      "status": "pending",
+      "notes": ""
+    },
+    "dg-qc": {
+      "status": "pending",
+      "notes": ""
+    },
+    "fic-spatial-domains": {
+      "status": "pending",
+      "notes": ""
+    },
+    "m-eef2": {
+      "status": "pending",
+      "notes": ""
+    },
+    "n-sir": {
+      "status": "pending",
+      "notes": ""
+    },
+    "c-p0": {
+      "status": "pending",
+      "notes": ""
+    },
+    "l-seqfish": {
+      "status": "pending",
+      "notes": ""
+    },
+    "car-thesis": {
+      "status": "pending",
+      "notes": ""
+    },
+    "pkg-decoding": {
+      "status": "pending",
+      "notes": ""
+    },
+    "pkg-spatial": {
+      "status": "pending",
+      "notes": ""
+    },
+    "pkg-deg": {
+      "status": "pending",
+      "notes": ""
+    },
+    "pkg-concord": {
+      "status": "pending",
+      "notes": ""
+    },
+    "pkg-network": {
+      "status": "pending",
+      "notes": ""
+    },
+    "pkg-plotting": {
+      "status": "pending",
+      "notes": ""
+    },
+    "pkg-dashboard": {
+      "status": "pending",
+      "notes": ""
+    },
+    "pkg-singularity": {
+      "status": "pending",
+      "notes": ""
+    },
+    "f-segmentation": {
+      "status": "pending",
+      "notes": ""
+    },
+    "f-celltyping": {
+      "status": "pending",
+      "notes": ""
+    },
+    "f-spatial-domains": {
+      "status": "pending",
+      "notes": ""
+    },
+    "f-deg": {
+      "status": "pending",
+      "notes": ""
+    },
+    "f-cps": {
+      "status": "pending",
+      "notes": ""
+    },
+    "f-ven": {
+      "status": "pending",
+      "notes": ""
+    },
+    "f-niche": {
+      "status": "pending",
+      "notes": ""
+    },
+    "f-write": {
+      "status": "pending",
+      "notes": ""
+    },
+    "dem-review-1": {
+      "status": "done",
+      "notes": ""
+    },
+    "sae-arch": {
+      "status": "pending",
+      "notes": ""
+    },
+    "assort-compute": {
+      "status": "pending",
+      "notes": ""
+    },
+    "c-p1": {
+      "status": "pending",
+      "notes": ""
+    },
+    "c-p2": {
+      "status": "pending",
+      "notes": ""
+    },
+    "c-p3": {
+      "status": "pending",
+      "notes": ""
+    },
+    "c-p4": {
+      "status": "pending",
+      "notes": ""
+    },
+    "c-p5": {
+      "status": "pending",
+      "notes": ""
+    },
+    "c-p6": {
+      "status": "pending",
+      "notes": ""
+    },
+    "c-p7": {
+      "status": "pending",
+      "notes": ""
+    },
+    "c-p8": {
+      "status": "pending",
+      "notes": ""
+    },
+    "cms_mo9akt64": {
+      "status": "pending",
+      "notes": ""
+    },
+    "cms_mo9amhe5": {
+      "status": "pending",
+      "notes": ""
+    },
+    "cms_mo9amlgv": {
+      "status": "pending",
+      "notes": ""
+    },
+    "cms_mo9amqd0": {
+      "status": "pending",
+      "notes": ""
+    },
+    "cms_mo9an972": {
+      "status": "pending",
+      "notes": ""
+    },
+    "n-motifs": {
+      "status": "pending",
+      "notes": ""
+    },
+    "n-pagerank": {
+      "status": "pending",
+      "notes": ""
+    },
+    "n-tgn": {
+      "status": "pending",
+      "notes": ""
+    },
+    "n-ven-ftd": {
+      "status": "pending",
+      "notes": ""
+    },
+    "ml-p0": {
+      "status": "pending",
+      "notes": ""
+    }
+  },
+  "_demReviewSeeded": true,
+  "focusLog": [],
+  "weeklyPlan": {
+    "weekOf": "2026-05-04",
+    "blocks": {},
+    "approved": true,
+    "focusProjects": [
+      "dlpfc",
+      "package",
+      "bd2",
+      "ml_curriculum",
+      "custom_mo9akaol",
+      "custom_monbgqbh"
+    ],
+    "perProjectBlocks": {
+      "dlpfc": 2,
+      "package": 2,
+      "bd2": 1,
+      "custom_mo9akaol": 2,
+      "custom_monbgqbh": 2,
+      "ml_curriculum": 2
+    },
+    "rollover": {
+      "dlpfc": 1,
+      "package": 3,
+      "bd2": 2
+    },
+    "history": [
+      {
+        "weekOf": "2026-04-20",
+        "goal": 10,
+        "allocated": 10,
+        "completed": 0,
+        "perProject": {
+          "dlpfc": {
+            "allocated": 2,
+            "completed": 0
+          },
+          "package": {
+            "allocated": 1,
+            "completed": 0
+          },
+          "bd2": {
+            "allocated": 2,
+            "completed": 0
+          },
+          "dg": {
+            "allocated": 0,
+            "completed": 0
+          },
+          "fic": {
+            "allocated": 0,
+            "completed": 0
+          },
+          "eef2": {
+            "allocated": 0,
+            "completed": 0
+          },
+          "network": {
+            "allocated": 0,
+            "completed": 0
+          },
+          "cursor": {
+            "allocated": 2,
+            "completed": 0
+          },
+          "learning": {
+            "allocated": 0,
+            "completed": 0
+          },
+          "career": {
+            "allocated": 0,
+            "completed": 0
+          },
+          "concord_sae": {
+            "allocated": 0,
+            "completed": 0
+          },
+          "assortativity": {
+            "allocated": 0,
+            "completed": 0
+          },
+          "dementia_review": {
+            "allocated": 0,
+            "completed": 0
+          },
+          "custom_mo9akaol": {
+            "allocated": 3,
+            "completed": 0
+          }
+        }
+      },
+      {
+        "weekOf": "2026-04-27",
+        "goal": 10,
+        "allocated": 6,
+        "completed": 0,
+        "perProject": {
+          "dlpfc": {
+            "allocated": 1,
+            "completed": 0
+          },
+          "package": {
+            "allocated": 3,
+            "completed": 0
+          },
+          "bd2": {
+            "allocated": 2,
+            "completed": 0
+          },
+          "dg": {
+            "allocated": 0,
+            "completed": 0
+          },
+          "fic": {
+            "allocated": 0,
+            "completed": 0
+          },
+          "eef2": {
+            "allocated": 0,
+            "completed": 0
+          },
+          "network": {
+            "allocated": 0,
+            "completed": 0
+          },
+          "cursor": {
+            "allocated": 0,
+            "completed": 0
+          },
+          "learning": {
+            "allocated": 0,
+            "completed": 0
+          },
+          "career": {
+            "allocated": 0,
+            "completed": 0
+          },
+          "concord_sae": {
+            "allocated": 0,
+            "completed": 0
+          },
+          "assortativity": {
+            "allocated": 0,
+            "completed": 0
+          },
+          "dementia_review": {
+            "allocated": 0,
+            "completed": 0
+          },
+          "custom_mo9akaol": {
+            "allocated": 0,
+            "completed": 0
+          },
+          "custom_monbgqbh": {
+            "allocated": 0,
+            "completed": 0
+          }
+        }
+      }
+    ],
+    "weekGoal": null,
+    "_panelExpanded": false
+  },
+  "ideas": [],
+  "points": 15,
+  "streak": {
+    "current": 0,
+    "lastDate": null
+  },
+  "dueDates": {},
+  "settings": {
+    "blocksPerDay": {
+      "min": 2,
+      "max": 4
+    },
+    "blockDurationMin": 90,
+    "warmupDurationMin": 25,
+    "weeklyGoal": 10
+  },
+  "protocolChecks": {},
+  "lastAction": null,
+  "customSteps": {
+    "f-decoding": [
+      {
+        "id": "f-decoding-1",
+        "title": "Load dots.hdf5 and parse structure",
+        "type": "code",
+        "desc": "Read dots.hdf5 using h5py. Confirm columns: flux, peak, sharpness, roundness1, roundness2, area per dot per hyb round. Check offsets shape (5,197,244,2). Total detected dots vs. decoded.",
+        "checklist": [
+          "dots.hdf5 loads without error",
+          "All expected columns present",
+          "Offsets shape matches expected (5,197,244,2)",
+          "Total detected dot count matches known value (59,316,503 all FDR)"
+        ],
+        "xp": 5,
+        "estimated_blocks": 2,
+        "_base": true
+      },
+      {
+        "id": "f-decoding-3",
+        "title": "Gene-stratified efficiency analysis",
+        "type": "code",
+        "desc": "Compute per-gene efficiency (decoded / expected based on copy number). Plot distribution across genes. Flag outlier genes with <5% or >95% efficiency. These are the genes to watch in downstream DE.",
+        "checklist": [
+          "Per-gene efficiency computed for all 1,193 barcoded genes",
+          "Distribution plot made (Nature-ready)",
+          "Outlier genes flagged and saved to file",
+          "EEF2 efficiency highlighted as reference"
+        ],
+        "xp": 8,
+        "estimated_blocks": 3,
+        "_base": true
+      },
+      {
+        "id": "f-decoding-2",
+        "title": "Post-hoc FDR threshold sweep",
+        "type": "code",
+        "desc": "Sweep FDR threshold from 0.001 to 0.10 in steps of 0.005 using existing decoded output. Plot decode yield (%) vs. FDR threshold. Identify elbow. Target: 1-3% blank barcode rate.",
+        "checklist": [
+          "Sweep covers ≥20 threshold values",
+          "Blank barcode rate plotted vs. threshold",
+          "Elbow identified and documented",
+          "Chosen threshold justified in writing (not just convention)"
+        ],
+        "xp": 8,
+        "estimated_blocks": 3,
+        "_base": true
+      },
+      {
+        "id": "f-decoding-4",
+        "title": "Matching rate computation",
+        "type": "code",
+        "desc": "Matching rate = decoded_dots / total_detected_dots per cell. This is distinct from transcripts per cell. Compute per cell, per cell type (once cell types are assigned), and per brain region.",
+        "checklist": [
+          "Matching rate formula implemented correctly (decoded / total detected, NOT per gene)",
+          "Per-cell matching rate saved to AnnData obs",
+          "Distribution plot shows expected ~15.6% global rate"
+        ],
+        "xp": 5,
+        "estimated_blocks": 2,
+        "_base": true
+      },
+      {
+        "id": "f-decoding-5",
+        "title": "Publication-ready QC figures",
+        "type": "figure",
+        "desc": "All QC figures meet Nature conventions: 88mm single column, Arial 7pt axis labels, Wong colorblind palette, scale bars where applicable. Figures: (1) decode yield vs FDR curve, (2) gene efficiency distribution, (3) matching rate per cell violin.",
+        "checklist": [
+          "FigureStyle class applied (from txomics/plotting/)",
+          "All figures exported as SVG + PNG (300 DPI) + PDF",
+          "No fonts embedded except Arial/Helvetica",
+          "Color palette is colorblind-safe (Wong 8-color or viridis)"
+        ],
+        "xp": 4,
+        "estimated_blocks": 2,
+        "_base": true
+      }
+    ]
+  },
+  "trackOverrides": {
+    "cursor": {
+      "active": true
+    },
+    "dg": {
+      "active": false
+    },
+    "custom_mo9akaol": {
+      "active": true
+    },
+    "dlpfc": {
+      "label": "DLPFC Analysis"
+    },
+    "custom_monbgqbh": {
+      "active": true
+    },
+    "network": {
+      "active": false
+    },
+    "ml_curriculum": {
+      "active": true,
+      "label": "Personal Curriculum"
+    }
+  },
+  "customProjects": {
+    "custom_mo9akaol": {
+      "id": "custom_mo9akaol",
+      "label": "Transportation Nerd",
+      "description": "",
+      "icon": "bar",
+      "color": "#c49a6c",
+      "archived": false,
+      "milestones": [
+        {
+          "id": "cms_mo9akt64",
+          "title": "Outline methodology",
+          "category": "custom",
+          "estimated_blocks": 0,
+          "steps": []
+        },
+        {
+          "id": "cms_mo9amhe5",
+          "title": "Find descriptions",
+          "category": "custom",
+          "estimated_blocks": 0,
+          "steps": []
+        },
+        {
+          "id": "cms_mo9amlgv",
+          "title": "Find senders",
+          "category": "custom",
+          "estimated_blocks": 0,
+          "steps": []
+        },
+        {
+          "id": "cms_mo9amqd0",
+          "title": "Find recipients",
+          "category": "custom",
+          "estimated_blocks": 0,
+          "steps": []
+        },
+        {
+          "id": "cms_mo9an972",
+          "title": "Consolidate story",
+          "category": "custom",
+          "estimated_blocks": 0,
+          "steps": []
+        }
+      ]
+    },
+    "custom_monbgqbh": {
+      "id": "custom_monbgqbh",
+      "label": "Antibody Panel",
+      "description": "",
+      "icon": "flask",
+      "color": "#4f8fc0",
+      "archived": false,
+      "milestones": []
+    }
+  },
+  "projectOverrides": {
+    "dlpfc": {
+      "label": "DLPFC Analysis",
+      "description": "",
+      "icon": "code",
+      "color": "#b84a62"
+    },
+    "ml_curriculum": {
+      "label": "Personal Curriculum",
+      "description": "",
+      "icon": "pen",
+      "color": "var(--text-muted)"
+    }
+  },
+  "urgency": {},
+  "adminTasks": [],
+  "prepBatches": [],
+  "rewards": {
+    "tiers": {},
+    "claimedHistory": []
+  },
+  "weeklyReviews": [
+    {
+      "weekOf": "2026-05-04",
+      "wentWell": "",
+      "wasHard": "Did not use this since the tasks i needed to do were not in the \"path\"\n",
+      "focusProjects": [
+        "dlpfc",
+        "package",
+        "bd2",
+        "custom_mo9akaol",
+        "custom_monbgqbh"
+      ],
+      "completedAt": 1777876342631,
+      "pointsAwarded": 15
+    }
+  ],
+  "qcChecks": {}
+}
