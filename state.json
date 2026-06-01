@@ -1389,6 +1389,318 @@
       "blocksCompleted": 0,
       "notes": "",
       "checklist": {}
+    },
+    "dlpfc-dg-1": {
+      "status": "done",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "dlpfc-dg-2": {
+      "status": "done",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "dlpfc-dg-3": {
+      "status": "inprogress",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "dlpfc-dg-4": {
+      "status": "inprogress",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "dlpfc-dg-5": {
+      "status": "inprogress",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "dlpfc-dg-6": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "fic-dg-1": {
+      "status": "done",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "fic-dg-2": {
+      "status": "inprogress",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "fic-dg-3": {
+      "status": "inprogress",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "fic-dg-4": {
+      "status": "inprogress",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "fic-dg-5": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "fic-dg-6": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "bd2-dg-1": {
+      "status": "done",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "bd2-dg-2": {
+      "status": "inprogress",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "bd2-dg-3": {
+      "status": "inprogress",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "bd2-dg-4": {
+      "status": "inprogress",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "bd2-dg-5": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "bd2-dg-6": {
+      "status": "inprogress",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "dg-dg-1": {
+      "status": "inprogress",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "dg-dg-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "dg-dg-3": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "dg-dg-4": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "dg-dg-5": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "dg-dg-6": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "ab-1": {
+      "status": "inprogress",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "ab-2": {
+      "status": "inprogress",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "ab-3": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "ab-4": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "ab-5": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "ucsf-dg-1": {
+      "status": "inprogress",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "ucsf-dg-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "ucsf-dg-3": {
+      "status": "inprogress",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "ucsf-dg-4": {
+      "status": "inprogress",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "ucsf-dg-5": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "ucsf-dg-6": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "ucsf-ven-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "ucsf-ven-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "ucsf-write-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "ucsf-website-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "ucsf-thesis-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "dlpfc-dg-7": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "dlpfc-dg-8": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "dlpfc-dg-9": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "dlpfc-dg-10": {
+      "status": "inprogress",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "dlpfc-repo-1": {
+      "status": "inprogress",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "dlpfc-repo-2": {
+      "status": "inprogress",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "dlpfc-repo-3": {
+      "status": "inprogress",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "dlpfc-rep-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "dlpfc-rep-2": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "dlpfc-rep-3": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "dlpfc-web-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
+    },
+    "dlpfc-thesis-1": {
+      "status": "pending",
+      "blocksCompleted": 0,
+      "notes": "",
+      "checklist": {}
     }
   },
   "milestones": {
@@ -1801,7 +2113,7 @@
         "type": "code",
         "desc": "Sweep FDR threshold from 0.001 to 0.10 in steps of 0.005 using existing decoded output. Plot decode yield (%) vs. FDR threshold. Identify elbow. Target: 1-3% blank barcode rate.",
         "checklist": [
-          "Sweep covers ≥20 threshold values",
+          "Sweep covers \u226520 threshold values",
           "Blank barcode rate plotted vs. threshold",
           "Elbow identified and documented",
           "Chosen threshold justified in writing (not just convention)"
@@ -1958,5 +2270,16 @@
       "pointsAwarded": 15
     }
   ],
-  "qcChecks": {}
+  "qcChecks": {},
+  "reviewed": {
+    "dlpfc": true
+  },
+  "experiments_remaining": {
+    "dlpfc": 5,
+    "rush_fic": 4,
+    "ucsf_fic": 12,
+    "bd2": 16,
+    "dg": 2,
+    "_note": "editable anytime"
+  }
 }

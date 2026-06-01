@@ -28,12 +28,12 @@ const LEVELS = [
 // Optional = prioritized but not required
 const CATEGORY_META = {
   dlpfc:    { label: "RUSH DLPFC AD",         color: "var(--c-dlpfc)",    emoji: "🧠", required: true,  goal: "Identify AD treatment targets & causes in dorsolateral prefrontal cortex" },
-  fic:      { label: "RUSH FIC AD",           color: "var(--c-fic)",     emoji: "🔬", required: true,  goal: "Identify AD treatment targets & causes in agranular frontoinsular cortex (no L4)" },
+  fic:      { label: "RUSH FIC (AD/CN)", group: "FIC",           color: "var(--c-fic)",     emoji: "🔬", required: true,  goal: "Identify AD treatment targets & causes in agranular frontoinsular cortex (no L4)" },
   bd2:      { label: "BD2 ACC",               color: "var(--c-bd2)",     emoji: "💜", required: true,  goal: "Find cell-type & molecular changes in Bipolar I, II, and both in anterior cingulate cortex" },
   dg:       { label: "DG Neurogenesis",       color: "var(--c-dg)",      emoji: "🌱", required: true,  goal: "Identify possible adult neurogenesis in dentate gyrus" },
   eef2:     { label: "EEF2 Methods Paper",    color: "var(--c-eef2)",    emoji: "⚡", required: false, goal: "Prioritized optional: cell-type-stratified efficiency correction for seqFISH (publishable standalone)" },
   network:  { label: "Network & ML (Post-Grad)", color: "#9ca3af",          emoji: "🕸️", required: false, goal: "Post-graduation: SIR epidemic, assortativity, CONCORD SAE, network motifs" },
-  package:  { label: "txomics Package",       color: "var(--c-package)", emoji: "📦", required: false, goal: "Public pip package — shared toolkit for all analyses" },
+  package:  { label: "Data Analysis Pipeline (txomics)",       color: "var(--c-package)", emoji: "📦", required: true, goal: "Public pip package — shared toolkit for all analyses" },
   cursor:   { label: "Cursor Plan (Pipeline)",color: "var(--c-cursor)",  emoji: "🤖", required: false, goal: "P0–P8 AI-assisted implementation packets — executes the DLPFC/FIC analyses" },
   learning: { label: "Learning Plan",         color: "var(--c-learning)",emoji: "📚", required: false, goal: "12 priority papers + methods mastery" },
   career:   { label: "Career Path",           color: "var(--c-career)",  emoji: "🚀", required: false, goal: "Thesis → Defense → Altos/Genentech/Illumina" },
@@ -47,6 +47,8 @@ const CATEGORY_META = {
     required: false,
     goal: "CS 148a + CS 165 mastery through seqFISH AD brain project — stressed cell classifier → spatial hotspot analysis"
   },
+  antibodies: { label: "Antibody Validation", color: "#c98a5e", emoji: "🧪", required: true, goal: "Validate all neat + conjugated antibodies, re-conjugate failures, quantify per tube/sample, compile master antibody slide deck. Blocks remaining data generation." },
+  ucsf_fic: { label: "UCSF FIC (AD/FTD)", color: "#d98a3e", emoji: "🔬", required: true, group: "FIC", goal: "Frontoinsular cortex, 4 conditions (incl. bvFTD). VEN vulnerability AD vs FTD. Sister to RUSH FIC under the FIC parent." },
 };
 
 // ---- DETAILED MILESTONE DATA ----
@@ -61,6 +63,58 @@ const QUEST_DATA = {
   // Shared pipeline with FIC (Cursor P0–P8 primarily targets this region)
   // ============================================================
   dlpfc: [
+    {
+      id: "dlpfc-datagen",
+      title: "Data Generation (RUSH DLPFC AD)",
+      emoji: "🧫",
+      desc: "Experimental on-ramp: sample selection, antibody validation, seqFISH imaging, decoding, segmentation, and backup. The bench/imaging work that precedes all computational analysis.",
+      category: "dlpfc", priority: "P0",
+      xp: 40,
+      reward: "🧫 Tissue to data. The hardest miles are behind you.",
+      steps: [
+        { id: "dlpfc-dg-1", title: "Sample selection & inventory", type: "wetlab",
+          desc: "Select CN/AD (or condition) cases, match pairs, and log metadata (Braak, Thal, sex, age, PMI) into the tracker.",
+          checklist: ["Cases selected and matched", "Metadata logged in tracker", "Sections inventoried"],
+          xp: 6, cognitive_type: "lab", estimated_blocks: 2 },
+        { id: "dlpfc-dg-2", title: "Antibody validation (Abeta, AT8, TDP43)", type: "wetlab",
+          desc: "Conjugate primary antibodies to oligos, run neat + conjugated staining, confirm signal on SG GenePS vs CaiLab scope (see Troubleshooting board).",
+          checklist: ["Antibodies conjugated", "Neat vs conjugated compared", "Signal validated on known-positive sample"],
+          xp: 8, cognitive_type: "lab", estimated_blocks: 3 },
+        { id: "dlpfc-dg-3", title: "seqFISH imaging / automation run", type: "wetlab",
+          desc: "Run the multi-hybridization seqFISH automation on selected sections; capture polyT/DAPI + barcoded rounds + IF readouts.",
+          checklist: ["Automation run completed", "All hyb rounds imaged", "Images stitched + saved"],
+          xp: 8, cognitive_type: "lab", estimated_blocks: 3 },
+        { id: "dlpfc-dg-4", title: "Decoding (dot detection + FDR)", type: "code",
+          desc: "Run dot detection and barcode decoding per experiment; target FDR ~5 percent; record per-section threshold and yield.",
+          checklist: ["Dot detection run", "Decoded at target FDR", "Per-section yield recorded"],
+          xp: 8, cognitive_type: "deep", estimated_blocks: 3 },
+        { id: "dlpfc-dg-5", title: "Segmentation + h5ad generation", type: "code",
+          desc: "Segment cells/nuclei (Cellpose), assign transcripts, and generate the per-sample h5ad; upload outputs to the Wold server.",
+          checklist: ["Cells segmented", "h5ad generated", "Outputs uploaded to Wold server"],
+          xp: 7, cognitive_type: "deep", estimated_blocks: 3 },
+        { id: "dlpfc-dg-6", title: "Back up data (>=2 locations + HPC)", type: "lab",
+          desc: "Copy raw + processed data to at least two locations and transfer to HPC; log what is backed up where.",
+          checklist: ["Raw + processed backed up in >=2 places", "HPC transfer done", "Backup locations logged"],
+          xp: 5, cognitive_type: "medium", estimated_blocks: 2 },
+        { id: "dlpfc-dg-7", title: "Quantify antibody validation + EEF2 tests", type: "code", desc: "Quantify the DLPFC antibody-validation experiments and EEF2 efficiency tests per sample.", checklist: ["Antibody validation quantified", "EEF2 tests quantified", "Saved to tracker"], xp: 8, cognitive_type: "deep", estimated_blocks: 3 },
+        { id: "dlpfc-dg-8", title: "Train 3D segmentation model + run on all samples", type: "code", desc: "Train a 3D segmentation model and run it across all DLPFC samples.", checklist: ["Model trained", "Run on all samples", "QC vs 2D segmentation"], xp: 10, cognitive_type: "deep", estimated_blocks: 4 },
+        { id: "dlpfc-dg-9", title: "Re-decode flagged experiments", type: "code", desc: "Re-decode any DLPFC experiments flagged for low yield / issues.", checklist: ["Flagged experiments identified", "Re-decoded at target FDR"], xp: 6, cognitive_type: "deep", estimated_blocks: 2 },
+        { id: "dlpfc-dg-10", title: "Update project tracker + back up", type: "lab", desc: "Update the DLPFC experiment tracker and back up all data.", checklist: ["Tracker current", "Data backed up >=2 places"], xp: 4, cognitive_type: "medium", estimated_blocks: 2 },
+      ],
+      gate: { title: "Data Ready Gate", items: ["Each sample decoded at target FDR", "h5ad generated and uploaded to Wold server", "Raw + processed backed up in >=2 locations"] }
+    },
+    {
+      id: "dlpfc-repo", title: "Reproducible Repo & Documentation", emoji: "📁",
+      desc: "Project GitHub repo in the reproducible_research style; document every experiment + analysis as you go.",
+      category: "dlpfc", priority: "P1", xp: 35, reviewed: false,
+      reward: "📁 Reproducible Repo & Documentation done.",
+      steps: [
+        { id: "dlpfc-repo-1", title: "Set up project repo (reproducible_research layout)", type: "code", desc: "Create the repo with data/, code/, figures/ structure per gchure/reproducible_research.", checklist: ["Repo created", "Structure matches template", "README + license"], xp: 6, cognitive_type: "medium", estimated_blocks: 3 },
+        { id: "dlpfc-repo-2", title: "Document experiments + analysis", type: "writing", desc: "Notebooks, data dictionary, and method notes for every experiment and analysis.", checklist: ["Data dictionary written", "Each experiment documented", "Analysis notebooks committed"], xp: 6, cognitive_type: "medium", estimated_blocks: 3 },
+        { id: "dlpfc-repo-3", title: "Keep repo updated (continuous)", type: "code", desc: "Maintain the repo as analysis proceeds — commit results + figures.", checklist: ["Results committed", "Figures versioned"], xp: 4, cognitive_type: "medium", estimated_blocks: 2 },
+      ],
+      gate: { title: "Reproducible Repo & Documentation Gate", items: ["Repo mirrors reproducible_research structure", "All experiments + analysis documented + reproducible"] }
+    },
     {
       id: "f-decoding",
       title: "Decoding QC & FDR Sweep",
@@ -327,7 +381,7 @@ const QUEST_DATA = {
     {
       id: "f-ven",
       depends_on: ["f-celltyping", "fic-spatial-domains"],
-      title: "VEN Loss Analysis (FIC)",
+      title: "VEN Analysis",
       emoji: "🔺",
       desc: "Von Economo neuron identification and quantification in FIC layer Va. Key AD/bvFTD vulnerability marker.",
       category: "fic", priority: "P4",
@@ -360,6 +414,18 @@ const QUEST_DATA = {
     },
 
     {
+      id: "dlpfc-reprocess", title: "Reprocess Anthony V1 Experiments", emoji: "🔄",
+      desc: "Reprocess the legacy 'Anthony V1' DLPFC experiments through the updated pipeline, then include them in downstream analysis.",
+      category: "dlpfc", priority: "P1", xp: 35, reviewed: false,
+      reward: "🔄 Reprocess Anthony V1 Experiments done.",
+      steps: [
+        { id: "dlpfc-rep-1", title: "Inventory Anthony V1 experiments", type: "lab", desc: "List all Anthony V1 DLPFC experiments + their raw data locations.", checklist: ["All V1 experiments listed", "Raw data located"], xp: 4, cognitive_type: "medium", estimated_blocks: 2 },
+        { id: "dlpfc-rep-2", title: "Reprocess V1 through updated pipeline", type: "code", desc: "Run V1 experiments through the current decode/segment/h5ad pipeline.", checklist: ["Reprocessed at target FDR", "h5ad regenerated", "QC matches new data"], xp: 8, cognitive_type: "deep", estimated_blocks: 3 },
+        { id: "dlpfc-rep-3", title: "Integrate V1 into downstream analysis", type: "code", desc: "Combine reprocessed V1 with new data for downstream analysis.", checklist: ["V1 integrated", "Batch effects checked"], xp: 6, cognitive_type: "deep", estimated_blocks: 3 },
+      ],
+      gate: { title: "Reprocess Anthony V1 Experiments Gate", items: ["V1 reprocessed identically to new data", "V1 QC comparable; included downstream"] }
+    },
+    {
       id: "f-write",
       depends_on: ["f-deg", "f-cps", "f-niche", "c-p8"],
       title: "DLPFC AD Paper: Write & Submit",
@@ -376,7 +442,28 @@ const QUEST_DATA = {
       ],
       gate: { title: "Final Gate: Submission Ready", items: ["Every main finding passed its robustness gate (check all gates above)","Peer pre-review by ≥1 senior PhD student or postdoc","All code on GitHub, documented, pip-installable txomics","Response to 5 most likely reviewer critiques pre-written (from reviewer template in robustness doc)"]}
     },
-  ],
+  
+    {
+      id: "dlpfc-website", title: "Paper Website", emoji: "🌐",
+      desc: "Reproducible paper website (gchure/reproducible_website style).",
+      category: "dlpfc", priority: "P1", xp: 35, reviewed: false,
+      reward: "🌐 Paper Website done.",
+      steps: [
+        { id: "dlpfc-web-1", title: "Build paper website", type: "code", desc: "Set up + deploy the reproducible paper website.", checklist: ["Repo created", "Site builds + deploys", "Links to data/code"], xp: 6, cognitive_type: "medium", estimated_blocks: 3 },
+      ],
+      gate: { title: "Paper Website Gate", items: ["Site live + links repo/data"] }
+    },
+    {
+      id: "dlpfc-thesis", title: "Thesis Chapter", emoji: "📘",
+      desc: "Draft the DLPFC thesis chapter (gchure/phd style repo).",
+      category: "dlpfc", priority: "P1", xp: 35, reviewed: false,
+      reward: "📘 Thesis Chapter done.",
+      steps: [
+        { id: "dlpfc-thesis-1", title: "Draft DLPFC thesis chapter", type: "writing", desc: "Write the DLPFC chapter in the thesis repo.", checklist: ["Chapter drafted", "Compiles in thesis repo"], xp: 8, cognitive_type: "medium", estimated_blocks: 4 },
+      ],
+      gate: { title: "Thesis Chapter Gate", items: ["Chapter compiles in thesis repo"] }
+    },
+],
 
   // ============================================================
   // REQUIRED PAPER 2: RUSH FIC AD
@@ -384,6 +471,42 @@ const QUEST_DATA = {
   // FIC is the most selectively vulnerable region in bvFTD; unique laminar biology
   // ============================================================
   fic: [
+    {
+      id: "fic-datagen",
+      title: "Data Generation (RUSH/UCSF FIC)",
+      emoji: "🧫",
+      desc: "Experimental on-ramp: sample selection, antibody validation, seqFISH imaging, decoding, segmentation, and backup. The bench/imaging work that precedes all computational analysis.",
+      category: "fic", priority: "P0",
+      xp: 40,
+      reward: "🧫 Tissue to data. The hardest miles are behind you.",
+      steps: [
+        { id: "fic-dg-1", title: "Sample selection & inventory", type: "wetlab",
+          desc: "Select CN/AD (or condition) cases, match pairs, and log metadata (Braak, Thal, sex, age, PMI) into the tracker.",
+          checklist: ["Cases selected and matched", "Metadata logged in tracker", "Sections inventoried"],
+          xp: 6, cognitive_type: "lab", estimated_blocks: 2 },
+        { id: "fic-dg-2", title: "Antibody validation (Abeta, AT8, TDP43)", type: "wetlab",
+          desc: "Conjugate primary antibodies to oligos, run neat + conjugated staining, confirm signal on SG GenePS vs CaiLab scope (see Troubleshooting board).",
+          checklist: ["Antibodies conjugated", "Neat vs conjugated compared", "Signal validated on known-positive sample"],
+          xp: 8, cognitive_type: "lab", estimated_blocks: 3 },
+        { id: "fic-dg-3", title: "seqFISH imaging / automation run", type: "wetlab",
+          desc: "Run the multi-hybridization seqFISH automation on selected sections; capture polyT/DAPI + barcoded rounds + IF readouts.",
+          checklist: ["Automation run completed", "All hyb rounds imaged", "Images stitched + saved"],
+          xp: 8, cognitive_type: "lab", estimated_blocks: 3 },
+        { id: "fic-dg-4", title: "Decoding (dot detection + FDR)", type: "code",
+          desc: "Run dot detection and barcode decoding per experiment; target FDR ~5 percent; record per-section threshold and yield.",
+          checklist: ["Dot detection run", "Decoded at target FDR", "Per-section yield recorded"],
+          xp: 8, cognitive_type: "deep", estimated_blocks: 3 },
+        { id: "fic-dg-5", title: "Segmentation + h5ad generation", type: "code",
+          desc: "Segment cells/nuclei (Cellpose), assign transcripts, and generate the per-sample h5ad; upload outputs to the Wold server.",
+          checklist: ["Cells segmented", "h5ad generated", "Outputs uploaded to Wold server"],
+          xp: 7, cognitive_type: "deep", estimated_blocks: 3 },
+        { id: "fic-dg-6", title: "Back up data (>=2 locations + HPC)", type: "lab",
+          desc: "Copy raw + processed data to at least two locations and transfer to HPC; log what is backed up where.",
+          checklist: ["Raw + processed backed up in >=2 places", "HPC transfer done", "Backup locations logged"],
+          xp: 5, cognitive_type: "medium", estimated_blocks: 2 },
+      ],
+      gate: { title: "Data Ready Gate", items: ["Each sample decoded at target FDR", "h5ad generated and uploaded to Wold server", "Raw + processed backed up in >=2 locations"] }
+    },
     {
       id: "fic-spatial-domains",
       depends_on: ["f-celltyping"],
@@ -455,6 +578,42 @@ const QUEST_DATA = {
   // ACC = anterior cingulate cortex; BD includes BD-I and BD-II
   // ============================================================
   bd2: [
+    {
+      id: "bd2-datagen",
+      title: "Data Generation (BD2 ACC)",
+      emoji: "🧫",
+      desc: "Experimental on-ramp: sample selection, antibody validation, seqFISH imaging, decoding, segmentation, and backup. The bench/imaging work that precedes all computational analysis.",
+      category: "bd2", priority: "P0",
+      xp: 40,
+      reward: "🧫 Tissue to data. The hardest miles are behind you.",
+      steps: [
+        { id: "bd2-dg-1", title: "Sample selection & inventory", type: "wetlab",
+          desc: "Select CN/AD (or condition) cases, match pairs, and log metadata (Braak, Thal, sex, age, PMI) into the tracker.",
+          checklist: ["Cases selected and matched", "Metadata logged in tracker", "Sections inventoried"],
+          xp: 6, cognitive_type: "lab", estimated_blocks: 2 },
+        { id: "bd2-dg-2", title: "Antibody validation (Abeta, AT8, TDP43)", type: "wetlab",
+          desc: "Conjugate primary antibodies to oligos, run neat + conjugated staining, confirm signal on SG GenePS vs CaiLab scope (see Troubleshooting board).",
+          checklist: ["Antibodies conjugated", "Neat vs conjugated compared", "Signal validated on known-positive sample"],
+          xp: 8, cognitive_type: "lab", estimated_blocks: 3 },
+        { id: "bd2-dg-3", title: "seqFISH imaging / automation run", type: "wetlab",
+          desc: "Run the multi-hybridization seqFISH automation on selected sections; capture polyT/DAPI + barcoded rounds + IF readouts.",
+          checklist: ["Automation run completed", "All hyb rounds imaged", "Images stitched + saved"],
+          xp: 8, cognitive_type: "lab", estimated_blocks: 3 },
+        { id: "bd2-dg-4", title: "Decoding (dot detection + FDR)", type: "code",
+          desc: "Run dot detection and barcode decoding per experiment; target FDR ~5 percent; record per-section threshold and yield.",
+          checklist: ["Dot detection run", "Decoded at target FDR", "Per-section yield recorded"],
+          xp: 8, cognitive_type: "deep", estimated_blocks: 3 },
+        { id: "bd2-dg-5", title: "Segmentation + h5ad generation", type: "code",
+          desc: "Segment cells/nuclei (Cellpose), assign transcripts, and generate the per-sample h5ad; upload outputs to the Wold server.",
+          checklist: ["Cells segmented", "h5ad generated", "Outputs uploaded to Wold server"],
+          xp: 7, cognitive_type: "deep", estimated_blocks: 3 },
+        { id: "bd2-dg-6", title: "Back up data (>=2 locations + HPC)", type: "lab",
+          desc: "Copy raw + processed data to at least two locations and transfer to HPC; log what is backed up where.",
+          checklist: ["Raw + processed backed up in >=2 places", "HPC transfer done", "Backup locations logged"],
+          xp: 5, cognitive_type: "medium", estimated_blocks: 2 },
+      ],
+      gate: { title: "Data Ready Gate", items: ["Each sample decoded at target FDR", "h5ad generated and uploaded to Wold server", "Raw + processed backed up in >=2 locations"] }
+    },
     {
       id: "bd2-qc",
       depends_on: ["pkg-decoding", "pkg-spatial"],
@@ -542,6 +701,42 @@ const QUEST_DATA = {
   // DG = dentate gyrus; adult hippocampal neurogenesis (AHN) is contested in humans
   // ============================================================
   dg: [
+    {
+      id: "dg-datagen",
+      title: "Data Generation (DG Neurogenesis)",
+      emoji: "🧫",
+      desc: "Experimental on-ramp: sample selection, antibody validation, seqFISH imaging, decoding, segmentation, and backup. The bench/imaging work that precedes all computational analysis.",
+      category: "dg", priority: "P0",
+      xp: 40,
+      reward: "🧫 Tissue to data. The hardest miles are behind you.",
+      steps: [
+        { id: "dg-dg-1", title: "Sample selection & inventory", type: "wetlab",
+          desc: "Select CN/AD (or condition) cases, match pairs, and log metadata (Braak, Thal, sex, age, PMI) into the tracker.",
+          checklist: ["Cases selected and matched", "Metadata logged in tracker", "Sections inventoried"],
+          xp: 6, cognitive_type: "lab", estimated_blocks: 2 },
+        { id: "dg-dg-2", title: "Antibody validation (Abeta, AT8, TDP43)", type: "wetlab",
+          desc: "Conjugate primary antibodies to oligos, run neat + conjugated staining, confirm signal on SG GenePS vs CaiLab scope (see Troubleshooting board).",
+          checklist: ["Antibodies conjugated", "Neat vs conjugated compared", "Signal validated on known-positive sample"],
+          xp: 8, cognitive_type: "lab", estimated_blocks: 3 },
+        { id: "dg-dg-3", title: "seqFISH imaging / automation run", type: "wetlab",
+          desc: "Run the multi-hybridization seqFISH automation on selected sections; capture polyT/DAPI + barcoded rounds + IF readouts.",
+          checklist: ["Automation run completed", "All hyb rounds imaged", "Images stitched + saved"],
+          xp: 8, cognitive_type: "lab", estimated_blocks: 3 },
+        { id: "dg-dg-4", title: "Decoding (dot detection + FDR)", type: "code",
+          desc: "Run dot detection and barcode decoding per experiment; target FDR ~5 percent; record per-section threshold and yield.",
+          checklist: ["Dot detection run", "Decoded at target FDR", "Per-section yield recorded"],
+          xp: 8, cognitive_type: "deep", estimated_blocks: 3 },
+        { id: "dg-dg-5", title: "Segmentation + h5ad generation", type: "code",
+          desc: "Segment cells/nuclei (Cellpose), assign transcripts, and generate the per-sample h5ad; upload outputs to the Wold server.",
+          checklist: ["Cells segmented", "h5ad generated", "Outputs uploaded to Wold server"],
+          xp: 7, cognitive_type: "deep", estimated_blocks: 3 },
+        { id: "dg-dg-6", title: "Back up data (>=2 locations + HPC)", type: "lab",
+          desc: "Copy raw + processed data to at least two locations and transfer to HPC; log what is backed up where.",
+          checklist: ["Raw + processed backed up in >=2 places", "HPC transfer done", "Backup locations logged"],
+          xp: 5, cognitive_type: "medium", estimated_blocks: 2 },
+      ],
+      gate: { title: "Data Ready Gate", items: ["Each sample decoded at target FDR", "h5ad generated and uploaded to Wold server", "Raw + processed backed up in >=2 locations"] }
+    },
     {
       id: "dg-qc",
       depends_on: ["pkg-decoding", "pkg-spatial"],
@@ -1807,4 +2002,80 @@ const QUEST_DATA = {
 
   ] // end ml_curriculum
 
+,
+  antibodies: [
+    {
+      id: "ab-validate", title: "Validate & Conjugate Antibodies (BLOCKER)", emoji: "🧪",
+      desc: "Current top blocker. Validate every neat and conjugated antibody, re-conjugate bad ones, quantify per tube/sample, compile the master antibody slide deck. Remaining experiments across ALL projects start only after this.",
+      category: "antibodies", priority: "P0", xp: 50, reviewed: false,
+      reward: "🧪 Every antibody trusted. Imaging can resume across all projects.",
+      steps: [
+        { id: "ab-1", title: "Validate all neat antibodies", type: "wetlab", desc: "Stain + image each neat antibody on a known-positive sample; record pass/fail per tube.", checklist: ["Every neat antibody stained", "Pass/fail per tube", "Failures listed for re-order"], xp: 10, cognitive_type: "lab", estimated_blocks: 3 },
+        { id: "ab-2", title: "Validate all conjugated antibodies", type: "wetlab", desc: "Image each oligo-conjugated antibody; compare to neat; confirm on SG GenePS vs CaiLab scope.", checklist: ["Every conjugated antibody imaged", "Conjugated vs neat compared", "Weak/failed flagged"], xp: 10, cognitive_type: "lab", estimated_blocks: 3 },
+        { id: "ab-3", title: "Re-conjugate failed antibodies", type: "wetlab", desc: "Re-conjugate failures; re-test until passing.", checklist: ["Failed antibodies re-conjugated", "Re-tested and passing"], xp: 10, cognitive_type: "lab", estimated_blocks: 3 },
+        { id: "ab-4", title: "Quantify validation (per tube / sample)", type: "code", desc: "Quantify staining (counts/colocalization) per tube and per sample.", checklist: ["Per-tube quantification", "Per-sample quantification", "Saved to tracker"], xp: 10, cognitive_type: "deep", estimated_blocks: 3 },
+        { id: "ab-5", title: "Compile master antibody slide deck", type: "writing", desc: "Detailed deck per tube + sample with quantification + pass/fail + re-conjugation status.", checklist: ["Covers every tube + sample", "Quantification included", "Status shown"], xp: 10, cognitive_type: "medium", estimated_blocks: 3 },
+      ],
+      gate: { title: "Antibody Gate", items: ["Every antibody passes or re-conjugated + re-validated","Slide deck complete with quantification"] }
+    },
+  ],
+
+  ucsf_fic: [
+    {
+      id: "ucsf-datagen", title: "Data Generation (UCSF FIC, 4 conditions)", emoji: "🧫",
+      desc: "Experimental on-ramp for UCSF FIC: samples, antibodies, imaging, decode/reprocess, segmentation, backup.",
+      category: "ucsf_fic", priority: "P1", xp: 40, reviewed: false,
+      reward: "🧫 Data Generation (UCSF FIC, 4 conditions) done.",
+      steps: [
+        { id: "ucsf-dg-1", title: "Sample selection (4 conditions)", type: "wetlab", desc: "Select AD / bvFTD / CN / +1 FIC cases; match + log metadata.", checklist: ["4 conditions represented", "Cases matched", "Metadata logged"], xp: 6, cognitive_type: "lab", estimated_blocks: 2 },
+        { id: "ucsf-dg-2", title: "Antibody validation (per Antibody project)", type: "wetlab", desc: "Apply validated/conjugated antibodies to UCSF sections.", checklist: ["Validated antibodies applied", "Signal confirmed"], xp: 6, cognitive_type: "lab", estimated_blocks: 2 },
+        { id: "ucsf-dg-3", title: "Final UCSF automation / imaging", type: "wetlab", desc: "Run final UCSF seqFISH automation across 4 conditions.", checklist: ["Automation complete", "All rounds imaged"], xp: 8, cognitive_type: "lab", estimated_blocks: 3 },
+        { id: "ucsf-dg-4", title: "Decode + reprocess (serial vs barcoded)", type: "code", desc: "Decode UCSF; reprocess; compare serial vs barcoded (Seeley twist data).", checklist: ["Decoded at FDR", "Serial vs barcoded compared", "Reprocessed + quantified"], xp: 8, cognitive_type: "deep", estimated_blocks: 3 },
+        { id: "ucsf-dg-5", title: "Segmentation + h5ad", type: "code", desc: "3D segmentation + transcript assignment + per-sample h5ad.", checklist: ["Segmented", "h5ad generated", "Uploaded"], xp: 7, cognitive_type: "deep", estimated_blocks: 3 },
+        { id: "ucsf-dg-6", title: "Back up data (>=2 locations)", type: "lab", desc: "Back up raw + processed; log locations.", checklist: ["Backed up >=2 places", "Locations logged"], xp: 5, cognitive_type: "medium", estimated_blocks: 2 },
+      ],
+      gate: { title: "Data Generation (UCSF FIC, 4 conditions) Gate", items: ["Each condition decoded at FDR", "h5ad uploaded", "Backed up >=2 places"] }
+    },
+    {
+      id: "ucsf-ven", title: "VEN Loss (AD vs FTD)", emoji: "🧠",
+      desc: "VEN vulnerability across 4 conditions; feeds the VEN/FTD paper.",
+      category: "ucsf_fic", priority: "P1", xp: 40, reviewed: false,
+      reward: "🧠 VEN Loss (AD vs FTD) done.",
+      steps: [
+        { id: "ucsf-ven-1", title: "VEN identification (ADCYAP1/SLIT2)", type: "code", desc: "Identify VENs in FIC L5a across conditions.", checklist: ["VENs identified", "L5a confirmed"], xp: 8, cognitive_type: "deep", estimated_blocks: 3 },
+        { id: "ucsf-ven-2", title: "VEN loss: AD vs FTD vs CN", type: "code", desc: "Quantify VEN depletion; TDP-43 inclusions; microglial clearance.", checklist: ["Depletion per condition", "TDP-43 scored", "Clearance assessed"], xp: 10, cognitive_type: "deep", estimated_blocks: 4 },
+      ],
+      gate: { title: "VEN Loss (AD vs FTD) Gate", items: ["VEN depletion replicates", "DLPFC cells not mis-classified"] }
+    },
+    {
+      id: "ucsf-write", title: "UCSF / VEN-FTD Manuscript", emoji: "✍️",
+      desc: "Draft + submit the VEN/FTD manuscript.",
+      category: "ucsf_fic", priority: "P1", xp: 40, reviewed: false,
+      reward: "✍️ UCSF / VEN-FTD Manuscript done.",
+      steps: [
+        { id: "ucsf-write-1", title: "Draft manuscript", type: "writing", desc: "Draft VEN/FTD paper.", checklist: ["Draft complete", "Figures assembled"], xp: 10, cognitive_type: "medium", estimated_blocks: 4 },
+      ],
+      gate: { title: "UCSF / VEN-FTD Manuscript Gate", items: ["All gates passed"] }
+    },
+    {
+      id: "ucsf-website", title: "Paper Website", emoji: "🌐",
+      desc: "Reproducible paper website (reproducible_website style).",
+      category: "ucsf_fic", priority: "P1", xp: 40, reviewed: false,
+      reward: "🌐 Paper Website done.",
+      steps: [
+        { id: "ucsf-website-1", title: "Build paper website", type: "code", desc: "Set up reproducible paper site.", checklist: ["Repo created", "Site deploys"], xp: 6, cognitive_type: "medium", estimated_blocks: 3 },
+      ],
+      gate: { title: "Paper Website Gate", items: ["Site live"] }
+    },
+    {
+      id: "ucsf-thesis", title: "Thesis Chapter", emoji: "📘",
+      desc: "Thesis chapter (phd repo style).",
+      category: "ucsf_fic", priority: "P1", xp: 40, reviewed: false,
+      reward: "📘 Thesis Chapter done.",
+      steps: [
+        { id: "ucsf-thesis-1", title: "Draft thesis chapter", type: "writing", desc: "Write UCSF FIC chapter.", checklist: ["Chapter drafted"], xp: 8, cognitive_type: "medium", estimated_blocks: 4 },
+      ],
+      gate: { title: "Thesis Chapter Gate", items: ["Compiles in thesis repo"] }
+    },
+  ],
 };
