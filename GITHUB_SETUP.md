@@ -1,13 +1,13 @@
 # GitHub Setup for Quest Board
 
-## Recommended Repo Name: `neuro-atlas`
+## Recommended Repo Name: `soma`
 
 ---
 
 ## Step 1: Create Repository
 
 1. Go to [github.com](https://github.com) → **New repository**
-2. Name: `neuro-atlas` (or any name you like)
+2. Name: `soma` (or any name you like)
 3. Visibility: **Public** (required for GitHub Pages free tier)
 4. Check **Add README**
 5. Click **Create repository**
@@ -23,7 +23,7 @@ git init
 git add .
 git commit -m "feat: Quest Board v2 initial deploy"
 git branch -M main
-git remote add origin https://github.com/YOUR_USERNAME/neuro-atlas.git
+git remote add origin https://github.com/YOUR_USERNAME/soma.git
 git push -u origin main
 ```
 
@@ -35,7 +35,7 @@ git push -u origin main
 2. Source: **Deploy from a branch**
 3. Branch: `main`, folder: `/ (root)`
 4. Click **Save**
-5. Your site will be live at: `https://YOUR_USERNAME.github.io/neuro-atlas/`
+5. Your site will be live at: `https://YOUR_USERNAME.github.io/soma/`
 
 > Note: First deploy takes ~2 minutes. Subsequent pushes update the site within 30 seconds.
 
