@@ -210,6 +210,71 @@ let timerStepId = null;
 let timerMilestoneId = null;
 let timerIsWarmup = false;
 let pendingNavHash = null;
+// Phase 1a (ADHD overhaul): wall-clock based timing so the timer keeps
+// running accurately even when the tab is backgrounded, the page is
+// re-rendered, or the focus view is navigated away from.
+// `timerEndTime` is the Date.now() at which the block will hit zero.
+// When paused, we stash how much time was left in `timerRemainingMs`.
+let timerEndTime = 0;
+let timerRemainingMs = 0;
+
+function computeTimerRemaining() {
+  if (timerRunning && timerEndTime) {
+    return Math.max(0, Math.ceil((timerEndTime - Date.now()) / 1000));
+  }
+  if (timerRemainingMs) {
+    return Math.max(0, Math.ceil(timerRemainingMs / 1000));
+  }
+  return timerRemaining;
+}
+
+function saveTimerToStorage() {
+  // Persist enough to survive a page reload mid-block.
+  try {
+    const snap = {
+      running: timerRunning,
+      endTime: timerEndTime,
+      remainingMs: timerRemainingMs,
+      total: timerTotal,
+      stepId: timerStepId,
+      msId: timerMilestoneId,
+      warmup: timerIsWarmup,
+    };
+    localStorage.setItem('soma_timer', JSON.stringify(snap));
+  } catch (e) { /* ignore quota */ }
+}
+
+function loadTimerFromStorage() {
+  try {
+    const raw = localStorage.getItem('soma_timer');
+    if (!raw) return;
+    const s = JSON.parse(raw);
+    if (!s || !s.stepId || !s.msId) return;
+    timerStepId = s.stepId;
+    timerMilestoneId = s.msId;
+    timerIsWarmup = !!s.warmup;
+    timerTotal = s.total || 0;
+    if (s.running && s.endTime && s.endTime > Date.now()) {
+      // Block is still in-flight — resume it.
+      timerEndTime = s.endTime;
+      timerRunning = true;
+      timerRemaining = computeTimerRemaining();
+      timerRemainingMs = 0;
+      // Restart the tick.
+      if (timerInterval) clearInterval(timerInterval);
+      timerInterval = setInterval(timerTick, 1000);
+    } else if (!s.running && s.remainingMs > 0) {
+      // Was paused — keep the remaining time.
+      timerRunning = false;
+      timerEndTime = 0;
+      timerRemainingMs = s.remainingMs;
+      timerRemaining = computeTimerRemaining();
+    } else {
+      // Block expired while away — clear the stored timer so we don't auto-resume.
+      localStorage.removeItem('soma_timer');
+    }
+  } catch (e) { /* ignore */ }
+}
 
 // ---- Theme system ----
 // Round 5 Task 13: 8 popular, designer-tested palettes. Default is rose-pine-dawn.
@@ -626,19 +691,36 @@ function getMilestoneStepProgress(milestoneId) {
 }
 
 // Task 3: aggregate progress across ALL milestones of a track.
+// Phase 1b: also return milestone counts so the projects card can show
+// the accurate "tasks across the whole project" number.
 function getTrackProgressSummary(trackId) {
   const milestones = getMilestonesForTrack(trackId);
   let stepsDone = 0, stepsTotal = 0, blocksDone = 0, blocksTotal = 0;
+  let qcDone = 0, qcTotal = 0;
+  let msDone = 0;
   for (const ms of milestones) {
     const steps = getAllSteps(ms.id);
     const qcItems = getQcItems(ms.id);
-    stepsTotal += steps.length + qcItems.length;
+    stepsTotal += steps.length;
+    qcTotal += qcItems.length;
     stepsDone += steps.filter(s => getStepState(s.id).status === 'done').length;
-    stepsDone += qcItems.filter(it => isQcChecked(ms.id, it.index)).length;
+    qcDone += qcItems.filter(it => isQcChecked(ms.id, it.index)).length;
     blocksTotal += getTotalBlocksForMilestone(ms.id);
     blocksDone += (getTotalBlocksForMilestone(ms.id) - getRemainingBlocksForMilestone(ms.id));
+    if (getMilestoneState(ms.id).status === 'done') msDone++;
   }
-  return { stepsDone, stepsTotal, blocksDone, blocksTotal };
+  // Combined task count = steps + QC (so the denominator matches the
+  // total number of clickable things across the project).
+  return {
+    stepsDone: stepsDone + qcDone,
+    stepsTotal: stepsTotal + qcTotal,
+    stepOnlyDone: stepsDone,
+    stepOnlyTotal: stepsTotal,
+    qcDone, qcTotal,
+    blocksDone, blocksTotal,
+    msDone,
+    msTotal: milestones.length,
+  };
 }
 
 function getTodayBlocks() {
@@ -1729,20 +1811,32 @@ function renderProjects() {
     const color = getTrackColor(track);
     const label = getTrackLabel(track); // Feature 2
     const msTitle = ms ? ms.title : 'Complete';
-    // Task 3: summed progress across ALL milestones of this track.
+    // Phase 1b: counter now shows tasks across the WHOLE project (not
+    // just the current milestone). Tooltip breaks it down by milestones
+    // / steps / QC so the user can see what the denominator means.
     const sum = getTrackProgressSummary(track);
-    const stepsLabel = sum.stepsTotal > 0
-      ? `${sum.stepsDone} / ${sum.stepsTotal} steps`
+    const tasksLabel = sum.stepsTotal > 0
+      ? `${sum.stepsDone} / ${sum.stepsTotal} tasks`
       : '—';
-    const blocksLabel = sum.blocksTotal > 0
-      ? `${sum.blocksDone} / ${sum.blocksTotal} blocks`
+    const msLabel = sum.msTotal > 0
+      ? `${sum.msDone} / ${sum.msTotal} milestones`
       : '';
-    const pct = sum.blocksTotal > 0 ? Math.round((sum.blocksDone / sum.blocksTotal) * 100) : 0;
-    html += `<div class="project-card" onclick="navigate('#track/${track}')">
+    const tooltipParts = [
+      `${sum.msDone}/${sum.msTotal} milestones`,
+      `${sum.stepOnlyDone}/${sum.stepOnlyTotal} steps`,
+    ];
+    if (sum.qcTotal > 0) tooltipParts.push(`${sum.qcDone}/${sum.qcTotal} QC checks`);
+    if (sum.blocksTotal > 0) tooltipParts.push(`${sum.blocksDone}/${sum.blocksTotal} blocks`);
+    const tooltip = tooltipParts.join(' · ');
+    // Progress bar reflects task completion so the visual matches the number shown.
+    const pct = sum.stepsTotal > 0
+      ? Math.round((sum.stepsDone / sum.stepsTotal) * 100)
+      : 0;
+    html += `<div class="project-card" onclick="navigate('#track/${track}')" title="${escapeHtml(tooltip)}">
       <span class="dot" style="background:${color}"></span>
       <span class="proj-name proj-name-editable" data-track="${track}" ondblclick="startEditProjectName(event,'${track}')">${escapeHtml(label)}</span>
       <span class="proj-milestone">${escapeHtml(msTitle)}</span>
-      <span class="proj-progress">${stepsLabel}${blocksLabel ? ` · ${blocksLabel}` : ''}</span>
+      <span class="proj-progress">${tasksLabel}${msLabel ? ` · ${msLabel}` : ''}</span>
       <div class="proj-progress-bar"><div class="proj-progress-bar-fill" style="width:${pct}%; background:${color}"></div></div>
       <button class="proj-edit-btn" data-edit-track="${track}" title="Edit project" aria-label="Edit project">Edit</button>
       <button class="proj-archive-btn" data-archive-track="${track}" title="Move this project to the archive" aria-label="Archive project">Archive</button>
@@ -1771,7 +1865,7 @@ function renderProjects() {
     const label = getTrackLabel(track);
     const msTitle = ms ? ms.title : 'Complete';
     const sum = getTrackProgressSummary(track);
-    const stepsLabel = sum.stepsTotal > 0 ? `${sum.stepsDone} / ${sum.stepsTotal} steps` : '—';
+    const stepsLabel = sum.stepsTotal > 0 ? `${sum.stepsDone} / ${sum.stepsTotal} tasks` : '—';
     const isCustom = isCustomProject(track);
     const restoreBtn = isCustom
       ? `<button class="proj-archive-btn proj-restore-btn" data-restore-custom="${track}" title="Restore this custom project" aria-label="Restore project">Restore</button>`
@@ -2287,20 +2381,37 @@ function cycleUrgency(itemId, context, trackId) {
 // ---- RENDER: Path (board game) ----
 function renderPath(trackId, milestoneId) {
   const el = document.getElementById('view-path');
+  // Phase 1c: explicit clear before re-render to avoid any chance of
+  // stale DOM mixing with new content if a previous render was aborted.
+  el.innerHTML = '';
   const ms = getMilestone(milestoneId);
   if (!ms) { el.innerHTML = '<p>Milestone not found.</p>'; return; }
   const track = trackId || getTrackForMilestone(milestoneId);
   const color = TRACK_COLORS[track];
-  // Round 2 Task A/E: always go through getAllSteps so rendering is self-healing.
-  const steps = getAllSteps(milestoneId);
+  // Phase 1c: dedupe steps by id (defense-in-depth — getAllSteps already
+  // dedupes, but guard against future regression).
+  const steps = (() => {
+    const raw = getAllSteps(milestoneId);
+    const seen = new Set();
+    return raw.filter(s => {
+      if (!s || !s.id || seen.has(s.id)) return false;
+      seen.add(s.id);
+      return true;
+    });
+  })();
   const blocksLogged = getBlocksForMilestone(milestoneId);
   const totalBlocks = getTotalBlocksForMilestone(milestoneId);
+  const qcCount = getQcItems(milestoneId).length;
 
+  // Phase 1c + 1e: single, clear summary line at the top — no more
+  // duplicated "blocks logged" + per-step dots stacked visually. The
+  // per-step dots below carry the same information and the summary
+  // here is a single concise read.
   let html = `<div class="path-header">
     <button class="back-btn" onclick="navigate('#track/${track}')">${ICONS.arrowLeft}</button>
     <div class="path-title"><span class="dot" style="background:${color}"></span> ${escapeHtml(ms.title)}</div>
   </div>
-  <div class="path-progress-text">${blocksLogged} / ${totalBlocks} blocks logged</div>
+  <div class="path-progress-text">${steps.length} step${steps.length === 1 ? '' : 's'} · ${blocksLogged} / ${totalBlocks} blocks${qcCount ? ` · ${qcCount} QC check${qcCount === 1 ? '' : 's'}` : ''}</div>
   <div class="winding-path candy-path" style="--track-accent:${color}">`;
 
   const activeStep = getActiveStep(milestoneId);
@@ -2763,14 +2874,29 @@ function renderFocus(milestoneId, stepId) {
   const maxToday = state.settings.blocksPerDay.max;
   const tooMany = todayFull >= maxToday;
 
+  // Phase 1a: if a different step is loaded, fully reset; otherwise
+  // preserve the running timer across navigation.
+  const stepChanged = timerStepId && timerStepId !== stepId;
   timerStepId = stepId;
   timerMilestoneId = milestoneId;
 
   const isWarmup = timerIsWarmup;
   const duration = isWarmup ? state.settings.warmupDurationMin : state.settings.blockDurationMin;
-  if (!timerRunning) {
+  if (stepChanged && timerRunning) {
+    // Switching tasks mid-block: stop the current timer cleanly.
+    clearInterval(timerInterval);
+    timerRunning = false;
+    timerEndTime = 0;
+    timerRemainingMs = 0;
+  }
+  if (!timerRunning && !timerRemainingMs) {
     timerTotal = duration * 60;
     timerRemaining = timerTotal;
+    timerEndTime = 0;
+  } else {
+    // Recompute remaining from wall clock so the display is accurate
+    // after a re-render (the timer was never actually paused).
+    timerRemaining = computeTimerRemaining();
   }
 
   const radius = 80;
@@ -2897,6 +3023,9 @@ function setTimerMode(warmup) {
   const duration = warmup ? state.settings.warmupDurationMin : state.settings.blockDurationMin;
   timerTotal = duration * 60;
   timerRemaining = timerTotal;
+  timerRemainingMs = 0;
+  timerEndTime = 0;
+  saveTimerToStorage();
   const display = document.getElementById('timerDisplay');
   if (display) display.textContent = formatTime(timerRemaining);
   updateTimerRing();
@@ -2907,25 +3036,40 @@ function setTimerMode(warmup) {
 
 function toggleTimer() {
   if (timerRunning) {
+    // Pause — stash how much time is left as ms so we can resume later.
+    timerRemainingMs = Math.max(0, timerEndTime - Date.now());
+    timerEndTime = 0;
     clearInterval(timerInterval);
     timerRunning = false;
     const btn = document.getElementById('timerStartBtn');
     if (btn) btn.textContent = 'Start';
   } else {
+    // Start (or resume from paused state).
+    const remainSec = timerRemainingMs > 0
+      ? Math.ceil(timerRemainingMs / 1000)
+      : (timerRemaining > 0 ? timerRemaining : timerTotal);
+    timerEndTime = Date.now() + remainSec * 1000;
+    timerRemainingMs = 0;
+    timerRemaining = remainSec;
     timerRunning = true;
     const btn = document.getElementById('timerStartBtn');
     if (btn) btn.textContent = 'Pause';
+    if (timerInterval) clearInterval(timerInterval);
     timerInterval = setInterval(timerTick, 1000);
   }
+  saveTimerToStorage();
   updateTimerPill();
 }
 
 function resetTimer() {
   clearInterval(timerInterval);
   timerRunning = false;
+  timerEndTime = 0;
+  timerRemainingMs = 0;
   const duration = timerIsWarmup ? state.settings.warmupDurationMin : state.settings.blockDurationMin;
   timerTotal = duration * 60;
   timerRemaining = timerTotal;
+  saveTimerToStorage();
   const display = document.getElementById('timerDisplay');
   if (display) display.textContent = formatTime(timerRemaining);
   updateTimerRing();
@@ -2935,11 +3079,16 @@ function resetTimer() {
 }
 
 function timerTick() {
-  timerRemaining--;
+  // Phase 1a: recompute from wall clock so backgrounded tabs (which
+  // throttle setInterval) and re-renders don't lose time.
+  timerRemaining = computeTimerRemaining();
   if (timerRemaining <= 0) {
     timerRemaining = 0;
     clearInterval(timerInterval);
     timerRunning = false;
+    timerEndTime = 0;
+    timerRemainingMs = 0;
+    saveTimerToStorage();
     completeBlock();
   }
   const display = document.getElementById('timerDisplay');
@@ -2980,6 +3129,9 @@ function updateTimerRing() {
 }
 
 function completeBlock() {
+  // Phase 1a: clear persistent timer so a refresh doesn't try to resume
+  // a finished block.
+  try { localStorage.removeItem('soma_timer'); } catch (e) {}
   const logEntry = {
     date: todayStr(),
     stepId: timerStepId,
@@ -4581,6 +4733,10 @@ window.addEventListener('hashchange', handleRoute);
 (function () {
   try { maybeRolloverWeeklyPlan(); } catch (e) { console.warn('Rollover error', e); }
 })();
+
+// Phase 1a: restore any in-flight timer block before the first render so
+// the timer pill / focus view show the correct elapsed time immediately.
+loadTimerFromStorage();
 
 // Init
 handleRoute();
