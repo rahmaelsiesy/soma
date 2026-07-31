@@ -99,11 +99,16 @@ function getTrackIconKey(trackId) {
 function getTrackIcon(trackId) {
   return MILESTONE_ICONS[getTrackIconKey(trackId)] || MILESTONE_ICONS.dot;
 }
+// Board-game color pass: every track gets its own distinct hue (previously
+// most archived tracks silently duplicated an active track's color).
+// Values mirror the --c-* custom properties in style.css so the candy-path
+// board and every other UI surface agree on one palette.
 const TRACK_COLORS = {
-  dlpfc: '#c49a6c', package: '#7db88a', bd2: '#b07da8', dg: '#6ba3b5',
-  fic: '#c49a6c', eef2: '#9a9a6c', network: '#9ca3af', cursor: '#6ba3b5',
-  learning: '#8b8b96', career: '#9ca3af',
-  concord_sae: '#b07da8', assortativity: '#9a9a6c', dementia_review: '#8b8b96'
+  dlpfc: '#e07a5f', package: '#a3c586', bd2: '#8e7cc3', dg: '#4f8fc0',
+  fic: '#d98c3f', eef2: '#e6b422', network: '#9ca3af', cursor: '#5c8a7a',
+  learning: '#3f6b8b', career: '#b84a62',
+  concord_sae: '#7c6fc9', assortativity: '#a3874a', dementia_review: '#6b8fa3',
+  ml_curriculum: '#5b8f7a', antibodies: '#c1638a', ucsf_fic: '#d1495b'
 };
 const TRACK_LABELS = {
   dlpfc: 'DLPFC AD Project', package: 'txomics Package', bd2: 'BD2 ACC', dg: 'DG Neurogenesis',
@@ -1832,7 +1837,7 @@ function renderProjects() {
     const pct = sum.stepsTotal > 0
       ? Math.round((sum.stepsDone / sum.stepsTotal) * 100)
       : 0;
-    html += `<div class="project-card" onclick="navigate('#track/${track}')" title="${escapeHtml(tooltip)}">
+    html += `<div class="project-card" style="--card-accent:${color}" onclick="navigate('#track/${track}')" title="${escapeHtml(tooltip)}">
       <span class="dot" style="background:${color}"></span>
       <span class="proj-name proj-name-editable" data-track="${track}" ondblclick="startEditProjectName(event,'${track}')">${escapeHtml(label)}</span>
       <span class="proj-milestone">${escapeHtml(msTitle)}</span>
@@ -1870,7 +1875,7 @@ function renderProjects() {
     const restoreBtn = isCustom
       ? `<button class="proj-archive-btn proj-restore-btn" data-restore-custom="${track}" title="Restore this custom project" aria-label="Restore project">Restore</button>`
       : `<button class="proj-archive-btn proj-activate-btn" data-activate-track="${track}" title="Move this project back into active rotation" aria-label="Activate project">Activate</button>`;
-    html += `<div class="project-card project-card-archived" onclick="navigate('#track/${track}')">
+    html += `<div class="project-card project-card-archived" style="--card-accent:${color}" onclick="navigate('#track/${track}')">
       <span class="dot" style="background:${color}"></span>
       <span class="proj-name">${escapeHtml(label)}</span>
       <span class="proj-milestone">${escapeHtml(msTitle)}</span>
