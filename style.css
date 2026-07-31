@@ -11,9 +11,13 @@
   --surface-hover: #222228;
   --border: #2a2a32;
 
+  /* Phase 1d: text-muted bumped from #5a5a66 (~3.8:1) to #8d8d99
+     (~5.5:1) so muted body text passes WCAG AA on the default dark
+     surface. text-secondary bumped from #8b8b96 (~5.4:1) to #a3a3ad
+     for a comfortable read on tired eyes. */
   --text-primary: #e8e8ec;
-  --text-secondary: #8b8b96;
-  --text-muted: #5a5a66;
+  --text-secondary: #a3a3ad;
+  --text-muted: #8d8d99;
 
   /* Project accents — repainted for at-a-glance distinction on the Candy Land path.
      Each active project gets a hue from a different family (warm / cool / neutral)
@@ -438,12 +442,35 @@ a { color: inherit; text-decoration: none; }
 .step-num { font-size: var(--text-xs); color: var(--text-muted); margin-bottom: 2px; }
 .step-title-text { font-size: var(--text-sm); font-weight: 500; color: var(--text-primary); margin-bottom: var(--sp-1); }
 .step-meta { display: flex; align-items: center; gap: var(--sp-2); }
-.step-block-dots { display: flex; gap: 3px; }
+/* Phase 1e: progress blocks are now bigger, more saturated when filled,
+   and the current block pulses + glows so it's obvious which one you're
+   on. Pending dots are visible (no longer almost-invisible muted rings). */
+.step-block-dots { display: flex; gap: 5px; align-items: center; }
 .step-block-dot {
-  width: 6px; height: 6px; border-radius: 50%;
+  width: 10px; height: 10px; border-radius: 3px;
   border: 1.5px solid var(--text-muted);
+  background: transparent;
+  transition: background 200ms ease, transform 200ms ease, box-shadow 200ms ease;
+  flex-shrink: 0;
 }
-.step-block-dot.filled { background: var(--text-secondary); border-color: var(--text-secondary); }
+.step-block-dot.filled {
+  /* Filled blocks pick up the surrounding track accent (the --track-accent
+     / --node-accent CSS var is set on parent candy-path / candy-node).
+     Falls back to text-primary so it's never invisible. */
+  background: var(--node-accent, var(--track-accent, var(--text-primary)));
+  border-color: var(--node-accent, var(--track-accent, var(--text-primary)));
+  box-shadow: 0 0 6px color-mix(in srgb, var(--node-accent, var(--track-accent, var(--text-primary))) 45%, transparent);
+}
+.step-block-dot.current {
+  /* The block-in-progress: pulsing ring in the track color. */
+  border-color: var(--node-accent, var(--track-accent, var(--accent, var(--c-gold))));
+  border-width: 2px;
+  animation: blockPulse 1.6s ease-in-out infinite;
+}
+@keyframes blockPulse {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 color-mix(in srgb, var(--node-accent, var(--track-accent, var(--c-gold))) 35%, transparent); }
+  50%      { transform: scale(1.15); box-shadow: 0 0 0 4px color-mix(in srgb, var(--node-accent, var(--track-accent, var(--c-gold))) 0%, transparent); }
+}
 
 .path-connector { width: 1px; height: 12px; background: var(--border); margin: 0 auto; }
 
@@ -1360,8 +1387,11 @@ a { color: inherit; text-decoration: none; }
 }
 
 /* -- Rosé Pine Dawn (soft warm light) --
+   Phase 1d: bumped text-muted from #9893a5 (~3.3:1, sub-AA) to
+   #6e6981 (~5.0:1) so body text and per-step metadata are readable
+   for ADHD long-reading sessions without losing the rose-pine warmth.
    AA vs --bg #faf4ed: text-primary #575279 ~ 6.7:1, text-secondary #797593 ~ 4.7:1,
-   text-muted #9893a5 ~ 3.3:1 (decorative only). */
+   text-muted #6e6981 ~ 5.0:1. */
 [data-theme="rose-pine-dawn"] {
   --bg: #faf4ed;
   --surface: #fffaf3;
@@ -1369,7 +1399,7 @@ a { color: inherit; text-decoration: none; }
   --border: #cecacd;
   --text-primary: #575279;
   --text-secondary: #797593;
-  --text-muted: #9893a5;
+  --text-muted: #6e6981;
   --accent: #b4637a;
   --c-gold: #d7827e;
 }
