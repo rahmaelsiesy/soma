@@ -1566,15 +1566,6 @@ a { color: inherit; text-decoration: none; }
   border-color: rgba(182, 221, 74, 0.45);
   color: #121212;
 }
-/* Current step in the workflow checklist: lime left-accent stripe. */
-[data-theme="remote-lime"] .focus-workflow-step.current {
-  background: #f6fce0;
-  border-color: #b6dd4a;
-  border-left: 4px solid #c6ee5c;
-}
-[data-theme="remote-lime"] .focus-workflow-step.done {
-  opacity: 0.55;
-}
 /* Floating timer pill: lime glyph + subtle lime ring on hover. */
 [data-theme="remote-lime"] .timer-pill {
   --pill-color: #8fb81a;
@@ -1946,40 +1937,19 @@ a { color: inherit; text-decoration: none; }
   font-size: var(--text-sm); font-weight: 600; color: var(--text-primary);
 }
 .focus-workflow-sub { font-size: var(--text-xs); color: var(--text-muted); margin-top: 2px; }
-.focus-workflow-list { display: flex; flex-direction: column; gap: var(--sp-2); }
-.focus-workflow-step {
-  padding: var(--sp-3);
-  background: var(--bg); border: 1px solid var(--border); border-radius: var(--r-md);
-  cursor: pointer; transition: background var(--t-fast), border-color var(--t-fast);
-}
-.focus-workflow-step:hover { background: var(--surface-hover); }
-.focus-workflow-step.current {
-  border-color: var(--text-primary);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--text-primary) 18%, transparent);
-}
-.focus-workflow-step.done { opacity: 0.55; }
-.focus-workflow-step.active { border-color: var(--text-muted); }
-.fw-step-head { display: flex; align-items: center; gap: var(--sp-2); margin-bottom: 4px; }
-.fw-step-num {
-  display: inline-flex; align-items: center; justify-content: center;
-  min-width: 22px; height: 22px; padding: 0 6px; border-radius: 6px;
-  font-size: 11px; font-weight: 700;
-  background: var(--surface-hover); color: var(--text-secondary);
-}
-.fw-step-title {
-  flex: 1; font-size: var(--text-xs); color: var(--text-primary);
-  line-height: 1.3;
-}
-.fw-step-dots { display: flex; gap: 3px; margin-top: 4px; }
-.fw-step-meta { font-size: 10px; color: var(--text-muted); margin-top: 4px; }
+/* Phase 2a: the workflow panel now reuses the Candy Land node/connector
+   markup from the Path view. The panel is a fixed 340px sidebar, not a
+   full page, so force the single-column layout the mobile breakpoint
+   already uses instead of the alternating left/right zigzag. */
+.focus-workflow-candy .candy-row--left,
+.focus-workflow-candy .candy-row--right { justify-content: stretch; }
+.focus-workflow-candy .candy-node { width: 100%; padding: var(--sp-3) var(--sp-4); border-radius: 16px; }
 .fw-qc-label {
   margin-top: var(--sp-3); padding-top: var(--sp-2);
   border-top: 1px solid var(--border);
   font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em;
   color: #d4a44c; font-weight: 600;
 }
-.qc-num { background: rgba(212,164,76,0.18) !important; color: #d4a44c !important; }
-.focus-workflow-step.qc { border-color: rgba(212,164,76,0.3); }
 @media (max-width: 900px) {
   .focus-view-split { flex-direction: column; }
   .focus-workflow { flex: 1 1 auto; max-height: none; position: static; width: 100%; }

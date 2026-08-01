@@ -2997,55 +2997,77 @@ function renderFocus(milestoneId, stepId) {
 
   html += `</div>`; // /focus-main
 
-  // Right-hand workflow panel — compressed step list for this milestone.
+  // Right-hand workflow panel — the same Candy Land visual as the Path
+  // view (Phase 2a), single-column since this panel is fixed-width
+  // rather than full-page. Read-only reference: clicking opens the step
+  // drawer, same as before; no reorder/rename/add-step controls here.
   html += `<aside class="focus-workflow" aria-label="Milestone workflow">
     <div class="focus-workflow-header">
       <div class="focus-workflow-title">${escapeHtml(ms.title)}</div>
       <div class="focus-workflow-sub">${allSteps.length} step${allSteps.length === 1 ? '' : 's'}</div>
     </div>
-    <div class="focus-workflow-list">`;
+    <div class="winding-path candy-path focus-workflow-candy" style="--track-accent:${color}">`;
   allSteps.forEach((s, i) => {
     const ss = getStepState(s.id);
-    const statusClass = ss.status === 'done' ? 'done' : (ss.status === 'active' ? 'active' : 'pending');
     const isCurrent = s.id === stepId;
-    const est = s.estimated_blocks || 1;
-    const doneBlocks = ss.blocksCompleted || 0;
-    const checklist = s.checklist || [];
-    const checkedCount = checklist.filter((_, j) => (ss.checklist || {})[j]).length;
+    const estBlocks = s.estimated_blocks || 1;
+    const completed = getBlocksForStep(s.id);
+    let variantClass = '';
+    if (ss.status === 'done') variantClass = 'candy-node--done';
+    else if (isCurrent) variantClass = 'candy-node--active';
+    else if (ss.status === 'locked') variantClass = 'candy-node--locked';
+    const iconSvg = getStepIcon(s);
     let dotsHtml = '';
-    for (let b = 0; b < est; b++) {
-      dotsHtml += `<span class="step-block-dot${b < doneBlocks ? ' filled' : ''}" style="${b < doneBlocks ? `background:${color};` : ''}"></span>`;
+    for (let b = 0; b < estBlocks; b++) {
+      dotsHtml += `<span class="step-block-dot${b < completed ? ' filled' : ''}"></span>`;
     }
-    html += `<div class="focus-workflow-step ${statusClass}${isCurrent ? ' current' : ''}" data-stepid="${s.id}" data-msid="${milestoneId}" data-track="${track}">
-      <div class="fw-step-head">
-        <span class="fw-step-num" style="background:${color}22;color:${color}">${i + 1}</span>
-        <span class="fw-step-title">${escapeHtml(s.title)}</span>
+    const trophyBadge = ss.status === 'done' ? `<span class="candy-trophy" aria-hidden="true">${MILESTONE_ICONS.trophy}</span>` : '';
+    html += `<div class="candy-row candy-row--left">
+      <div class="candy-node candy-node--step ${variantClass}" style="--node-accent:${color}" data-stepid="${s.id}" data-msid="${milestoneId}">
+        ${isCurrent ? `<div class="game-piece" style="background:${color}"></div>` : ''}
+        <div class="candy-icon" aria-hidden="true">${iconSvg}</div>
+        <div class="candy-body">
+          <div class="candy-step-num">Step ${i + 1}</div>
+          <div class="candy-title"><span class="step-title-label">${escapeHtml(s.title)}</span></div>
+          <div class="candy-step-meta">
+            <div class="step-block-dots">${dotsHtml}</div>
+            ${ss.status === 'done' ? `<span class="done-check">${ICONS.check}</span>` : ''}
+          </div>
+        </div>
+        ${trophyBadge}
       </div>
-      <div class="fw-step-dots">${dotsHtml}</div>
-      ${checklist.length ? `<div class="fw-step-meta">${checkedCount}/${checklist.length} checks</div>` : ''}
     </div>`;
+    if (i < allSteps.length - 1) {
+      html += `<div class="candy-path-connector${ss.status === 'done' ? ' candy-path-connector--done' : ''}" aria-hidden="true"></div>`;
+    }
   });
-  // Include QC tasks in the workflow panel (Task 10 preview)
+  // Include QC tasks in the workflow panel (read-only, same as before).
   const qcItems = getQcItems(milestoneId);
   if (qcItems.length) {
-    html += `<div class="fw-qc-label">Quality Checks</div>`;
+    html += `<div class="path-connector"></div>`;
+    html += `<div class="fw-qc-label">Quality checks</div>`;
     qcItems.forEach((qc, i) => {
       const checked = isQcChecked(milestoneId, qc.index);
-      html += `<div class="focus-workflow-step qc ${checked ? 'done' : 'pending'}" data-qc="1" data-msid="${milestoneId}" data-qcindex="${qc.index}">
-        <div class="fw-step-head">
-          <span class="fw-step-num qc-num">QC</span>
-          <span class="fw-step-title">${escapeHtml(qc.label)}</span>
+      const trophyQc = checked ? `<span class="candy-trophy" aria-hidden="true">${MILESTONE_ICONS.trophy}</span>` : '';
+      html += `<div class="candy-row candy-row--left">
+        <div class="candy-node candy-node--step candy-node--qc${checked ? ' candy-node--done' : ''}" data-qc="1" data-msid="${milestoneId}" data-qcindex="${qc.index}">
+          <div class="candy-icon" aria-hidden="true">${MILESTONE_ICONS.shield}</div>
+          <div class="candy-body">
+            <div class="candy-step-num">QC</div>
+            <div class="candy-title"><span class="step-title-label">${escapeHtml(qc.label)}</span></div>
+          </div>
+          ${trophyQc}
         </div>
-      </div>`;
+      </div>${i < qcItems.length - 1 ? '<div class="candy-path-connector" aria-hidden="true"></div>' : ''}`;
     });
   }
-  html += `</div></aside>`; // /focus-workflow
+  html += `</div></aside>`; // /focus-workflow-candy /focus-workflow
   html += `</div>`; // /focus-view
   el.innerHTML = html;
 
   // Round 2 Task C: workflow step click opens the step drawer.
   // User can then press Start Focus from the drawer to switch.
-  el.querySelectorAll('.focus-workflow-step[data-stepid]').forEach(stepEl => {
+  el.querySelectorAll('.focus-workflow-candy .candy-node--step[data-stepid]').forEach(stepEl => {
     stepEl.addEventListener('click', () => {
       const sid = stepEl.dataset.stepid;
       const mid = stepEl.dataset.msid;
