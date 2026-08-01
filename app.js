@@ -1709,8 +1709,25 @@ function renderHome() {
   // Round 5 Task 6: collapsed summary placement (bottom, de-emphasized).
   html += renderWeeklyPlanPanel({ placement: 'bottom' });
 
+  // Segmented weekly progress bar — one colored slice per project, sized by
+  // blocks completed this week, so "how am I doing this week" reads at a
+  // glance without counting circles.
+  const weekByProject = {};
+  for (const log of weekB) {
+    const t = getTrackForMilestone(log.milestoneId);
+    if (t) weekByProject[t] = (weekByProject[t] || 0) + 1;
+  }
+  const weekPct = weeklyGoal > 0 ? Math.round((weekB.length / weeklyGoal) * 100) : 0;
+  let weekSegsHtml = '';
+  for (const [t, count] of Object.entries(weekByProject)) {
+    const segWidth = weeklyGoal > 0 ? (count / weeklyGoal) * 100 : 0;
+    weekSegsHtml += `<div class="week-progress-seg" style="width:${segWidth}%;background:${TRACK_COLORS[t] || 'var(--text-muted)'}" title="${escapeHtml(getTrackLabel(t))}: ${count}"></div>`;
+  }
+
   html += `<div class="block-section">
     <div class="block-section-label">This week</div>
+    <div class="week-progress-bar">${weekSegsHtml}</div>
+    <div class="week-progress-text">${weekB.length} / ${weeklyGoal} blocks · ${weekPct}%</div>
     <div class="block-circles">`;
   const totalCircles = Math.max(weeklyGoal, weekB.length);
   for (let i = 0; i < totalCircles; i++) {
@@ -1774,6 +1791,29 @@ function renderHome() {
       </ol>
     </div>
   </div>`;
+
+  // High-level per-project progress at a glance — active projects only,
+  // reusing the same .proj-progress-bar the Projects tab already uses.
+  const overviewTracks = getActiveTrackIds();
+  if (overviewTracks.length > 0) {
+    let projRowsHtml = '';
+    for (const track of overviewTracks) {
+      const label = getTrackLabel(track);
+      const color = getTrackColor(track);
+      const sum = getTrackProgressSummary(track);
+      const pct = sum.stepsTotal > 0 ? Math.round((sum.stepsDone / sum.stepsTotal) * 100) : 0;
+      projRowsHtml += `<div class="home-project-row" onclick="navigate('#track/${track}')">
+        <span class="dot" style="background:${color}"></span>
+        <span class="home-project-name">${escapeHtml(label)}</span>
+        <div class="proj-progress-bar home-project-bar"><div class="proj-progress-bar-fill" style="width:${pct}%;background:${color}"></div></div>
+        <span class="home-project-pct">${pct}%</span>
+      </div>`;
+    }
+    html += `<div class="block-section">
+      <div class="block-section-label">Projects</div>
+      <div class="home-projects-overview">${projRowsHtml}</div>
+    </div>`;
+  }
 
   el.innerHTML = html;
 
