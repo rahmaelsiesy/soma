@@ -207,6 +207,7 @@ a { color: inherit; text-decoration: none; }
 }
 .week-progress-seg { height: 100%; flex-shrink: 0; }
 .week-progress-text { font-size: var(--text-xs); color: var(--text-muted); margin-bottom: var(--sp-3); }
+.week-progress-text.over-goal { color: var(--c-gold); font-weight: 600; }
 
 .block-circles { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .block-circle {
@@ -431,7 +432,8 @@ a { color: inherit; text-decoration: none; }
 /* Phase 1e: progress blocks are now bigger, more saturated when filled,
    and the current block pulses + glows so it's obvious which one you're
    on. Pending dots are visible (no longer almost-invisible muted rings). */
-.step-block-dots { display: flex; gap: 5px; align-items: center; }
+.step-block-dots { display: flex; gap: 5px; align-items: center; cursor: pointer; border-radius: var(--r-sm); transition: background var(--t-fast); }
+.step-block-dots:hover { background: color-mix(in srgb, var(--node-accent, var(--text-muted)) 12%, transparent); }
 .step-block-dot {
   width: 10px; height: 10px; border-radius: 3px;
   border: 1.5px solid var(--text-muted);
@@ -1850,6 +1852,11 @@ a { color: inherit; text-decoration: none; }
   margin-top: var(--sp-2);
 }
 .proj-progress-bar-fill { height: 100%; border-radius: 999px; transition: width 400ms ease; }
+/* Feature 6: more blocks logged than estimated — same bonus-gold
+   language as the weekly circles and the block-path nodes, instead of
+   just clamping silently at a full bar with no further signal. */
+.proj-progress-bar-fill.over-goal { background: var(--c-gold) !important; }
+.home-project-pct.over-goal { color: var(--c-gold); font-weight: 600; }
 
 /* Home — high-level per-project progress overview */
 .home-projects-overview { display: flex; flex-direction: column; gap: var(--sp-3); }
@@ -2116,6 +2123,18 @@ a { color: inherit; text-decoration: none; }
 }
 .candy-icon svg { display: block; }
 
+/* Checkpoint badge — marks a node as a milestone (vs. a plain step),
+   layered on top of the milestone's own semantic icon rather than
+   replacing it, so the icon variety (pen/shield/flask/etc.) stays. */
+.milestone-flag-badge {
+  position: absolute; top: -8px; left: 10px; z-index: 1;
+  width: 20px; height: 20px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--c-gold); color: var(--bg);
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+}
+
 .candy-body {
   flex: 1 1 auto;
   min-width: 0;
@@ -2240,6 +2259,27 @@ a { color: inherit; text-decoration: none; }
   border-color: color-mix(in srgb, var(--c-gold) 50%, var(--border));
   color: var(--c-gold);
 }
+
+/* Feature 6: a completed block past the step's original estimate — the
+   path keeps extending instead of hitting a wall, same "did more than
+   planned, and that's good" language as the weekly bonus circles. */
+.candy-node--bonus {
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--c-gold) 38%, var(--surface)) 0%,
+    color-mix(in srgb, var(--c-gold) 16%, var(--surface)) 100%);
+  border-color: var(--c-gold);
+  border-width: 2px;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--c-gold) 30%, transparent);
+}
+.candy-node--bonus .candy-step-num {
+  color: var(--c-gold);
+  background: color-mix(in srgb, var(--c-gold) 22%, transparent);
+}
+.candy-node--next {
+  border-style: dashed;
+  cursor: pointer;
+}
+.candy-node--next .candy-icon { color: var(--node-accent); }
 
 .candy-node--locked {
   filter: saturate(0.4) brightness(0.92);

@@ -703,6 +703,7 @@ function getTrackProgressSummary(trackId) {
   let stepsDone = 0, stepsTotal = 0, blocksDone = 0, blocksTotal = 0;
   let qcDone = 0, qcTotal = 0;
   let msDone = 0;
+  let blocksLogged = 0; // Feature 6: real, uncapped block count (see below).
   for (const ms of milestones) {
     const steps = getAllSteps(ms.id);
     const qcItems = getQcItems(ms.id);
@@ -712,6 +713,11 @@ function getTrackProgressSummary(trackId) {
     qcDone += qcItems.filter(it => isQcChecked(ms.id, it.index)).length;
     blocksTotal += getTotalBlocksForMilestone(ms.id);
     blocksDone += (getTotalBlocksForMilestone(ms.id) - getRemainingBlocksForMilestone(ms.id));
+    // getBlocksForMilestone() sums real logged blocks with no per-step cap,
+    // unlike blocksDone above (which is derived from "remaining", and a
+    // step's remaining floors at 0 once done or over-estimate — silently
+    // capping its contribution at that step's own estimate either way).
+    blocksLogged += getBlocksForMilestone(ms.id);
     if (getMilestoneState(ms.id).status === 'done') msDone++;
   }
   // Combined task count = steps + QC (so the denominator matches the
@@ -722,7 +728,7 @@ function getTrackProgressSummary(trackId) {
     stepOnlyDone: stepsDone,
     stepOnlyTotal: stepsTotal,
     qcDone, qcTotal,
-    blocksDone, blocksTotal,
+    blocksDone, blocksTotal, blocksLogged,
     msDone,
     msTotal: milestones.length,
   };
@@ -925,7 +931,7 @@ function handleRoute() {
 
   // Map secondary routes back onto primary nav items for highlight.
   const navMap = {
-    path: 'projects', track: 'projects', prep: 'projects',
+    path: 'projects', track: 'projects', prep: 'projects', blocks: 'projects',
     schedule: 'progress', rewards: 'progress',
     ideas: 'more', admin: 'more', docs: 'more', settings: 'more'
   };
@@ -954,6 +960,10 @@ function handleRoute() {
     case 'path':
       renderPath(parts[1], parts[2]);
       document.getElementById('view-path').classList.add('active');
+      break;
+    case 'blocks':
+      renderBlockLog(parts[1], parts[2]);
+      document.getElementById('view-blocklog').classList.add('active');
       break;
     case 'focus':
       renderFocus(parts[1], parts[2]);
@@ -1087,7 +1097,8 @@ const MILESTONE_ICONS = {
   flask: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" width="22" height="22"><path d="M9 3h6M10 3v6l-5 9a2 2 0 002 3h10a2 2 0 002-3l-5-9V3"/><path d="M7.5 14h9"/></svg>',
   book: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" width="22" height="22"><path d="M4 5a2 2 0 012-2h12v16H6a2 2 0 00-2 2V5z"/><path d="M18 3v16"/></svg>',
   trophy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M8 4h8v4a4 4 0 11-8 0V4z"/><path d="M5 4H3a3 3 0 003 3M19 4h2a3 3 0 01-3 3"/><path d="M10 12v3l-1 3h6l-1-3v-3"/></svg>',
-  dot: '<svg viewBox="0 0 24 24" fill="currentColor" width="22" height="22"><circle cx="12" cy="12" r="5"/></svg>'
+  dot: '<svg viewBox="0 0 24 24" fill="currentColor" width="22" height="22"><circle cx="12" cy="12" r="5"/></svg>',
+  flag: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M5 3v18"/><path d="M5 4h13l-3 4 3 4H5"/></svg>'
 };
 
 function getMilestoneIconKey(milestone) {
@@ -1727,7 +1738,7 @@ function renderHome() {
   html += `<div class="block-section">
     <div class="block-section-label">This week</div>
     <div class="week-progress-bar">${weekSegsHtml}</div>
-    <div class="week-progress-text">${weekB.length} / ${weeklyGoal} blocks · ${weekPct}%</div>
+    <div class="week-progress-text${weekPct > 100 ? ' over-goal' : ''}">${weekB.length} / ${weeklyGoal} blocks · ${weekPct}%</div>
     <div class="block-circles">`;
   const totalCircles = Math.max(weeklyGoal, weekB.length);
   for (let i = 0; i < totalCircles; i++) {
@@ -1801,12 +1812,17 @@ function renderHome() {
       const label = getTrackLabel(track);
       const color = getTrackColor(track);
       const sum = getTrackProgressSummary(track);
-      const pct = sum.stepsTotal > 0 ? Math.round((sum.stepsDone / sum.stepsTotal) * 100) : 0;
+      // Feature 6: bar tracks blocks banked vs. estimated (uncapped —
+      // effort past a bad estimate still moves the bar), not steps
+      // individually marked done.
+      const blocksPct = sum.blocksTotal > 0 ? Math.round((sum.blocksLogged / sum.blocksTotal) * 100) : 0;
+      const overGoal = blocksPct > 100;
+      const barWidth = Math.min(100, blocksPct);
       projRowsHtml += `<div class="home-project-row" onclick="navigate('#track/${track}')">
         <span class="dot" style="background:${color}"></span>
         <span class="home-project-name">${escapeHtml(label)}</span>
-        <div class="proj-progress-bar home-project-bar"><div class="proj-progress-bar-fill" style="width:${pct}%;background:${color}"></div></div>
-        <span class="home-project-pct">${pct}%</span>
+        <div class="proj-progress-bar home-project-bar"><div class="proj-progress-bar-fill${overGoal ? ' over-goal' : ''}" style="width:${barWidth}%;background:${color}"></div></div>
+        <span class="home-project-pct${overGoal ? ' over-goal' : ''}">${blocksPct}%</span>
       </div>`;
     }
     html += `<div class="block-section">
@@ -1860,29 +1876,31 @@ function renderProjects() {
     // just the current milestone). Tooltip breaks it down by milestones
     // / steps / QC so the user can see what the denominator means.
     const sum = getTrackProgressSummary(track);
-    const tasksLabel = sum.stepsTotal > 0
-      ? `${sum.stepsDone} / ${sum.stepsTotal} tasks`
-      : '—';
     const msLabel = sum.msTotal > 0
       ? `${sum.msDone} / ${sum.msTotal} milestones`
-      : '';
+      : '—';
     const tooltipParts = [
       `${sum.msDone}/${sum.msTotal} milestones`,
       `${sum.stepOnlyDone}/${sum.stepOnlyTotal} steps`,
     ];
     if (sum.qcTotal > 0) tooltipParts.push(`${sum.qcDone}/${sum.qcTotal} QC checks`);
-    if (sum.blocksTotal > 0) tooltipParts.push(`${sum.blocksDone}/${sum.blocksTotal} blocks`);
+    if (sum.blocksTotal > 0) tooltipParts.push(`${sum.blocksLogged}/${sum.blocksTotal} blocks`);
     const tooltip = tooltipParts.join(' · ');
-    // Progress bar reflects task completion so the visual matches the number shown.
-    const pct = sum.stepsTotal > 0
-      ? Math.round((sum.stepsDone / sum.stepsTotal) * 100)
+    // Feature 6: headline = milestones reached (a stable count a bad time
+    // estimate can't throw off); bar fill = blocks banked vs. estimated,
+    // uncapped, so it moves with every logged block instead of only when
+    // a step gets marked fully done.
+    const blocksPct = sum.blocksTotal > 0
+      ? Math.round((sum.blocksLogged / sum.blocksTotal) * 100)
       : 0;
+    const overGoal = blocksPct > 100;
+    const barWidth = Math.min(100, blocksPct);
     html += `<div class="project-card" style="--card-accent:${color}" onclick="navigate('#track/${track}')" title="${escapeHtml(tooltip)}">
       <span class="dot" style="background:${color}"></span>
       <span class="proj-name proj-name-editable" data-track="${track}" ondblclick="startEditProjectName(event,'${track}')">${escapeHtml(label)}</span>
       <span class="proj-milestone">${escapeHtml(msTitle)}</span>
-      <span class="proj-progress">${tasksLabel}${msLabel ? ` · ${msLabel}` : ''}</span>
-      <div class="proj-progress-bar"><div class="proj-progress-bar-fill" style="width:${pct}%; background:${color}"></div></div>
+      <span class="proj-progress">${msLabel}</span>
+      <div class="proj-progress-bar"><div class="proj-progress-bar-fill${overGoal ? ' over-goal' : ''}" style="width:${barWidth}%; background:${color}"></div></div>
       <button class="proj-edit-btn" data-edit-track="${track}" title="Edit project" aria-label="Edit project">Edit</button>
       <button class="proj-archive-btn" data-archive-track="${track}" title="Move this project to the archive" aria-label="Archive project">Archive</button>
     </div>`;
@@ -2290,6 +2308,7 @@ function renderTrack(trackId) {
 
     html += `<div class="candy-row candy-row--${side}">
       <div class="candy-node ${variantClass}" data-msid="${ms.id}" onclick="navigate('#path/${trackId}/${ms.id}')" style="--node-accent:${color}">
+        <span class="milestone-flag-badge" aria-hidden="true" title="Milestone checkpoint">${MILESTONE_ICONS.flag}</span>
         <div class="candy-icon" aria-hidden="true">${iconSvg}</div>
         <div class="candy-body">
           <div class="candy-title">${urgDot}<span class="candy-title-text">${escapeHtml(ms.title)}</span></div>
@@ -2509,7 +2528,7 @@ function renderPath(trackId, milestoneId) {
           <div class="candy-title" onclick="openStepDrawer('${milestoneId}','${step.id}')">${urgDot}<span class="step-title-label">${escapeHtml(step.title)}</span></div>
           <div class="candy-step-meta" onclick="openStepDrawer('${milestoneId}','${step.id}')">
             ${typeBadge}
-            <div class="step-block-dots">${dotsHtml}</div>
+            <div class="step-block-dots" onclick="event.stopPropagation();navigate('#blocks/${milestoneId}/${step.id}')" title="View block history">${dotsHtml}</div>
             ${ss.status === 'done' ? `<span class="done-check">${ICONS.check}</span>` : ''}
           </div>
         </div>
@@ -2611,6 +2630,82 @@ function renderPath(trackId, milestoneId) {
       renderPath(trackId, milestoneId);
     });
   });
+}
+
+// Feature 6: block-level history — one node per logged 90-min block for a
+// single step, so effort past the original estimate stays visible instead
+// of disappearing once the step's dot row fills up. Read-only; starting a
+// new block hands off to the existing Focus timer rather than
+// re-implementing logging here.
+function renderBlockLog(milestoneId, stepId) {
+  const el = document.getElementById('view-blocklog');
+  const ms = getMilestone(milestoneId);
+  const allSteps = ms ? getAllSteps(milestoneId) : [];
+  const step = allSteps.find(s => s.id === stepId);
+  if (!ms || !step) { el.innerHTML = '<p>Step not found.</p>'; return; }
+
+  const track = getTrackForMilestone(milestoneId);
+  const color = TRACK_COLORS[track];
+  const ss = getStepState(stepId);
+  const estBlocks = step.estimated_blocks || 1;
+  const blocks = state.focusLog
+    .filter(l => l.stepId === stepId)
+    .slice()
+    .sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+
+  const mon = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const shortDate = (dateStr) => {
+    const d = new Date(dateStr + 'T00:00:00');
+    return `${mon[d.getMonth()]} ${d.getDate()}`;
+  };
+
+  let html = `<div class="path-header">
+    <button class="back-btn" onclick="navigate('#path/${track}/${milestoneId}')">${ICONS.arrowLeft}</button>
+    <div class="path-title"><span class="dot" style="background:${color}"></span> ${escapeHtml(step.title)}</div>
+  </div>
+  <div class="path-progress-text">${blocks.length} block${blocks.length === 1 ? '' : 's'} logged${estBlocks ? ` · ~${estBlocks} estimated` : ''}</div>
+  <div class="winding-path candy-path" style="--track-accent:${color}">`;
+
+  blocks.forEach((log, i) => {
+    const isBonus = i >= estBlocks;
+    const side = i % 2 === 0 ? 'left' : 'right';
+    const isLast = i === blocks.length - 1;
+    const trophyBadge = (isLast && ss.status === 'done') ? `<span class="candy-trophy" aria-hidden="true">${MILESTONE_ICONS.trophy}</span>` : '';
+    html += `<div class="candy-row candy-row--${side}">
+      <div class="candy-node candy-node--step candy-node--done${isBonus ? ' candy-node--bonus' : ''}" style="--node-accent:${color}">
+        <div class="candy-icon" aria-hidden="true">${ICONS.check}</div>
+        <div class="candy-body">
+          <div class="candy-step-num">Block ${i + 1}${isBonus ? ' · bonus' : ''}</div>
+          <div class="candy-title"><span class="step-title-label">${shortDate(log.date)}${log.warmup ? ' · warm-up' : ''}</span></div>
+        </div>
+        ${trophyBadge}
+      </div>
+    </div>`;
+    if (i < blocks.length - 1) {
+      html += `<div class="candy-path-connector candy-path-connector--done" aria-hidden="true"></div>`;
+    }
+  });
+
+  if (ss.status !== 'done') {
+    if (blocks.length) {
+      const nextSide = blocks.length % 2 === 0 ? 'left' : 'right';
+      html += `<div class="candy-path-connector" aria-hidden="true"></div>
+      <div class="candy-row candy-row--${nextSide}">
+        <div class="candy-node candy-node--step candy-node--next" style="--node-accent:${color}" onclick="navigate('#focus/${milestoneId}/${stepId}')">
+          <div class="candy-icon" aria-hidden="true">${ICONS.play}</div>
+          <div class="candy-body">
+            <div class="candy-step-num">Next</div>
+            <div class="candy-title"><span class="step-title-label">Start next block</span></div>
+          </div>
+        </div>
+      </div>`;
+    } else {
+      html += `<div class="done-msg" style="background:rgba(255,255,255,0.03);border-color:var(--border);">No blocks logged yet. <a onclick="navigate('#focus/${milestoneId}/${stepId}')" style="color:var(--text-primary);text-decoration:underline;cursor:pointer;">Start the first one</a>.</div>`;
+    }
+  }
+
+  html += `</div>`; // winding-path
+  el.innerHTML = html;
 }
 
 // Feature 1: inline edit step title
@@ -3030,7 +3125,7 @@ function renderFocus(milestoneId, stepId) {
           <div class="candy-step-num">Step ${i + 1}</div>
           <div class="candy-title"><span class="step-title-label">${escapeHtml(s.title)}</span></div>
           <div class="candy-step-meta">
-            <div class="step-block-dots">${dotsHtml}</div>
+            <div class="step-block-dots" onclick="event.stopPropagation();navigate('#blocks/${milestoneId}/${s.id}')" title="View block history">${dotsHtml}</div>
             ${ss.status === 'done' ? `<span class="done-check">${ICONS.check}</span>` : ''}
           </div>
         </div>
