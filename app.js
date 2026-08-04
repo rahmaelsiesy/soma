@@ -273,6 +273,11 @@ let timerStepId = null;
 let timerMilestoneId = null;
 let timerIsWarmup = false;
 let pendingNavHash = null;
+// Feature 8: transient (un-persisted) selection state for Home's manual
+// "log a block" picker — mirrors the timer globals' pattern of living
+// outside `state` since it's pure UI selection, not saved data.
+let homeLogTrackId = null;
+let homeLogStepId = null;
 // Phase 1a (ADHD overhaul): wall-clock based timing so the timer keeps
 // running accurately even when the tab is backgrounded, the page is
 // re-rendered, or the focus view is navigated away from.
@@ -574,7 +579,18 @@ function getMilestoneState(msId) {
 }
 
 // ---- Date helpers ----
-function todayStr() { return new Date().toISOString().slice(0, 10); }
+// Bug fix (found while building Feature 8's day strip): toISOString()
+// converts to UTC, so this returned tomorrow's date for the entire evening
+// in any timezone behind UTC (e.g. 11pm Pacific = 6am UTC the next day) —
+// every block logged that late was silently filed under the wrong day.
+// Use local calendar-date components instead, matching what formatDate()
+// (the greeting bar) already correctly shows.
+function localDateStr(d) {
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${m}-${day}`;
+}
+function todayStr() { return localDateStr(new Date()); }
 function dayOfWeek() { return new Date().getDay(); }
 function formatDate(d) {
   const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
@@ -587,7 +603,7 @@ function getWeekStart(dateStr) {
   const diff = day === 0 ? -6 : 1 - day;
   const mon = new Date(d);
   mon.setDate(d.getDate() + diff);
-  return mon.toISOString().slice(0, 10);
+  return localDateStr(mon);
 }
 function timeAgo(ts) {
   const diff = Date.now() - ts;
@@ -990,7 +1006,7 @@ function updateStreak() {
     let prev = new Date(d);
     prev.setDate(prev.getDate() - 1);
     while (prev.getDay() === 0 || prev.getDay() === 6) prev.setDate(prev.getDate() - 1);
-    const prevStr = prev.toISOString().slice(0, 10);
+    const prevStr = localDateStr(prev);
     if (state.streak.lastDate === prevStr || state.streak.current === 0) {
       state.streak.current++;
     } else {
@@ -1519,171 +1535,113 @@ function autoFillWeeklyPlan() {
   renderHome();
 }
 
-// Task 7 + Round 2 Task B: today's planned blocks as a milestone-level
-// checklist. Each row shows the milestone title as the primary label and
-// the next substep (first non-done step) as a secondary line with its own
-// Start Focus shortcut.
-// Round 5 Task 12: today's target blocks — the number of 90-min commitments
-// for today. Prefer an explicit plan grid slot count, else spread the weekly
-// goal across Mon–Fri, with a lower weekend target.
-function getTodayTarget() {
-  const wp = state.weeklyPlan || {};
-  const goal = getEffectiveWeeklyGoal();
-  const dow = dayOfWeek();
-  if (dow === 0 || dow === 6) {
-    return (state.settings.blocksPerDay && state.settings.blocksPerDay.min) || 2;
-  }
-  const dayKeys = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
-  const todayKey = dayKeys[dow];
-  const todayBlocks = wp.blocks && wp.blocks[todayKey];
-  if (Array.isArray(todayBlocks) && todayBlocks.length > 0) return todayBlocks.length;
-  const minPerDay = (state.settings.blocksPerDay && state.settings.blocksPerDay.min) || 2;
-  return Math.max(minPerDay, Math.ceil(goal / 5));
+// Feature 8: manual "log a block" control — project picker (defaulting to
+// this week's focus projects) + step picker scoped to that project's current
+// milestone, showing every non-done step rather than just the one the app
+// would auto-pick (real work often runs several steps in parallel, not
+// strictly sequentially) + an optional note + a direct "mark done" action.
+// Replaces the old auto-queued planned-blocks checklist as Home's primary
+// action; a secondary link still reaches the Focus timer for whoever wants
+// the Pomodoro flow, carrying the exact project/step chosen here.
+function buildHomeLogStepOptions(trackId, preferredStepId) {
+  if (!trackId) return { html: '<option value="">No active projects</option>', msId: null, selectedId: null };
+  const ms = getCurrentMilestone(trackId);
+  const steps = ms ? getAllSteps(ms.id).filter(s => getStepState(s.id).status !== 'done') : [];
+  if (!steps.length) return { html: '<option value="">No open steps</option>', msId: ms ? ms.id : null, selectedId: null };
+  const selectedId = (preferredStepId && steps.some(s => s.id === preferredStepId)) ? preferredStepId : steps[0].id;
+  const html = steps.map(s => `<option value="${s.id}"${s.id === selectedId ? ' selected' : ''}>${escapeHtml(s.title)}</option>`).join('');
+  return { html, msId: ms.id, selectedId };
 }
 
-// Round 5 Task 12: one row per 90-min block committed to today. Each substep
-// that needs multiple blocks repeats across rows (one row per block). Capped
-// at getTodayTarget(). Replaces the Round 3 Task 2 multi-dot block-row view.
-function renderPlannedBlocksChecklist() {
-  const target = getTodayTarget();
-  const todayBlocksLogged = getTodayBlocks().filter(l => !l.warmup).length;
-  const completedToday = Math.min(target, todayBlocksLogged);
-
-  // Build the row queue — one entry per block-commitment for today.
-  // Source substeps from the focus projects' current milestones, honoring the
-  // weekly plan's per-project allocations when set.
-  const rows = [];
-  const perProject = (state.weeklyPlan && state.weeklyPlan.perProjectBlocks) || {};
-  const focusProjects = state.weeklyPlan.focusProjects || [];
-  const tracks = focusProjects.length > 0
-    ? focusProjects.filter(t => isTrackActive(t))
-    : getActiveTrackIds();
-
-  for (const track of tracks) {
-    if (rows.length >= target) break;
-    const ms = getCurrentMilestone(track);
-    if (!ms) continue;
-    const steps = getAllSteps(ms.id);
-    for (const step of steps) {
-      if (rows.length >= target) break;
-      const ss = getStepState(step.id);
-      if (ss.status === 'done') continue;
-      const est = step.estimated_blocks || 1;
-      const remaining = Math.max(0, est - (ss.blocksCompleted || 0));
-      for (let i = 0; i < remaining && rows.length < target; i++) {
-        rows.push({
-          track,
-          milestone: ms,
-          step,
-          ss,
-          blockIndex: (ss.blocksCompleted || 0) + i, // 0-based block # for this step
-          totalBlocks: est
-        });
-      }
-    }
-  }
-
-  let html = `<div class="planned-blocks">
-    <div class="planned-blocks-header">
-      <div class="planned-blocks-title">Today’s planned blocks</div>
-      <div class="planned-blocks-count">${completedToday} / ${target} completed today</div>
+function renderHomeLogControl() {
+  const activeTracks = getActiveTrackIds();
+  if (activeTracks.length === 0) {
+    return `<div class="card home-log-card">
+      <div class="home-log-title">Log a block</div>
+      <div class="done-msg" style="background:rgba(255,255,255,0.03);border-color:var(--border);">No active projects. Check your <a onclick="navigate('#projects')" style="color:var(--text-primary);text-decoration:underline;cursor:pointer;">projects</a>.</div>
     </div>`;
-
-  // Round 5 Task 12E: after today's target is met, show the calm done state.
-  if (todayBlocksLogged >= target && target > 0) {
-    html += `<div class="planned-blocks-done">
-      <div class="planned-blocks-done-title">You’ve completed today’s ${target} block${target === 1 ? '' : 's'}.</div>
-      <div class="planned-blocks-done-sub">Rest is productive too.</div>
-      <button class="btn btn-outline planned-blocks-done-btn" onclick="navigate('#schedule')">View tomorrow’s plan ›</button>
-    </div>`;
-    html += `</div>`;
-    return html;
   }
-
-  if (rows.length === 0) {
-    html += `<div class="planned-blocks-empty">No queued milestones. <a onclick="navigate('#projects')">Pick a project</a>.</div>`;
-    html += `</div>`;
-    return html;
+  if (!homeLogTrackId || !activeTracks.includes(homeLogTrackId)) {
+    const focusProjects = (state.weeklyPlan.focusProjects || []).filter(t => activeTracks.includes(t));
+    homeLogTrackId = focusProjects[0] || activeTracks[0];
+    homeLogStepId = null;
   }
+  const trackOptsHtml = activeTracks.map(t =>
+    `<option value="${t}"${t === homeLogTrackId ? ' selected' : ''}>${escapeHtml(getTrackLabel(t))}</option>`
+  ).join('');
+  const stepOpts = buildHomeLogStepOptions(homeLogTrackId, homeLogStepId);
+  homeLogStepId = stepOpts.selectedId;
 
-  const blockMin = state.settings.blockDurationMin || 90;
-  html += `<ul class="planned-list">`;
-  for (const p of rows) {
-    const color = getTrackColor(p.track);
-    const label = getTrackLabel(p.track);
-    const msTitle = p.milestone.title;
-    const step = p.step;
-    const blockNo = p.blockIndex + 1;
-    const totalBlocks = p.totalBlocks;
-    const metaBlockLabel = totalBlocks > 1
-      ? `${blockMin}-min block · ${blockNo} of ${totalBlocks} for this substep`
-      : `${blockMin}-min block`;
-
-    // Round 5.1: show only 'N-min block · Project' on Home. Specifics
-    // (milestone title, substep title, checklist) are visible after clicking
-    // into the focus view. Keeps Home low-cognitive-load.
-    html += `<li class="planned-row planned-row-today planned-row-calm">
-      <span class="planned-row-colordot" style="background:${color}" aria-hidden="true"></span>
-      <div class="planned-row-main">
-        <div class="planned-row-title-calm">${blockMin} min block</div>
-        <div class="planned-row-meta"><span class="planned-row-track" style="color:${color}">${escapeHtml(label)}</span></div>
-      </div>
-      <div class="planned-row-actions">
-        <button class="planned-row-details" data-details-step="${step.id}" data-details-ms="${p.milestone.id}">Details ›</button>
-        <button class="planned-row-go" onclick="navigate('#focus/${p.milestone.id}/${step.id}')">Start Focus</button>
-      </div>
-    </li>`;
-  }
-  html += `</ul>`;
-  html += `</div>`;
-  return html;
+  return `<div class="card home-log-card">
+    <div class="home-log-title">Log a block</div>
+    <div class="home-log-row">
+      <select class="idea-input home-log-select" id="homeLogTrackSelect" onchange="onHomeLogProjectChange(this)">${trackOptsHtml}</select>
+      <select class="idea-input home-log-select" id="homeLogStepSelect" data-msid="${stepOpts.msId || ''}" onchange="onHomeLogStepChange(this)">${stepOpts.html}</select>
+    </div>
+    <input type="text" class="idea-input home-log-note" id="homeLogNote" placeholder="Optional note...">
+    <div class="home-log-actions">
+      <button class="btn btn-primary home-log-submit" onclick="logBlockManually()">Mark block done</button>
+      <a class="home-log-timer-link" onclick="startFocusFromHomeLog()">or start a focus timer instead</a>
+    </div>
+  </div>`;
 }
 
-// Round 3 Task 2: block-dot click on Home planned rows.
-// Clicking an empty dot logs one block (increments blocksCompleted).
-// Clicking a filled dot un-logs it. Does NOT mark the step done.
-function handleBlockDotClick(stepId, milestoneId, dotIndex, est) {
-  const ss = getStepState(stepId);
-  const done = ss.blocksCompleted || 0;
-  const idx = Number(dotIndex);
-  const max = Number(est) || (getStepFromIds(milestoneId, stepId)?.estimated_blocks || 3);
-  // Filled (idx < done) → unlog to exactly idx blocks; Empty → log up to idx+1 blocks.
-  let newCount;
-  if (idx < done) {
-    newCount = idx; // un-fill this dot and any after it
-  } else {
-    newCount = Math.min(max, idx + 1);
-  }
-  ss.blocksCompleted = newCount;
-  if (newCount > 0 && ss.status === 'pending') ss.status = 'active';
-  if (newCount === 0 && ss.status === 'active') ss.status = 'pending';
-  saveState();
+function onHomeLogProjectChange(selectEl) {
+  homeLogTrackId = selectEl.value;
+  const stepSelect = document.getElementById('homeLogStepSelect');
+  if (!stepSelect) return;
+  const opts = buildHomeLogStepOptions(homeLogTrackId, null);
+  stepSelect.innerHTML = opts.html;
+  stepSelect.dataset.msid = opts.msId || '';
+  homeLogStepId = opts.selectedId;
+}
+
+function onHomeLogStepChange(selectEl) {
+  homeLogStepId = selectEl.value || null;
+}
+
+function logBlockManually() {
+  const stepSelect = document.getElementById('homeLogStepSelect');
+  const noteEl = document.getElementById('homeLogNote');
+  const stepId = stepSelect ? stepSelect.value : '';
+  const milestoneId = stepSelect ? stepSelect.dataset.msid : '';
+  if (!stepId || !milestoneId) return;
+  homeLogStepId = stepId;
+  const note = noteEl ? noteEl.value.trim() : '';
+  completeBlock({ stepId, milestoneId, note, warmup: false });
   renderHome();
 }
 
-// Helper: locate a step object inside QUEST_DATA from milestone id + step id.
-function getStepFromIds(milestoneId, stepId) {
-  for (const track of Object.keys(QUEST_DATA)) {
-    for (const ms of QUEST_DATA[track]) {
-      if (ms.id !== milestoneId) continue;
-      for (const s of (ms.steps || [])) {
-        if (s.id === stepId) return s;
-      }
-    }
+function startFocusFromHomeLog() {
+  const stepSelect = document.getElementById('homeLogStepSelect');
+  if (!stepSelect || !stepSelect.value || !stepSelect.dataset.msid) return;
+  navigate(`#focus/${stepSelect.dataset.msid}/${stepSelect.value}`);
+}
+
+// Feature 8: Mon-Sun "did I show up" strip — a calmer, less number-heavy
+// everyday read than the old auto-queued checklist. The block-circles above
+// (per-project color, still shown in the promoted weekly bar section) and
+// the weekly bar together still carry the finer-grained detail; this strip
+// is specifically the fast glance.
+function renderHomeDayStrip(weekStart) {
+  const dayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const today = todayStr();
+  let html = `<div class="block-section">
+    <div class="block-section-label">This week at a glance</div>
+    <div class="day-strip">`;
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(weekStart + 'T00:00:00');
+    d.setDate(d.getDate() + i);
+    const dStr = localDateStr(d);
+    const hasBlock = state.focusLog.some(l => l.date === dStr);
+    const isToday = dStr === today;
+    html += `<div class="day-strip-cell${isToday ? ' today' : ''}${hasBlock ? ' logged' : ''}">
+      <span class="day-strip-label">${dayLabels[i]}</span>
+      <span class="day-strip-mark" aria-hidden="true">${hasBlock ? ICONS.check : ''}</span>
+    </div>`;
   }
-  // Round 5: look in custom projects.
-  if (state.customProjects) {
-    for (const track of Object.keys(state.customProjects)) {
-      const list = (state.customProjects[track] || {}).milestones || [];
-      for (const ms of list) {
-        if (ms.id !== milestoneId) continue;
-        for (const s of (ms.steps || [])) {
-          if (s.id === stepId) return s;
-        }
-      }
-    }
-  }
-  return null;
+  html += `</div></div>`;
+  return html;
 }
 
 // Round 3 Task 5: wire up the Plan-week '?' popover.
@@ -1768,7 +1726,6 @@ function renderHome() {
   const weekStart = getWeekStart(todayStr());
   const weekB = getWeekBlocks(weekStart);
   const weeklyGoal = state.settings.weeklyGoal || 10;
-  const next = getNextQueuedTask();
   const allDoneToday = fullToday >= maxToday;
 
   let html = '';
@@ -1787,55 +1744,13 @@ function renderHome() {
     html += `<div class="sunday-prompt">Ready to plan next week? It takes 5 minutes. <a href="#schedule" style="color:var(--text-primary);text-decoration:underline;cursor:pointer;">Plan now</a></div>`;
   }
 
-  // Round 4: The weekly plan panel below replaces the old 'No weekly plan yet' nudge.
+  html += `<div class="home-layout"><div class="home-primary">`;
 
-  if (allDoneToday) {
-    html += `<div class="done-msg">You've done enough today. Rest is productive too.</div>`;
-  } else if (next) {
-    const color = TRACK_COLORS[next.track];
-    // Round 2 Task B: hero shows substep (primary) + milestone context (secondary).
-    const substepTxt = next.step.title;
-    const contextTxt = `${next.milestone.title} · ${getTrackLabel(next.track)}`;
-    // Round 3 Task 2: block-dots under substep title on the hero button.
-    const heroEst = next.step.estimated_blocks || 3;
-    const heroSs = getStepState(next.step.id);
-    const heroDone = Math.min(heroEst, heroSs.blocksCompleted || 0);
-    let heroDots = '';
-    for (let i = 0; i < heroEst; i++) {
-      const filled = i < heroDone;
-      const current = (i === heroDone);
-      heroDots += `<span class="step-block-dot${filled ? ' filled' : ''}${current ? ' current' : ''}" aria-hidden="true"></span>`;
-    }
-    // Round 5.1: calm hero — no substep text, no context. Just the action +
-    // project dot so Home carries zero decision-making surface.
-    const blockMin = state.settings.blockDurationMin || 90;
-    const trackLabel = getTrackLabel(next.track);
-    html += `<button class="start-block-btn start-block-btn-v2 start-block-btn-calm" style="background:${color}" onclick="navigate('#focus/${next.milestone.id}/${next.step.id}')">
-      <span class="btn-label-sm">Start next block</span>
-      <span class="start-block-calm-main">
-        <span class="start-block-calm-dot" style="background:${color}" aria-hidden="true"></span>
-        <span class="start-block-calm-text">${blockMin} min block · ${escapeHtml(trackLabel)}</span>
-      </span>
-    </button>`;
-  } else {
-    html += `<div class="done-msg" style="background:rgba(255,255,255,0.03);border-color:var(--border);">No active tasks queued. Check your <a onclick="navigate('#projects')" style="color:var(--text-primary);text-decoration:underline;cursor:pointer;">projects</a>.</div>`;
-  }
-
-  // Round 4: weekly plan panel with per-project block sliders.
-  // Round 5 Task 6: when approved for this week, the expanded panel
-  // returns '' from the top placement, and renders a collapsed one-line
-  // summary at the bottom placement (below today's planned blocks).
-  html += renderWeeklyPlanPanel({ placement: 'top' });
-
-  // Task 7: planned blocks checklist (replaces today block-circles).
-  html += renderPlannedBlocksChecklist();
-
-  // Round 5 Task 6: collapsed summary placement (bottom, de-emphasized).
-  html += renderWeeklyPlanPanel({ placement: 'bottom' });
-
-  // Segmented weekly progress bar — one colored slice per project, sized by
-  // blocks completed this week, so "how am I doing this week" reads at a
-  // glance without counting circles.
+  // Feature 8: weekly bar promoted to the top as the primary, central
+  // element — a segmented slice per project, sized by blocks completed
+  // this week, plus a "you are here" pace marker (same visual language as
+  // the board-game token) so the bar reads as progress *and* pace at a
+  // glance: fill past the dot means ahead of pace, short of it means behind.
   const weekByProject = {};
   for (const log of weekB) {
     const t = getTrackForMilestone(log.milestoneId);
@@ -1847,10 +1762,19 @@ function renderHome() {
     const segWidth = weeklyGoal > 0 ? (count / weeklyGoal) * 100 : 0;
     weekSegsHtml += `<div class="week-progress-seg" style="width:${segWidth}%;background:${TRACK_COLORS[t] || 'var(--text-muted)'}" title="${escapeHtml(getTrackLabel(t))}: ${count}"></div>`;
   }
+  // Work-week (Mon-Fri) pace target: Sunday counts as "day 5 elapsed" (end
+  // of the previous work-week's pace) same as Saturday, so the dot only
+  // resets to the start once Monday actually arrives.
+  const dow = dayOfWeek();
+  const paceDayIndex = dow === 0 ? 5 : Math.min(dow, 5);
+  const pacePct = (paceDayIndex / 5) * 100;
 
   html += `<div class="block-section">
     <div class="block-section-label">This week</div>
-    <div class="week-progress-bar">${weekSegsHtml}</div>
+    <div class="week-progress-track">
+      <div class="week-progress-bar">${weekSegsHtml}</div>
+      <div class="week-pace-dot" style="left:${pacePct}%" title="Today's pace target"></div>
+    </div>
     <div class="week-progress-text${weekPct > 100 ? ' over-goal' : ''}">${weekB.length} / ${weeklyGoal} blocks · ${weekPct}%</div>
     <div class="block-circles">`;
   const totalCircles = Math.max(weeklyGoal, weekB.length);
@@ -1869,26 +1793,32 @@ function renderHome() {
   }
   html += `</div></div>`;
 
-  if (state.lastAction) {
-    html += `<div class="where-was-i">Last: ${state.lastAction}</div>`;
-  }
-  if (state.streak.current > 0) {
-    html += `<div class="streak-line">${state.streak.current}-day streak</div>`;
+  if (allDoneToday) {
+    html += `<div class="done-msg">You've done enough today. Rest is productive too.</div>`;
   }
 
-  // Feature 9: Reward unlocked banner
-  const newlyEarned = getNewlyEarnedRewards();
-  if (newlyEarned.length > 0) {
-    html += `<div class="reward-unlocked-banner">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89L17 22l-5-3-5 3 1.523-9.11"/></svg>
-      Reward unlocked: ${escapeHtml(newlyEarned[0].label)}
-    </div>`;
-  }
+  // Feature 8: manual, lower-friction block logging — the new primary
+  // action, replacing the old auto-picked "Start next block" timer button.
+  html += renderHomeLogControl();
+
+  // Feature 8: Mon-Sun day-preview strip replaces the old planned-blocks
+  // checklist as the everyday read.
+  html += renderHomeDayStrip(weekStart);
+
+  html += `</div>`; // /home-primary
+
+  html += `<div class="home-secondary">`;
+
+  // Round 4: weekly plan panel with per-project block sliders. Round 5
+  // Task 6: when approved for this week, the expanded panel returns ''
+  // from the top placement, and renders a collapsed one-line summary at
+  // the bottom placement.
+  html += renderWeeklyPlanPanel({ placement: 'top' });
+  html += renderWeeklyPlanPanel({ placement: 'bottom' });
 
   // Feature 9: Next reward card
   const nextReward = getNextPointReward();
   if (nextReward) {
-    const pct = Math.min(100, Math.round((state.points / nextReward.threshold) * 100));
     const chosen = (state.rewards.tiers[nextReward.id] || {}).text || nextReward.defaultReward;
     html += `<div class="next-reward-card" onclick="navigate('#rewards')">
       <div>
@@ -1916,54 +1846,29 @@ function renderHome() {
     </div>
   </div>`;
 
-  // High-level per-project progress at a glance — active projects only,
-  // reusing the same .proj-progress-bar the Projects tab already uses.
-  const overviewTracks = getActiveTrackIds();
-  if (overviewTracks.length > 0) {
-    let projRowsHtml = '';
-    for (const track of overviewTracks) {
-      const label = getTrackLabel(track);
-      const color = getTrackColor(track);
-      const sum = getTrackProgressSummary(track);
-      // Feature 6: bar tracks blocks banked vs. estimated (uncapped —
-      // effort past a bad estimate still moves the bar), not steps
-      // individually marked done.
-      const blocksPct = sum.blocksTotal > 0 ? Math.round((sum.blocksLogged / sum.blocksTotal) * 100) : 0;
-      const overGoal = blocksPct > 100;
-      const barWidth = Math.min(100, blocksPct);
-      projRowsHtml += `<div class="home-project-row" onclick="navigate('#track/${track}')">
-        <span class="dot" style="background:${color}"></span>
-        <span class="home-project-name">${escapeHtml(label)}</span>
-        <div class="proj-progress-bar home-project-bar"><div class="proj-progress-bar-fill${overGoal ? ' over-goal' : ''}" style="width:${barWidth}%;background:${color}"></div></div>
-        <span class="home-project-pct${overGoal ? ' over-goal' : ''}">${blocksPct}%</span>
-      </div>`;
-    }
-    html += `<div class="block-section">
-      <div class="block-section-label">Projects</div>
-      <div class="home-projects-overview">${projRowsHtml}</div>
+  html += `</div>`; // /home-secondary
+  html += `</div>`; // /home-layout
+
+  if (state.lastAction) {
+    html += `<div class="where-was-i">Last: ${state.lastAction}</div>`;
+  }
+  if (state.streak.current > 0) {
+    html += `<div class="streak-line">${state.streak.current}-day streak</div>`;
+  }
+
+  // Feature 9: Reward unlocked banner
+  const newlyEarned = getNewlyEarnedRewards();
+  if (newlyEarned.length > 0) {
+    html += `<div class="reward-unlocked-banner">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89L17 22l-5-3-5 3 1.523-9.11"/></svg>
+      Reward unlocked: ${escapeHtml(newlyEarned[0].label)}
     </div>`;
   }
 
   el.innerHTML = html;
 
-  // Round 3 Task 2: bind block-dot buttons on planned rows.
-  el.querySelectorAll('.block-dot-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      handleBlockDotClick(btn.dataset.stepid, btn.dataset.msid, btn.dataset.dotIndex, btn.dataset.est);
-    });
-  });
-
   // Round 3 Task 5: plan-week '?' help popover.
   wirePlanWeekHelp();
-
-  // Round 2 Task B: Details → open step drawer.
-  el.querySelectorAll('.planned-row-details').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      openStepDrawer(btn.dataset.detailsMs, btn.dataset.detailsStep);
-    });
-  });
 }
 
 // ---- RENDER: Projects ----
@@ -2865,6 +2770,7 @@ function renderBlockLog(milestoneId, stepId) {
         <div class="candy-body">
           <div class="candy-step-num">Block ${i + 1}${isBonus ? ' · bonus' : ''}</div>
           <div class="candy-title"><span class="step-title-label">${shortDate(log.date)}${log.warmup ? ' · warm-up' : ''}</span></div>
+          ${log.note ? `<div class="candy-sub">${escapeHtml(log.note)}</div>` : ''}
         </div>
         ${trophyBadge}
       </div>
@@ -3642,31 +3548,44 @@ function updateTimerRing() {
   ring.setAttribute('stroke-dashoffset', circumference * (1 - progress));
 }
 
-function completeBlock() {
+// Feature 8: accepts optional explicit {stepId, milestoneId, warmup, note}
+// so a block can be logged manually (Home's "log a block" control) through
+// the exact same points/streak logic as a timer completion, just without
+// running the 90-minute timer. Falls back to the timer's own module-level
+// globals when called with no args, so the existing timer-completion call
+// site (timerTick, below) is unchanged.
+function completeBlock(opts) {
+  opts = opts || {};
+  const stepId = opts.stepId || timerStepId;
+  const milestoneId = opts.milestoneId || timerMilestoneId;
+  const warmup = typeof opts.warmup === 'boolean' ? opts.warmup : timerIsWarmup;
+  const note = typeof opts.note === 'string' ? opts.note.trim() : '';
+
   // Phase 1a: clear persistent timer so a refresh doesn't try to resume
-  // a finished block.
+  // a finished block. Harmless no-op for a manually-logged block.
   try { localStorage.removeItem('soma_timer'); } catch (e) {}
   const logEntry = {
     date: todayStr(),
-    stepId: timerStepId,
-    milestoneId: timerMilestoneId,
+    stepId,
+    milestoneId,
     blocks: 1,
-    warmup: timerIsWarmup,
-    timestamp: Date.now()
+    warmup,
+    timestamp: Date.now(),
+    note
   };
   state.focusLog.push(logEntry);
 
-  const ss = getStepState(timerStepId);
+  const ss = getStepState(stepId);
   ss.blocksCompleted = (ss.blocksCompleted || 0) + 1;
   if (ss.status !== 'done') ss.status = 'active';
 
-  const pts = awardPoints(timerIsWarmup);
+  const pts = awardPoints(warmup);
   updateStreak();
 
-  const track = getTrackForMilestone(timerMilestoneId);
-  const ms = getMilestone(timerMilestoneId);
-  const allSteps = getAllSteps(timerMilestoneId);
-  const step = allSteps.find(s => s.id === timerStepId);
+  const track = getTrackForMilestone(milestoneId);
+  const ms = getMilestone(milestoneId);
+  const allSteps = getAllSteps(milestoneId);
+  const step = allSteps.find(s => s.id === stepId);
   state.lastAction = `${getTrackLabel(track)} → ${ms ? ms.title : ''} → ${step ? step.title : ''}`;
   saveState();
 
@@ -3739,7 +3658,7 @@ function renderScheduleReview() {
 
   const d = new Date(thisWeekStart + 'T00:00:00');
   d.setDate(d.getDate() - 7);
-  const prevWeekStart = d.toISOString().slice(0, 10);
+  const prevWeekStart = localDateStr(d);
   const lastWeekBlocks = getWeekBlocks(prevWeekStart);
   const lastWeekFull = lastWeekBlocks.filter(l => !l.warmup);
 
@@ -4008,7 +3927,7 @@ function addAdminTask() {
   state.adminTasks.push({
     id: 'admin-' + Date.now(),
     text,
-    createdAt: new Date().toISOString().slice(0, 10),
+    createdAt: localDateStr(new Date()),
     completedDate: null
   });
   saveState();
@@ -4245,7 +4164,7 @@ function generateWeeklyPrompt() {
   // Last week's focus log summary
   const lastWeekStart = new Date(weekStart + 'T00:00:00');
   lastWeekStart.setDate(lastWeekStart.getDate() - 7);
-  const lwStr = lastWeekStart.toISOString().split('T')[0];
+  const lwStr = localDateStr(lastWeekStart);
   const lastWeekBlocks = getWeekBlocks(lwStr);
   if (lastWeekBlocks.length > 0) {
     prompt += `--- LAST WEEK ---\n`;
@@ -4917,7 +4836,7 @@ function renderProgress() {
   for (let w = 11; w >= 0; w--) {
     const d = new Date(today);
     d.setDate(d.getDate() - (w * 7));
-    const ws = getWeekStart(d.toISOString().slice(0, 10));
+    const ws = getWeekStart(localDateStr(d));
     const blocks = getWeekBlocks(ws).filter(l => !l.warmup);
     const hrs = Math.round(blocks.length * blockMin / 60 * 10) / 10;
     const label = new Date(ws + 'T00:00:00');
@@ -5031,7 +4950,7 @@ function renderWeeklyReviewStep(step) {
   const thisWeekStart = getWeekStart(todayStr());
   const d = new Date(thisWeekStart + 'T00:00:00');
   d.setDate(d.getDate() - 7);
-  const lastWeekStart = d.toISOString().slice(0, 10);
+  const lastWeekStart = localDateStr(d);
   const lastWeekBlocks = getWeekBlocks(lastWeekStart);
   const lastFull = lastWeekBlocks.filter(l => !l.warmup);
   const lastProjects = [...new Set(lastFull.map(l => getTrackForMilestone(l.milestoneId)).filter(Boolean))];
@@ -5153,7 +5072,7 @@ function reviewStep3() {
 
 function exportData() {
   const json = JSON.stringify(state, null, 2);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDateStr(new Date());
   const filename = `soma-data-${today}.json`;
   const blob = new Blob([json], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
