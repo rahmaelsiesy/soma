@@ -492,6 +492,13 @@ a { color: inherit; text-decoration: none; }
   display: flex; flex-direction: column; gap: 2px;
   opacity: 0; transition: opacity var(--t-fast);
 }
+/* Feature 7 fix: this reveal rule never existed, so the reorder controls
+   (steps, and now milestones too) were permanently invisible at opacity 0.
+   :focus-within keeps them reachable by keyboard, not just mouse hover. */
+.candy-node:hover .step-reorder,
+.candy-node:focus-within .step-reorder {
+  opacity: 1;
+}
 .step-reorder-btn {
   background: none; border: none; cursor: pointer;
   color: var(--text-muted); padding: 2px;
@@ -2157,6 +2164,30 @@ a { color: inherit; text-decoration: none; }
   font-size: var(--text-sm);
   color: var(--text-secondary);
 }
+/* Feature 7: milestone description — editable via double-click, same
+   gesture as the title above it. Empty state only reveals on node hover/
+   focus so the board stays calm when most milestones have no desc set. */
+.candy-desc {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  margin-top: 2px;
+  line-height: 1.4;
+  cursor: text;
+  overflow: hidden; text-overflow: ellipsis;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  transition: color var(--t-fast);
+}
+.candy-desc:hover { color: var(--text-secondary); }
+.candy-desc-empty {
+  opacity: 0;
+  transition: opacity var(--t-fast);
+  -webkit-line-clamp: 1;
+}
+.candy-node:hover .candy-desc-empty,
+.candy-node:focus-within .candy-desc-empty {
+  opacity: 0.55;
+}
+.candy-desc-empty:hover { opacity: 0.85; }
 .candy-step-num {
   display: inline-block;
   font-size: var(--text-xs);
@@ -2287,6 +2318,16 @@ a { color: inherit; text-decoration: none; }
   cursor: not-allowed;
 }
 .candy-node--locked:hover { transform: none; background: var(--surface); border-color: var(--border); }
+
+/* Feature 7: archived milestone/step rows in the "N archived" reveal list —
+   same dimmed, non-interactive treatment as .candy-node--locked and
+   .project-card-archived. */
+.candy-node--archived {
+  filter: saturate(0.4) brightness(0.92);
+  opacity: 0.55;
+  cursor: default;
+}
+.candy-node--archived:hover { transform: none; background: var(--surface); border-color: var(--border); }
 
 .candy-node--qc .candy-icon {
   color: var(--c-gold);

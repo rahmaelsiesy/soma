@@ -51,10 +51,68 @@ function isCustomProject(trackId) {
 function getCustomProject(trackId) {
   return (state.customProjects && state.customProjects[trackId]) || null;
 }
+// Feature 7: pure ordering overlay — an id array expressing desired order,
+// never a content snapshot, so reordering can never desync from live data.
+// Ids not present in `order` (e.g. an item added since the order was last
+// saved) are appended at the end in their natural order.
+function applyOrderOverlay(list, order) {
+  if (!order || !order.length) return list;
+  const byId = new Map(list.map(item => [item.id, item]));
+  const ordered = [];
+  const seen = new Set();
+  for (const id of order) {
+    if (byId.has(id) && !seen.has(id)) { ordered.push(byId.get(id)); seen.add(id); }
+  }
+  for (const item of list) {
+    if (!seen.has(item.id)) { ordered.push(item); seen.add(item.id); }
+  }
+  return ordered;
+}
+// Feature 7: milestone/step overlays — title/desc/estimate/archived layered
+// on top of the base object, mirroring getTrackColor/getTrackDescription's
+// existing override-wins pattern. data.js is never mutated.
+function applyMilestoneOverlay(ms) {
+  const ov = state.milestoneOverrides && state.milestoneOverrides[ms.id];
+  if (!ov) return ms;
+  return {
+    ...ms,
+    title: (typeof ov.title === 'string' && ov.title) ? ov.title : ms.title,
+    desc: typeof ov.desc === 'string' ? ov.desc : ms.desc,
+    archived: !!ov.archived
+  };
+}
+function applyStepOverlay(step) {
+  const ov = state.stepOverrides && state.stepOverrides[step.id];
+  if (!ov) return step;
+  return {
+    ...step,
+    title: (typeof ov.title === 'string' && ov.title) ? ov.title : step.title,
+    desc: typeof ov.desc === 'string' ? ov.desc : step.desc,
+    estimated_blocks: (typeof ov.estimated_blocks === 'number' && ov.estimated_blocks > 0) ? ov.estimated_blocks : step.estimated_blocks,
+    archived: !!ov.archived
+  };
+}
+// Raw milestone list for a track: base (QUEST_DATA) + extraMilestones (new
+// milestones added to a base track) or a custom project's own milestones —
+// ordered and overlaid, but NOT filtered by archived (used by the archived
+// reveal list; getMilestonesForTrack below is the filtered, everyday read).
+function getMilestonesForTrackRaw(trackId) {
+  let base;
+  if (QUEST_DATA && QUEST_DATA[trackId]) {
+    const extra = (state.extraMilestones && state.extraMilestones[trackId]) || [];
+    base = [...QUEST_DATA[trackId], ...extra];
+  } else {
+    const cp = getCustomProject(trackId);
+    base = (cp && Array.isArray(cp.milestones)) ? cp.milestones : [];
+  }
+  const ordered = applyOrderOverlay(base, state.milestoneOrder && state.milestoneOrder[trackId]);
+  return ordered.map(applyMilestoneOverlay);
+}
 function getMilestonesForTrack(trackId) {
-  if (QUEST_DATA && QUEST_DATA[trackId]) return QUEST_DATA[trackId];
-  const cp = getCustomProject(trackId);
-  return (cp && Array.isArray(cp.milestones)) ? cp.milestones : [];
+  return getMilestonesForTrackRaw(trackId).filter(ms => !ms.archived);
+}
+function getArchivedMilestonesForTrack(trackId) {
+  return getMilestonesForTrackRaw(trackId).filter(ms => ms.archived);
 }
 // Palette for custom projects — muted pastel-earth swatches that match the
 // Soma theme tokens. First entry is the default accent.
@@ -354,6 +412,13 @@ function defaultState() {
     customSteps: {},
     // Feature 2: track name/tag overrides
     trackOverrides: {},
+    // Feature 7: milestone/step overlays — non-destructive edits layered on
+    // top of data.js, mirroring the existing projectOverrides pattern.
+    milestoneOverrides: {},
+    stepOverrides: {},
+    extraMilestones: {},
+    stepOrder: {},
+    milestoneOrder: {},
     // Round 5: custom user-created projects and per-project metadata overrides.
     customProjects: {},
     projectOverrides: {},
@@ -416,6 +481,21 @@ function loadState() {
         }
         customSteps[msId] = cleaned;
       }
+      // Feature 7 migration: moveStep() used to freeze base steps into
+      // customSteps as `{..., _base:true}` snapshots to represent a new
+      // order — which silently stopped tracking data.js if a base step's
+      // title/desc/estimate ever changed afterward (see CHANGES history).
+      // Replace any such snapshots with a pure stepOrder id-array (derived
+      // from the frozen order, so existing custom orderings are preserved)
+      // and drop the frozen copies — getAllSteps() reads live base data
+      // again from here on.
+      const stepOrder = s.stepOrder || {};
+      for (const msId of Object.keys(customSteps)) {
+        const arr = customSteps[msId];
+        if (!arr.some(st => st && st._base)) continue;
+        if (!stepOrder[msId]) stepOrder[msId] = arr.map(st => st.id);
+        customSteps[msId] = arr.filter(st => !st._base);
+      }
       // Task 12 migration: dementia_review is a completed retrospective track.
       // Pre-mark its step statuses as done so the progress bars reflect reality.
       // Only runs once — guarded by a version flag on state.
@@ -452,6 +532,12 @@ function loadState() {
         // Round 5 Task 4: additive migration for customProjects + projectOverrides.
         customProjects: s.customProjects || {},
         projectOverrides: s.projectOverrides || {},
+        // Feature 7: additive migration for the milestone/step overlay system.
+        milestoneOverrides: s.milestoneOverrides || {},
+        stepOverrides: s.stepOverrides || {},
+        extraMilestones: s.extraMilestones || {},
+        stepOrder: stepOrder,
+        milestoneOrder: s.milestoneOrder || {},
         urgency: s.urgency || {},
         adminTasks: s.adminTasks || [],
         prepBatches: s.prepBatches || [],
@@ -530,10 +616,16 @@ function weeksUntil(dateStr) {
 // Feature 1: merged steps (base + custom)
 // Round 2 Task A: self-healing — always dedupe by id and drop orphan _base
 // entries whose underlying base step no longer exists in QUEST_DATA.
-function getAllSteps(milestoneId) {
-  const custom = state.customSteps[milestoneId] || [];
+// Feature 7: raw merged steps (base + custom), ordered and overlaid, but NOT
+// filtered by archived — used by the archived reveal list. getAllSteps below
+// is the filtered, everyday read every existing call site already expects.
+function getAllStepsRaw(milestoneId) {
+  // Defense-in-depth: any lingering `_base` snapshot from the pre-Feature-7
+  // moveStep() (should already be migrated away in loadState) is dropped
+  // here too, so a frozen copy can never shadow live base data again.
+  const custom = (state.customSteps[milestoneId] || []).filter(s => !s._base);
   let baseSteps = [];
-  // Round 5: walk built-in tracks AND custom projects.
+  // Round 5: walk built-in tracks, tracks' extra milestones, AND custom projects.
   const walk = (msList) => {
     for (const ms of (msList || [])) {
       if (ms.id === milestoneId) { baseSteps = ms.steps || []; return true; }
@@ -544,34 +636,47 @@ function getAllSteps(milestoneId) {
   for (const track of Object.keys(QUEST_DATA)) {
     if (walk(QUEST_DATA[track])) { found = true; break; }
   }
+  if (!found && state.extraMilestones) {
+    for (const track of Object.keys(state.extraMilestones)) {
+      if (walk(state.extraMilestones[track])) { found = true; break; }
+    }
+  }
   if (!found && state.customProjects) {
     for (const track of Object.keys(state.customProjects)) {
       if (walk((state.customProjects[track] || {}).milestones)) break;
     }
   }
-  let out;
-  if (custom.some(s => s && s._base)) {
-    // custom is a full override; keep it but drop any _base entries
-    // that no longer correspond to a real base step.
-    const baseIds = new Set(baseSteps.map(s => s.id));
-    out = custom.filter(s => !s._base || baseIds.has(s.id));
-  } else {
-    out = [...baseSteps, ...custom];
-  }
+  let out = [...baseSteps, ...custom];
   // Always dedupe by id, preserving first occurrence.
   const seen = new Set();
-  return out.filter(s => {
+  out = out.filter(s => {
     if (!s || !s.id) return false;
     if (seen.has(s.id)) return false;
     seen.add(s.id);
     return true;
   });
+  out = applyOrderOverlay(out, state.stepOrder && state.stepOrder[milestoneId]);
+  return out.map(applyStepOverlay);
+}
+function getAllSteps(milestoneId) {
+  return getAllStepsRaw(milestoneId).filter(s => !s.archived);
+}
+function getArchivedSteps(milestoneId) {
+  return getAllStepsRaw(milestoneId).filter(s => s.archived);
 }
 
 function getMilestone(milestoneId) {
   for (const track of Object.keys(QUEST_DATA)) {
     for (const ms of QUEST_DATA[track]) {
-      if (ms.id === milestoneId) return ms;
+      if (ms.id === milestoneId) return applyMilestoneOverlay(ms);
+    }
+  }
+  // Feature 7: look in milestones added to a base track.
+  if (state.extraMilestones) {
+    for (const track of Object.keys(state.extraMilestones)) {
+      for (const ms of state.extraMilestones[track]) {
+        if (ms.id === milestoneId) return applyMilestoneOverlay(ms);
+      }
     }
   }
   // Round 5: look in custom projects.
@@ -579,7 +684,7 @@ function getMilestone(milestoneId) {
     for (const track of Object.keys(state.customProjects)) {
       const list = (state.customProjects[track] || {}).milestones || [];
       for (const ms of list) {
-        if (ms.id === milestoneId) return ms;
+        if (ms.id === milestoneId) return applyMilestoneOverlay(ms);
       }
     }
   }
@@ -590,6 +695,14 @@ function getTrackForMilestone(milestoneId) {
   for (const track of Object.keys(QUEST_DATA)) {
     for (const ms of QUEST_DATA[track]) {
       if (ms.id === milestoneId) return track;
+    }
+  }
+  // Feature 7: look in milestones added to a base track.
+  if (state.extraMilestones) {
+    for (const track of Object.keys(state.extraMilestones)) {
+      for (const ms of state.extraMilestones[track]) {
+        if (ms.id === milestoneId) return track;
+      }
     }
   }
   // Round 5: look in custom projects.
@@ -2163,21 +2276,24 @@ function _saveProjectEdits(trackId, {label, description, icon, color}) {
   saveState();
 }
 
-// Round 5 Task 3b: add milestone to a custom project.
+// Round 5 Task 3b + Feature 7: add a milestone to any track — a custom
+// project's own milestones array, or state.extraMilestones for a base
+// (QUEST_DATA) track, so data.js never needs hand-editing to grow.
 function addCustomMilestone(trackId) {
-  if (!isCustomProject(trackId)) return;
   const title = (prompt('Milestone title') || '').trim();
   if (!title) return;
-  const id = 'cms_' + Date.now().toString(36);
-  const ms = {
-    id,
-    title,
-    category: 'custom',
-    estimated_blocks: 0,
-    steps: []
-  };
-  state.customProjects[trackId].milestones = state.customProjects[trackId].milestones || [];
-  state.customProjects[trackId].milestones.push(ms);
+  if (isCustomProject(trackId)) {
+    const id = 'cms_' + Date.now().toString(36);
+    const ms = { id, title, category: 'custom', estimated_blocks: 0, steps: [] };
+    state.customProjects[trackId].milestones = state.customProjects[trackId].milestones || [];
+    state.customProjects[trackId].milestones.push(ms);
+  } else {
+    const id = 'xms_' + Date.now().toString(36);
+    const ms = { id, title, category: 'custom', estimated_blocks: 0, steps: [] };
+    if (!state.extraMilestones) state.extraMilestones = {};
+    if (!state.extraMilestones[trackId]) state.extraMilestones[trackId] = [];
+    state.extraMilestones[trackId].push(ms);
+  }
   saveState();
   renderTrack(trackId);
 }
@@ -2306,13 +2422,23 @@ function renderTrack(trackId) {
     const iconSvg = getMilestoneIcon(ms);
     const trophyBadge = msState.status === 'done' ? `<span class="candy-trophy" aria-hidden="true">${MILESTONE_ICONS.trophy}</span>` : '';
 
+    const msReorderHtml = `<div class="step-reorder">
+      <button class="step-reorder-btn" title="Move up" onclick="event.stopPropagation();moveMilestone('${trackId}','${ms.id}','up')">${ICONS.arrowUp}</button>
+      <button class="step-reorder-btn" title="Move down" onclick="event.stopPropagation();moveMilestone('${trackId}','${ms.id}','down')">${ICONS.arrowDown}</button>
+      <button class="step-reorder-btn" title="Archive milestone" onclick="archiveMilestone(event,'${ms.id}','${trackId}')">${ICONS.trash}</button>
+    </div>`;
+    const descHtml = ms.desc
+      ? `<div class="candy-desc" onclick="event.stopPropagation()" ondblclick="editMilestoneDesc(event,'${ms.id}','${trackId}')" title="Double-click to edit description">${escapeHtml(ms.desc)}</div>`
+      : `<div class="candy-desc candy-desc-empty" onclick="event.stopPropagation();editMilestoneDesc(event,'${ms.id}','${trackId}')">+ add description</div>`;
+
     html += `<div class="candy-row candy-row--${side}">
       <div class="candy-node ${variantClass}" data-msid="${ms.id}" onclick="navigate('#path/${trackId}/${ms.id}')" style="--node-accent:${color}">
         <span class="milestone-flag-badge" aria-hidden="true" title="Milestone checkpoint">${MILESTONE_ICONS.flag}</span>
         <div class="candy-icon" aria-hidden="true">${iconSvg}</div>
         <div class="candy-body">
-          <div class="candy-title">${urgDot}<span class="candy-title-text">${escapeHtml(ms.title)}</span></div>
+          <div class="candy-title">${urgDot}<span class="candy-title-text proj-name-editable" onclick="event.stopPropagation()" ondblclick="startEditMilestoneTitle(event,'${ms.id}','${trackId}')" title="Double-click to rename">${escapeHtml(ms.title)}</span></div>
           <div class="candy-sub">${stepsDone}/${totalSteps} steps · ${blocksLogged}/${totalBlocks} blocks</div>
+          ${descHtml}
           <div class="candy-due-row" onclick="event.stopPropagation()">
             <input type="date" class="ms-due-date-input candy-due-input" data-ms="${ms.id}" value="${dueDate}" title="Set due date for this milestone">
             ${paceHtml}
@@ -2321,6 +2447,7 @@ function renderTrack(trackId) {
         <button class="candy-urgency" onclick="event.stopPropagation();cycleUrgency('${ms.id}','track','${trackId}')" title="Set urgency">
           ${urgLevel === 'critical' ? '<span class="u-critical">critical</span>' : urgLevel === 'important' ? '<span class="u-important">important</span>' : '<span class="u-flag">flag</span>'}
         </button>
+        ${msReorderHtml}
         ${trophyBadge}
       </div>
     </div>`;
@@ -2337,14 +2464,36 @@ function renderTrack(trackId) {
     }
   });
 
-  // Round 5 Task 3b: + Add milestone button for custom projects.
-  if (isCustomProject(trackId)) {
-    html += `<div class="candy-row candy-row--left">
-      <button class="candy-add-milestone" onclick="addCustomMilestone('${trackId}')" aria-label="Add milestone">+ Add milestone</button>
-    </div>`;
-  }
+  // Round 5 Task 3b + Feature 7: + Add milestone button on every track, not
+  // just custom projects — appends to extraMilestones for base tracks.
+  html += `<div class="candy-row candy-row--left">
+    <button class="candy-add-milestone" onclick="addCustomMilestone('${trackId}')" aria-label="Add milestone">+ Add milestone</button>
+  </div>`;
 
   html += `</div>`; // /candy-path
+
+  // Feature 7: archived milestones — same reveal pattern as the Projects
+  // tab's archived projects list.
+  const archivedMs = getArchivedMilestonesForTrack(trackId);
+  if (archivedMs.length) {
+    html += `<div class="archive-toggle" id="msArchiveToggle" onclick="toggleMsArchive()">
+      ${ICONS.chevronRight}
+      <span>${archivedMs.length} archived milestone${archivedMs.length === 1 ? '' : 's'}</span>
+    </div>
+    <div class="archive-list" id="msArchiveList" style="display:none;">`;
+    archivedMs.forEach(ms => {
+      html += `<div class="candy-row candy-row--left">
+        <div class="candy-node candy-node--archived" style="--node-accent:${color}">
+          <div class="candy-icon" aria-hidden="true">${getMilestoneIcon(ms)}</div>
+          <div class="candy-body">
+            <div class="candy-title"><span class="candy-title-text">${escapeHtml(ms.title)}</span></div>
+          </div>
+          <button class="proj-archive-btn proj-activate-btn" onclick="event.stopPropagation();unarchiveMilestone('${ms.id}','${trackId}')">Restore</button>
+        </div>
+      </div>`;
+    });
+    html += `</div>`;
+  }
 
   el.innerHTML = html;
 
@@ -2602,11 +2751,38 @@ function renderPath(trackId, milestoneId) {
     </div>`;
   }
 
+  // Feature 7: archived steps — same reveal pattern as the Projects tab's
+  // archived projects list.
+  const archivedSteps = getArchivedSteps(milestoneId);
+  if (archivedSteps.length) {
+    html += `<div class="path-connector"></div>
+    <div class="archive-toggle" id="stepArchiveToggle" onclick="toggleStepArchive()">
+      ${ICONS.chevronRight}
+      <span>${archivedSteps.length} archived step${archivedSteps.length === 1 ? '' : 's'}</span>
+    </div>
+    <div class="archive-list" id="stepArchiveList" style="display:none;">`;
+    archivedSteps.forEach(s => {
+      html += `<div class="candy-row candy-row--left">
+        <div class="candy-node candy-node--step candy-node--archived" style="--node-accent:${color}">
+          <div class="candy-icon" aria-hidden="true">${getStepIcon(s)}</div>
+          <div class="candy-body">
+            <div class="candy-title"><span class="step-title-label">${escapeHtml(s.title)}</span></div>
+          </div>
+          <button class="proj-archive-btn proj-activate-btn" onclick="event.stopPropagation();unarchiveStep('${s.id}','${milestoneId}','${track}')">Restore</button>
+        </div>
+      </div>`;
+    });
+    html += `</div>`;
+  }
+
   html += `</div>`; // winding-path
   el.innerHTML = html;
 
-  // Feature 1: inline title editing — click step title label to edit.
-  // Note: only custom steps are editable inline; base steps open drawer via step-title-text onclick.
+  // Feature 1 + Feature 7: inline title editing. Custom steps: single click
+  // (existing behavior, unchanged — the title has no competing click action).
+  // Base steps: double-click, so the existing single-click-opens-drawer
+  // behavior is completely unaffected — same "dblclick to rename" gesture
+  // already used for project/track names elsewhere in the app.
   el.querySelectorAll('.candy-node--step[data-stepid]').forEach(stepEl => {
     if (stepEl.dataset.qc === '1') return; // QC steps: no inline edit
     const stepId = stepEl.dataset.stepid;
@@ -2615,12 +2791,24 @@ function renderPath(trackId, milestoneId) {
     const label = stepEl.querySelector('.step-title-label');
     if (!label) return;
     const custom = (state.customSteps[msId] || []).find(s => s.id === stepId && !s._base);
-    if (!custom) return;
     label.style.cursor = 'text';
-    label.addEventListener('click', e => {
-      e.stopPropagation();
-      startInlineStepEdit(stepId, msId, trackId2, label);
-    });
+    if (custom) {
+      label.addEventListener('click', e => {
+        e.stopPropagation();
+        startInlineStepEdit(stepId, msId, trackId2, label);
+      });
+    } else {
+      label.title = 'Double-click to rename';
+      // Stop the single click too (not just dblclick) — otherwise the first
+      // click of a real double-click bubbles to the node's onclick and opens
+      // the drawer before the rename input ever appears. The rest of the
+      // step node (icon, meta row, dots) still opens the drawer as before.
+      label.addEventListener('click', e => e.stopPropagation());
+      label.addEventListener('dblclick', e => {
+        e.stopPropagation();
+        startInlineStepEdit(stepId, msId, trackId2, label);
+      });
+    }
   });
 
   // Task 10: bind QC checkboxes.
@@ -2708,14 +2896,13 @@ function renderBlockLog(milestoneId, stepId) {
   el.innerHTML = html;
 }
 
-// Feature 1: inline edit step title
+// Feature 1 + Feature 7: inline edit step title. Custom steps (tracked in
+// state.customSteps) mutate their own object directly, same as always; base
+// steps (and steps living inside a custom project's own milestone) now go
+// through stepOverrides instead, so data.js stays untouched either way.
 function startInlineStepEdit(stepId, milestoneId, trackId, labelEl) {
   const current = labelEl.textContent;
-  const isCustom = (state.customSteps[milestoneId] || []).find(s => s.id === stepId);
-  if (!isCustom) {
-    // For base steps, just open drawer — don't allow title edit of base data
-    return;
-  }
+  const custom = (state.customSteps[milestoneId] || []).find(s => s.id === stepId);
   const input = document.createElement('input');
   input.className = 'step-title-editable';
   input.value = current;
@@ -2723,8 +2910,14 @@ function startInlineStepEdit(stepId, milestoneId, trackId, labelEl) {
   input.focus(); input.select();
   function commit() {
     const val = input.value.trim();
-    if (val && isCustom) {
-      isCustom.title = val;
+    if (val) {
+      if (custom) {
+        custom.title = val;
+      } else {
+        if (!state.stepOverrides) state.stepOverrides = {};
+        if (!state.stepOverrides[stepId]) state.stepOverrides[stepId] = {};
+        state.stepOverrides[stepId].title = val;
+      }
       saveState();
     }
     renderPath(trackId, milestoneId);
@@ -2736,35 +2929,147 @@ function startInlineStepEdit(stepId, milestoneId, trackId, labelEl) {
   });
 }
 
-// Feature 1: move step up/down
+// Feature 7: move step up/down — a pure order-array overlay (state.stepOrder),
+// never a content snapshot, so reordering can no longer desync a milestone's
+// base steps from data.js (the old bug: moveStep froze base steps into
+// customSteps as `{..., _base:true}` copies the moment anything was reordered).
 function moveStep(milestoneId, stepId, direction) {
-  // Determine if this is a custom step
-  const custom = state.customSteps[milestoneId] || [];
-  const ms = getMilestone(milestoneId);
-  const baseSteps = ms ? (ms.steps || []) : [];
-  const allSteps = [...baseSteps, ...custom];
-  const idx = allSteps.findIndex(s => s.id === stepId);
+  const steps = getAllSteps(milestoneId);
+  const idx = steps.findIndex(s => s.id === stepId);
   if (idx < 0) return;
 
   const newIdx = direction === 'up' ? idx - 1 : idx + 1;
-  if (newIdx < 0 || newIdx >= allSteps.length) return;
+  if (newIdx < 0 || newIdx >= steps.length) return;
 
-  // Swap in allSteps — but we need to handle base vs custom boundary
-  // Strategy: flatten into one merged order array stored in customSteps for this milestone
-  // We'll store a merged order by creating a full custom override if needed
-  const swapped = [...allSteps];
+  const swapped = [...steps];
   [swapped[idx], swapped[newIdx]] = [swapped[newIdx], swapped[idx]];
 
-  // Store reordered custom as full list (mark base steps included)
-  state.customSteps[milestoneId] = swapped.map(s => {
-    if (custom.find(c => c.id === s.id)) return s; // already custom
-    return { ...s, _base: true }; // mark as base step copy
-  });
+  if (!state.stepOrder) state.stepOrder = {};
+  state.stepOrder[milestoneId] = swapped.map(s => s.id);
   saveState();
 
   // Re-render
   const parts = window.location.hash.slice(1).split('/');
   renderPath(parts[1], parts[2]);
+}
+
+// Feature 7: move milestone up/down within its track — same pure
+// order-array approach as moveStep, and the first reorder capability
+// milestones have had (there was no moveMilestone before this).
+function moveMilestone(trackId, milestoneId, direction) {
+  const milestones = getMilestonesForTrack(trackId);
+  const idx = milestones.findIndex(m => m.id === milestoneId);
+  if (idx < 0) return;
+
+  const newIdx = direction === 'up' ? idx - 1 : idx + 1;
+  if (newIdx < 0 || newIdx >= milestones.length) return;
+
+  const swapped = [...milestones];
+  [swapped[idx], swapped[newIdx]] = [swapped[newIdx], swapped[idx]];
+
+  if (!state.milestoneOrder) state.milestoneOrder = {};
+  state.milestoneOrder[trackId] = swapped.map(m => m.id);
+  saveState();
+  renderTrack(trackId);
+}
+
+// Feature 7: archive/restore a single milestone — same reversible pattern
+// as archiving a whole project, scoped to one milestone via milestoneOverrides
+// so nothing tied to already-logged history ever disappears.
+function archiveMilestone(evt, milestoneId, trackId) {
+  if (evt) evt.stopPropagation();
+  if (!state.milestoneOverrides) state.milestoneOverrides = {};
+  if (!state.milestoneOverrides[milestoneId]) state.milestoneOverrides[milestoneId] = {};
+  state.milestoneOverrides[milestoneId].archived = true;
+  saveState();
+  renderTrack(trackId);
+}
+function unarchiveMilestone(milestoneId, trackId) {
+  if (state.milestoneOverrides && state.milestoneOverrides[milestoneId]) {
+    state.milestoneOverrides[milestoneId].archived = false;
+  }
+  saveState();
+  renderTrack(trackId);
+}
+function toggleMsArchive() {
+  const list = document.getElementById('msArchiveList');
+  const toggle = document.getElementById('msArchiveToggle');
+  if (!list || !toggle) return;
+  const open = list.style.display === 'none';
+  list.style.display = open ? 'block' : 'none';
+  toggle.classList.toggle('open', open);
+}
+
+// Feature 7: edit a milestone's description via the same prompt()-based
+// pattern already used for adding milestones/steps — desc is a rarely-
+// touched field, so a lightweight prompt matches existing convention rather
+// than a new modal.
+function editMilestoneDesc(evt, milestoneId, trackId) {
+  if (evt) evt.stopPropagation();
+  const ms = getMilestone(milestoneId);
+  const val = prompt('Milestone description', (ms && ms.desc) || '');
+  if (val === null) return; // cancelled
+  if (!state.milestoneOverrides) state.milestoneOverrides = {};
+  if (!state.milestoneOverrides[milestoneId]) state.milestoneOverrides[milestoneId] = {};
+  state.milestoneOverrides[milestoneId].desc = val.trim();
+  saveState();
+  renderTrack(trackId);
+}
+
+// Feature 2 + Feature 7: inline milestone name edit from the Track view —
+// byte-for-byte the same interaction as startEditTrackName/startEditProjectName,
+// writing to milestoneOverrides instead so data.js stays untouched.
+function startEditMilestoneTitle(evt, milestoneId, trackId) {
+  evt.stopPropagation();
+  const span = evt.currentTarget;
+  const ms = getMilestone(milestoneId);
+  const current = ms ? ms.title : '';
+  span.innerHTML = `<input class="proj-name-input" type="text" value="${escapeHtml(current)}" style="font-size:inherit;font-weight:inherit;">`;
+  const input = span.querySelector('input');
+  input.focus(); input.select();
+  function finish() {
+    const val = (input.value || '').trim();
+    if (val) {
+      if (!state.milestoneOverrides) state.milestoneOverrides = {};
+      if (!state.milestoneOverrides[milestoneId]) state.milestoneOverrides[milestoneId] = {};
+      state.milestoneOverrides[milestoneId].title = val;
+      saveState();
+    }
+    renderTrack(trackId);
+  }
+  input.addEventListener('blur', finish);
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+    if (e.key === 'Escape') { input.removeEventListener('blur', finish); renderTrack(trackId); }
+  });
+}
+
+// Feature 7: archive/restore a single step — mirrors archiveMilestone.
+// Base steps can never be hard-deleted (only custom, history-free steps
+// can); archive is the general mechanism for hiding any step without
+// losing its logged block history.
+function archiveStepFromDrawer(stepId, milestoneId, trackId) {
+  if (!state.stepOverrides) state.stepOverrides = {};
+  if (!state.stepOverrides[stepId]) state.stepOverrides[stepId] = {};
+  state.stepOverrides[stepId].archived = true;
+  saveState();
+  closeDrawer();
+  renderPath(trackId, milestoneId);
+}
+function unarchiveStep(stepId, milestoneId, trackId) {
+  if (state.stepOverrides && state.stepOverrides[stepId]) {
+    state.stepOverrides[stepId].archived = false;
+  }
+  saveState();
+  renderPath(trackId, milestoneId);
+}
+function toggleStepArchive() {
+  const list = document.getElementById('stepArchiveList');
+  const toggle = document.getElementById('stepArchiveToggle');
+  if (!list || !toggle) return;
+  const open = list.style.display === 'none';
+  list.style.display = open ? 'block' : 'none';
+  toggle.classList.toggle('open', open);
 }
 
 // Feature 1: add custom step form
@@ -2849,12 +3154,18 @@ function openStepDrawer(milestoneId, stepId) {
   const urgLevel = getUrgency(stepId);
 
   let html = `<button class="drawer-close" onclick="closeDrawer()">${ICONS.x}</button>
-    <h3>${escapeHtml(step.title)}</h3>
-    <div class="drawer-desc">${escapeHtml(step.desc || '')}</div>`;
+    <h3>${escapeHtml(step.title)}</h3>`;
 
   html += `<button class="btn btn-primary" style="background:${color};width:100%;margin-bottom:16px;" onclick="closeDrawer();navigate('#focus/${milestoneId}/${stepId}')">
     ${ICONS.play} Start Focus
   </button>`;
+
+  // Feature 7: description and estimated blocks are now editable for every
+  // step (base or custom), overlay-backed same as the title.
+  html += `<div class="drawer-section-title">Description</div>
+    <textarea class="drawer-notes" id="drawerStepDesc" placeholder="What this step involves...">${escapeHtml(step.desc || '')}</textarea>`;
+  html += `<div class="drawer-section-title">Estimated blocks</div>
+    <input type="number" class="drawer-due-date" id="drawerStepEst" min="1" max="20" style="width:80px;" value="${step.estimated_blocks || 1}">`;
 
   // Feature 3: Urgency picker
   html += `<div class="drawer-section-title">Urgency</div>
@@ -2882,6 +3193,10 @@ function openStepDrawer(milestoneId, stepId) {
   if (ss.status !== 'done') {
     html += `<button class="btn btn-outline" style="width:100%;margin-top:16px;" onclick="markStepDone('${stepId}','${milestoneId}')">Mark as done</button>`;
   }
+
+  // Feature 7: archive is the general "hide without losing history"
+  // mechanism, available for every step (base or custom).
+  html += `<button class="btn btn-outline" style="width:100%;margin-top:8px;" onclick="archiveStepFromDrawer('${stepId}','${milestoneId}','${track}')">Archive step</button>`;
 
   // Feature 1: delete custom step option. Round 5 Task 3b: also recognize
   // user-created steps inside a custom project's milestone.
@@ -2920,6 +3235,43 @@ function openStepDrawer(milestoneId, stepId) {
       if (dueEl.value) state.dueDates[stepId] = dueEl.value;
       else delete state.dueDates[stepId];
       saveState();
+    });
+  }
+  // Feature 7: description + estimated blocks — custom steps mutate their
+  // own object directly (same convention as the title); base steps (and
+  // steps living inside a custom project's milestone) go through
+  // stepOverrides instead.
+  const descEl = document.getElementById('drawerStepDesc');
+  if (descEl) {
+    descEl.addEventListener('input', () => {
+      const customStep = (state.customSteps[milestoneId] || []).find(s => s.id === stepId);
+      if (customStep) {
+        customStep.desc = descEl.value;
+      } else {
+        if (!state.stepOverrides) state.stepOverrides = {};
+        if (!state.stepOverrides[stepId]) state.stepOverrides[stepId] = {};
+        state.stepOverrides[stepId].desc = descEl.value;
+      }
+      saveState();
+    });
+  }
+  const estEl = document.getElementById('drawerStepEst');
+  if (estEl) {
+    estEl.addEventListener('change', () => {
+      const val = Math.max(1, parseInt(estEl.value, 10) || 1);
+      const customStep = (state.customSteps[milestoneId] || []).find(s => s.id === stepId);
+      if (customStep) {
+        customStep.estimated_blocks = val;
+      } else {
+        if (!state.stepOverrides) state.stepOverrides = {};
+        if (!state.stepOverrides[stepId]) state.stepOverrides[stepId] = {};
+        state.stepOverrides[stepId].estimated_blocks = val;
+      }
+      saveState();
+      // The Path view's per-step dot count depends on this — refresh it
+      // live underneath the drawer instead of leaving it stale until the
+      // next visit (unlike Notes/Due date, which aren't shown outside the drawer).
+      renderPath(track, milestoneId);
     });
   }
 }
