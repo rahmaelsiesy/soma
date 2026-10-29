@@ -248,11 +248,12 @@ Packs and bundles add on top of this. Many indie launches sell very little after
 - [ ] **Move the product to a private repo** and deploy `dist/starter/` to your domain. Keep your personal site separate.
 - [ ] **Landing page:** a hero video of Quick Add plus a timer block, the "pay once / private" promise, pricing, an FAQ including "where's my data?", and a "Try it free" button.
 - [ ] **"Install the app" prompt** after a few visits (it protects data on Safari).
-- [ ] **Forgiving streaks** (total days rather than reset to zero).
+- [x] **Forgiving streaks.** Done: one missed weekday a week is a free rest day, the best streak is remembered, and streak rewards stay earned.
 - [ ] Fill in the `YOUR-…` placeholders in `editions/starter/README.txt` and `LICENSE.txt`. Have the license and a short privacy policy looked over; these are templates, not legal advice.
 - [ ] Delete the broken legacy pages and the unused weekly-review Action.
 
 **Soon after (P1)**
+- [x] **Today list** on Home (pick up to 3, carry-over, due soon, suggestions), **tick-off checks** on task cards, **block-end alerts** (chime, notification, tab-title countdown, break nudge) and **Break it down with AI**. Done.
 - [ ] **AI plan paste-back** (your issue #2): the AI replies in a small JSON format, and Soma previews and applies it to the week.
 - [ ] **Pack import.** Buyers who already have Soma load a pack file that adds projects, so packs sell without a new build.
 - [ ] **Thesis pack:** copy `editions/starter`, then turn your `data.js` roadmap into generic, renamed milestones.

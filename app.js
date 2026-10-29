@@ -396,7 +396,11 @@ function getTheme() {
     stored = LEGACY_THEME_MAP[stored];
     localStorage.setItem('soma_theme', stored);
   }
-  if (!THEMES.find(t => t.id === stored)) return 'rose-pine-dawn';
+  if (!THEMES.find(t => t.id === stored)) {
+    // First launch: follow the computer's light/dark setting.
+    const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    return prefersDark ? 'catppuccin-mocha' : 'rose-pine-dawn';
+  }
   return stored;
 }
 
@@ -433,9 +437,9 @@ function defaultState() {
     weeklyPlan: { weekOf: null, blocks: {}, approved: false, focusProjects: [], perProjectBlocks: {}, rollover: {}, history: [], weekGoal: null },
     ideas: [],
     points: 0,
-    streak: { current: 0, lastDate: null },
+    streak: { current: 0, lastDate: null, best: 0, restWeek: null },
     dueDates: {},
-    settings: { blocksPerDay: { min: 2, max: 4 }, blockDurationMin: 90, warmupDurationMin: 25, weeklyGoal: 10 },
+    settings: { blocksPerDay: { min: 2, max: 4 }, blockDurationMin: 90, warmupDurationMin: 25, weeklyGoal: 10, blockEndSound: true },
     protocolChecks: {},
     lastAction: null,
     // Feature 1: custom steps per milestone
@@ -463,7 +467,9 @@ function defaultState() {
     // Feature 11: weekly reviews
     weeklyReviews: [],
     // Task 10: QC gate item checks, keyed by `${milestoneId}.${gateIndex}`
-    qcChecks: {}
+    qcChecks: {},
+    // Feature 14: steps picked for Today, keyed by stepId → { milestoneId, date }
+    todayPicks: {}
   };
   applySeedDone(fresh);
   return fresh;
@@ -561,7 +567,8 @@ function loadState() {
         prepBatches: s.prepBatches || [],
         rewards: s.rewards || { tiers: {}, claimedHistory: [] },
         weeklyReviews: s.weeklyReviews || [],
-        qcChecks: s.qcChecks || {}
+        qcChecks: s.qcChecks || {},
+        todayPicks: s.todayPicks || {}
       };
       // Round 5: let state be visible before running rollover so helpers
       // that read `state` (like computeCompletedByTrack) resolve correctly.
@@ -1012,25 +1019,66 @@ function getUrgency(itemId) {
 }
 
 // ---- Streak ----
+// Forgiving by design: weekends never count against you, and one missed
+// weekday per week is a free rest day that keeps the streak going. The
+// best streak is remembered, so streak rewards stay earned once reached.
+
+// Weekdays strictly between two YYYY-MM-DD dates.
+function workdaysBetween(fromStr, toStr) {
+  if (!fromStr || fromStr >= toStr) return 0;
+  const d = new Date(fromStr + 'T00:00:00');
+  const end = new Date(toStr + 'T00:00:00');
+  let n = 0;
+  d.setDate(d.getDate() + 1);
+  while (d < end) {
+    if (d.getDay() !== 0 && d.getDay() !== 6) n++;
+    d.setDate(d.getDate() + 1);
+  }
+  return n;
+}
+
+function restDayAvailable(today) {
+  return state.streak.restWeek !== getWeekStart(today);
+}
+
 function updateStreak() {
   const today = todayStr();
   if (!isWeekday(today)) return;
   const todayBlocks = getTodayBlocks().filter(l => !l.warmup);
-  if (todayBlocks.length >= state.settings.blocksPerDay.min) {
-    if (state.streak.lastDate === today) return;
-    const d = new Date(today + 'T00:00:00');
-    let prev = new Date(d);
-    prev.setDate(prev.getDate() - 1);
-    while (prev.getDay() === 0 || prev.getDay() === 6) prev.setDate(prev.getDate() - 1);
-    const prevStr = localDateStr(prev);
-    if (state.streak.lastDate === prevStr || state.streak.current === 0) {
-      state.streak.current++;
-    } else {
-      state.streak.current = 1;
-    }
-    state.streak.lastDate = today;
-    saveState();
+  if (todayBlocks.length < state.settings.blocksPerDay.min) return;
+  if (state.streak.lastDate === today) return;
+  const missed = workdaysBetween(state.streak.lastDate, today);
+  if (state.streak.current === 0 || missed === 0) {
+    state.streak.current++;
+  } else if (missed === 1 && restDayAvailable(today)) {
+    state.streak.current++;
+    state.streak.restWeek = getWeekStart(today);
+  } else {
+    state.streak.current = 1;
   }
+  state.streak.lastDate = today;
+  state.streak.best = Math.max(state.streak.best || 0, state.streak.current);
+  saveState();
+}
+
+// The streak as it stands today (state.streak.current only updates when a
+// block is logged, so a long gap would otherwise keep showing an old run).
+// Today itself isn't over, so it never counts as missed.
+function getCurrentStreak() {
+  const { current, lastDate } = state.streak;
+  if (!current || !lastDate) return 0;
+  const missed = workdaysBetween(lastDate, todayStr());
+  if (missed === 0 || (missed === 1 && restDayAvailable(todayStr()))) return current;
+  return 0;
+}
+
+function getBestStreak() {
+  return Math.max(state.streak.best || 0, state.streak.current || 0);
+}
+
+function daysShownUpThisMonth() {
+  const prefix = todayStr().slice(0, 7);
+  return new Set(state.focusLog.filter(l => l.date && l.date.startsWith(prefix)).map(l => l.date)).size;
 }
 
 // ---- Points ----
@@ -1429,7 +1477,7 @@ function renderWeeklyPlanPanel(opts) {
       : '';
     html += `<div class="week-plan-row" data-track="${track}">
       <span class="week-plan-dot" style="background:${color}"></span>
-      <span class="week-plan-label">${escapeHtml(label)}${carriedBadge}</span>
+      <span class="week-plan-label" title="${escapeHtml(label)}">${escapeHtml(label)}${carriedBadge}</span>
       <div class="week-plan-stepper" role="group" aria-label="${escapeHtml(label)} blocks per week">
         <button class="week-plan-step-btn" aria-label="Decrease" onclick="adjustProjectBlocks('${track}', -1)">−</button>
         <span class="week-plan-count"><span class="week-plan-done">${done}</span><span class="week-plan-sep"> / </span><span class="week-plan-planned">${planned}</span></span>
@@ -1764,6 +1812,9 @@ function renderHome() {
 
   html += `<div class="home-layout"><div class="home-primary">`;
 
+  // Feature 14: what to do today comes first.
+  html += renderTodayCard();
+
   // Feature 8: weekly bar promoted to the top as the primary, central
   // element — a segmented slice per project, sized by blocks completed
   // this week, plus a "you are here" pace marker (same visual language as
@@ -1838,7 +1889,7 @@ function renderHome() {
   const nextReward = getNextPointReward();
   if (nextReward) {
     const chosen = (state.rewards.tiers[nextReward.id] || {}).text || nextReward.defaultReward;
-    html += `<div class="next-reward-card" onclick="navigate('#rewards')">
+    html += `<div class="next-reward-card" role="button" tabindex="0" onclick="navigate('#rewards')">
       <div>
         <div class="next-reward-label">Next reward</div>
         <div class="next-reward-text">${escapeHtml(chosen)}</div>
@@ -1870,8 +1921,15 @@ function renderHome() {
   if (state.lastAction) {
     html += `<div class="where-was-i">Last: ${state.lastAction}</div>`;
   }
-  if (state.streak.current > 0) {
-    html += `<div class="streak-line">${state.streak.current}-day streak</div>`;
+  // Forgiving streak line: never a "0-day streak", just what went well.
+  const streakNow = getCurrentStreak();
+  const monthDays = daysShownUpThisMonth();
+  const streakBits = [];
+  if (streakNow > 0) streakBits.push(`${streakNow}-day streak`);
+  if (monthDays > 0) streakBits.push(`${monthDays} day${monthDays === 1 ? '' : 's'} of focus this month`);
+  if (!streakNow && getBestStreak() > 1) streakBits.push(`Welcome back. Your best run is ${getBestStreak()} days`);
+  if (streakBits.length) {
+    html += `<div class="streak-line">${streakBits.join(' · ')}</div>`;
   }
 
   // Feature 9: Reward unlocked banner
@@ -1895,7 +1953,7 @@ function renderProjects() {
   let html = '<div class="section-title">Projects</div>';
 
   // Round 5 Task 3b: + New project card.
-  html += `<div class="project-new-card" onclick="openCreateProjectModal()">
+  html += `<div class="project-new-card" role="button" tabindex="0" onclick="openCreateProjectModal()">
     <span class="project-new-plus" aria-hidden="true">+</span>
     <span class="project-new-label">New project</span>
   </div>`;
@@ -1931,7 +1989,7 @@ function renderProjects() {
       : 0;
     const overGoal = blocksPct > 100;
     const barWidth = Math.min(100, blocksPct);
-    html += `<div class="project-card" style="--card-accent:${color}" onclick="navigate('#track/${track}')" title="${escapeHtml(tooltip)}">
+    html += `<div class="project-card" role="button" tabindex="0" style="--card-accent:${color}" onclick="navigate('#track/${track}')" title="${escapeHtml(tooltip)}">
       <span class="dot" style="background:${color}"></span>
       <span class="proj-name proj-name-editable" data-track="${track}" ondblclick="startEditProjectName(event,'${track}')">${escapeHtml(label)}</span>
       <span class="proj-milestone">${escapeHtml(msTitle)}</span>
@@ -1945,7 +2003,7 @@ function renderProjects() {
   // Task 2: Templates section (Sample Prep as template).
   if (LAB_PREP_ENABLED) {
     html += `<div class="section-title section-title-sub" style="margin-top:2rem;">Templates</div>`;
-    html += `<div class="template-card" onclick="openPrepDrawer()">
+    html += `<div class="template-card" role="button" tabindex="0" onclick="openPrepDrawer()">
       <span class="dot" style="background:#6ba3b5"></span>
       <div class="template-card-main">
         <div class="template-card-title">Sample prep batch</div>
@@ -1971,7 +2029,7 @@ function renderProjects() {
     const restoreBtn = isCustom
       ? `<button class="proj-archive-btn proj-restore-btn" data-restore-custom="${track}" title="Restore this custom project" aria-label="Restore project">Restore</button>`
       : `<button class="proj-archive-btn proj-activate-btn" data-activate-track="${track}" title="Move this project back into active rotation" aria-label="Activate project">Activate</button>`;
-    html += `<div class="project-card project-card-archived" style="--card-accent:${color}" onclick="navigate('#track/${track}')">
+    html += `<div class="project-card project-card-archived" role="button" tabindex="0" style="--card-accent:${color}" onclick="navigate('#track/${track}')">
       <span class="dot" style="background:${color}"></span>
       <span class="proj-name">${escapeHtml(label)}</span>
       <span class="proj-milestone">${escapeHtml(msTitle)}</span>
@@ -2388,7 +2446,7 @@ function renderTrack(trackId) {
       : `<div class="candy-desc candy-desc-empty" onclick="event.stopPropagation();editMilestoneDesc(event,'${ms.id}','${trackId}')">+ add description</div>`;
 
     html += `<div class="candy-row candy-row--${side}">
-      <div class="candy-node ${variantClass}" data-msid="${ms.id}" onclick="navigate('#path/${trackId}/${ms.id}')" style="--node-accent:${color}">
+      <div class="candy-node ${variantClass}" role="button" tabindex="0" data-msid="${ms.id}" onclick="navigate('#path/${trackId}/${ms.id}')" style="--node-accent:${color}">
         <span class="milestone-flag-badge" aria-hidden="true" title="Milestone checkpoint">${MILESTONE_ICONS.flag}</span>
         <div class="candy-icon" aria-hidden="true">${iconSvg}</div>
         <div class="candy-body">
@@ -2633,11 +2691,11 @@ function renderPath(trackId, milestoneId) {
         <div class="candy-icon" aria-hidden="true">${iconSvg}</div>
         <div class="candy-body">
           <div class="candy-step-num">Step ${idx + 1}${isCustom ? ' · custom' : ''}</div>
-          <div class="candy-title" onclick="openStepDrawer('${milestoneId}','${step.id}')">${urgDot}<span class="step-title-label">${escapeHtml(step.title)}</span></div>
+          <div class="candy-title" role="button" tabindex="0" onclick="openStepDrawer('${milestoneId}','${step.id}')">${urgDot}<span class="step-title-label">${escapeHtml(step.title)}</span></div>
           <div class="candy-step-meta" onclick="openStepDrawer('${milestoneId}','${step.id}')">
             ${typeBadge}
             <div class="step-block-dots" onclick="event.stopPropagation();navigate('#blocks/${milestoneId}/${step.id}')" title="View block history">${dotsHtml}</div>
-            ${ss.status === 'done' ? `<span class="done-check">${ICONS.check}</span>` : ''}
+            ${stepCheckHtml(milestoneId, step.id, ss.status === 'done')}
           </div>
         </div>
         ${reorderHtml}
@@ -3098,9 +3156,15 @@ function openStepDrawer(milestoneId, stepId) {
   let html = `<button class="drawer-close" onclick="closeDrawer()">${ICONS.x}</button>
     <h3>${escapeHtml(step.title)}</h3>`;
 
-  html += `<button class="btn btn-primary" style="background:${color};width:100%;margin-bottom:16px;" onclick="closeDrawer();navigate('#focus/${milestoneId}/${stepId}')">
+  html += `<button class="btn btn-primary" style="background:${color};width:100%;margin-bottom:8px;" onclick="closeDrawer();navigate('#focus/${milestoneId}/${stepId}')">
     ${ICONS.play} Start Focus
   </button>`;
+  // Feature 14 + 15: plan it for today, or split it into smaller steps.
+  const picked = isPickedForToday(stepId);
+  html += `<div class="drawer-quick-actions">
+    <button class="btn btn-outline" onclick="toggleTodayPick('${milestoneId}','${stepId}');openStepDrawer('${milestoneId}','${stepId}')">${picked ? 'Remove from Today' : 'Add to Today'}</button>
+    <button class="btn btn-outline" onclick="breakDownWithAI('${milestoneId}','${stepId}')">Break it down with AI</button>
+  </div>`;
 
   // Feature 7: title, description and estimated blocks are editable for
   // every step (base or custom), overlay-backed.
@@ -3264,21 +3328,49 @@ function renderUrgencyInDrawer(itemId) {
 
 // (closeDrawer defined earlier — Task 1 version handles the More drawer too.)
 
-function markStepDone(stepId, milestoneId) {
+// Mark a step done or not done. Finishing the last open step completes
+// the milestone (with confetti); reopening a step reopens its milestone.
+// Caller saves.
+function setStepDone(stepId, milestoneId, done) {
   const ss = getStepState(stepId);
-  ss.status = 'done';
-  const steps = getAllSteps(milestoneId);
-  const allDone = steps.every(s => getStepState(s.id).status === 'done');
-  if (allDone) {
-    getMilestoneState(milestoneId).status = 'done';
-    showConfetti();
+  const msState = getMilestoneState(milestoneId);
+  if (done) {
+    ss.status = 'done';
+    ss.doneDate = todayStr();
+    const allDone = getAllSteps(milestoneId).every(s => getStepState(s.id).status === 'done');
+    if (allDone && msState.status !== 'done') {
+      msState.status = 'done';
+      showConfetti();
+    }
+    const track = getTrackForMilestone(milestoneId);
+    const ms = getMilestone(milestoneId);
+    state.lastAction = `${getTrackLabel(track)} → ${ms ? ms.title : ''} → done`;
+  } else {
+    ss.status = (ss.blocksCompleted || 0) > 0 ? 'active' : 'pending';
+    delete ss.doneDate;
+    if (msState.status === 'done') msState.status = 'pending';
   }
-  const track = getTrackForMilestone(milestoneId);
-  const ms = getMilestone(milestoneId);
-  state.lastAction = `${getTrackLabel(track)} → ${ms ? ms.title : ''} → done`;
+}
+
+function markStepDone(stepId, milestoneId) {
+  setStepDone(stepId, milestoneId, true);
   saveState();
   closeDrawer();
   handleRoute();
+}
+
+function stepCheckHtml(milestoneId, stepId, done) {
+  return `<button type="button" class="step-check${done ? ' done' : ''}" role="checkbox" aria-checked="${done}"
+    aria-label="${done ? 'Mark not done' : 'Mark done'}" title="${done ? 'Mark not done' : 'Mark done'}"
+    onclick="event.stopPropagation();toggleStepDone('${milestoneId}','${stepId}')">${ICONS.check}</button>`;
+}
+
+// The round check on step cards and Today rows: flips done ↔ not done in
+// place, without opening the drawer.
+function toggleStepDone(milestoneId, stepId) {
+  setStepDone(stepId, milestoneId, getStepState(stepId).status !== 'done');
+  saveState();
+  refreshCurrentView();
 }
 
 // Feature 1: delete custom step. Round 5 Task 3b: also handles steps living
@@ -3537,6 +3629,10 @@ function toggleTimer() {
     if (btn) btn.textContent = 'Pause';
     if (timerInterval) clearInterval(timerInterval);
     timerInterval = setInterval(timerTick, 1000);
+    // Feature 16: browsers only allow sound / permission prompts from a
+    // click, so get both ready now for the end-of-block alert.
+    unlockAudio();
+    maybeAskNotificationPermission();
   }
   saveTimerToStorage();
   updateTimerPill();
@@ -3571,6 +3667,7 @@ function timerTick() {
     timerRemainingMs = 0;
     saveTimerToStorage();
     completeBlock();
+    notifyBlockEnd(timerIsWarmup);
   }
   const display = document.getElementById('timerDisplay');
   if (display) display.textContent = formatTime(timerRemaining);
@@ -3584,6 +3681,7 @@ function updateTimerPill() {
   if (!pill) return;
   if (!timerRunning || !timerStepId || !timerMilestoneId) {
     pill.hidden = true;
+    document.title = BASE_TITLE;
     return;
   }
   pill.hidden = false;
@@ -3595,6 +3693,8 @@ function updateTimerPill() {
   const labelEl = document.getElementById('timerPillLabel');
   if (timeEl) timeEl.textContent = formatTime(timerRemaining);
   if (labelEl) labelEl.textContent = label;
+  // Countdown in the tab title, visible from any other tab.
+  document.title = `${formatTime(timerRemaining)} · ${label}`;
   const track = getTrackForMilestone(timerMilestoneId);
   const color = track ? getTrackColor(track) : null;
   if (color) pill.style.setProperty('--pill-color', color);
@@ -3656,6 +3756,76 @@ function completeBlock(opts) {
   if (hash.startsWith('#focus')) {
     renderFocus(timerMilestoneId, timerStepId);
   }
+}
+
+// ---- Feature 16: block-end alerts ----
+// A soft chime (Web Audio, so no sound file to ship), a system
+// notification when Soma isn't the visible tab, and a break nudge.
+const BASE_TITLE = document.title;
+const NOTIFY_ASKED_KEY = 'soma_notify_asked';
+let _audioCtx = null;
+
+function unlockAudio() {
+  try {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    if (!_audioCtx) _audioCtx = new AC();
+    if (_audioCtx.state === 'suspended') _audioCtx.resume();
+  } catch (e) { /* no audio */ }
+}
+
+function playChime() {
+  unlockAudio();
+  const ctx = _audioCtx;
+  if (!ctx) return;
+  const now = ctx.currentTime;
+  // Three rising sine notes (E5, A5, E6), each fading out over ~1s.
+  [[659.25, 0], [880, 0.18], [1318.5, 0.36]].forEach(([freq, at]) => {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0.0001, now + at);
+    gain.gain.exponentialRampToValueAtTime(0.18, now + at + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + at + 1.2);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(now + at);
+    osc.stop(now + at + 1.3);
+  });
+}
+
+// Ask once, on the first Start, instead of on page load.
+function maybeAskNotificationPermission() {
+  try {
+    if (!('Notification' in window) || Notification.permission !== 'default') return;
+    if (localStorage.getItem(NOTIFY_ASKED_KEY)) return;
+    localStorage.setItem(NOTIFY_ASKED_KEY, '1');
+    Notification.requestPermission().catch(() => {});
+  } catch (e) { /* unsupported */ }
+}
+
+function showSystemNotification(title, body) {
+  try {
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+    const opts = { body, icon: 'icon-192.png', tag: 'soma-block' };
+    try {
+      new Notification(title, opts);
+    } catch (e) {
+      // Android Chrome only allows notifications through a service worker.
+      if (navigator.serviceWorker) navigator.serviceWorker.getRegistration().then(r => r && r.showNotification(title, opts));
+    }
+  } catch (e) { /* unsupported */ }
+}
+
+function notifyBlockEnd(warmup) {
+  const breakMin = warmup ? 5 : 15;
+  const step = getAllSteps(timerMilestoneId).find(s => s.id === timerStepId);
+  const title = warmup ? 'Warm-up done' : 'Focus block done';
+  if (state.settings.blockEndSound !== false) playChime();
+  if (document.visibilityState !== 'visible') {
+    showSystemNotification(title, `${step ? step.title + ': ' : ''}nice work. Take a ${breakMin}-minute break — stand up, stretch, drink some water.`);
+  }
+  qaToast(`${title}. Take a ${breakMin}-minute break before the next one.`);
 }
 
 function showPointsPopup(pts) {
@@ -4186,7 +4356,7 @@ function generateWeeklyPrompt() {
   prompt += `Today: ${formatDate(now)}\n`;
   prompt += `Weekly goal: ${s.weeklyGoal || 10} focus blocks (${s.blockDurationMin || 90} min each), max ${s.blocksPerDay?.max || 4}/day, weekends off\n`;
   prompt += `This week so far: ${weekBlocks.length} blocks completed\n`;
-  prompt += `Points: ${state.points} | Streak: ${state.streak.current} days\n\n`;
+  prompt += `Points: ${state.points} | Streak: ${getCurrentStreak()} days\n\n`;
 
   // Current weekly plan
   const fp = state.weeklyPlan.focusProjects || [];
@@ -4299,29 +4469,65 @@ function generateWeeklyPrompt() {
   return prompt;
 }
 
-async function copyWeeklyPrompt() {
-  const prompt = generateWeeklyPrompt();
+// Clipboard write with the old execCommand fallback (file:// pages and
+// some browsers refuse navigator.clipboard). Resolves true on success.
+async function copyText(text) {
   try {
-    await navigator.clipboard.writeText(prompt);
-    const btn = document.getElementById('planWeekBtn');
-    const orig = btn.innerHTML;
-    btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M20 6L9 17l-5-5"/></svg> Copied — paste into any AI chat`;
-    btn.classList.add('copied');
-    setTimeout(() => { btn.innerHTML = orig; btn.classList.remove('copied'); }, 3000);
+    await navigator.clipboard.writeText(text);
+    return true;
   } catch (e) {
-    // Fallback: open in modal
     const textarea = document.createElement('textarea');
-    textarea.value = prompt;
+    textarea.value = text;
     document.body.appendChild(textarea);
     textarea.select();
-    document.execCommand('copy');
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch (err) { ok = false; }
     document.body.removeChild(textarea);
-    const btn = document.getElementById('planWeekBtn');
-    const orig = btn.innerHTML;
-    btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M20 6L9 17l-5-5"/></svg> Copied`;
-    btn.classList.add('copied');
-    setTimeout(() => { btn.innerHTML = orig; btn.classList.remove('copied'); }, 3000);
+    return ok;
   }
+}
+
+async function copyWeeklyPrompt() {
+  const ok = await copyText(generateWeeklyPrompt());
+  const btn = document.getElementById('planWeekBtn');
+  if (!btn) return;
+  const orig = btn.innerHTML;
+  btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M20 6L9 17l-5-5"/></svg> ${ok ? 'Copied — paste into any AI chat' : 'Copy failed — try again'}`;
+  btn.classList.add('copied');
+  setTimeout(() => { btn.innerHTML = orig; btn.classList.remove('copied'); }, 3000);
+}
+
+// Feature 15: "Break it down with AI". Copies a prompt asking the user's
+// own AI chat to split a step into small actions, then opens Quick Add on
+// the same milestone; pasting the reply adds one step per line, placed
+// right after the original. Nothing is sent anywhere by Soma itself.
+function generateBreakdownPrompt(milestoneId, stepId) {
+  const step = getAllSteps(milestoneId).find(s => s.id === stepId);
+  const ms = getMilestone(milestoneId);
+  const track = getTrackForMilestone(milestoneId);
+  const lines = [
+    'Break this task into 3–7 small, concrete next actions. Each one should take 15–45 minutes and start with a verb.',
+    'Reply with one action per line and nothing else: no numbering, headings or commentary.',
+    '',
+    `Task: ${step ? step.title : ''}`,
+    `Project: ${getTrackLabel(track)}${ms ? ' › ' + ms.title : ''}`
+  ];
+  if (step && step.desc) lines.push(`Details: ${step.desc}`);
+  return lines.join('\n');
+}
+
+async function breakDownWithAI(milestoneId, stepId) {
+  const ok = await copyText(generateBreakdownPrompt(milestoneId, stepId));
+  closeDrawer();
+  openQuickAdd({
+    kind: 'task',
+    trackId: getTrackForMilestone(milestoneId),
+    milestoneId,
+    insertAfter: stepId,
+    note: ok
+      ? 'Prompt copied. Paste it into ChatGPT, Claude or any AI chat, then paste the reply here. Each line becomes a step.'
+      : 'Couldn’t copy automatically. Ask your AI chat to break the task into small steps, one per line, then paste the reply here.'
+  });
 }
 
 // ---- RENDER: Docs ----
@@ -4449,6 +4655,14 @@ function renderSettings() {
         <span class="setting-label">Weekly goal (blocks)</span>
         <input class="setting-input" type="number" id="settingWeeklyGoal" value="${s.weeklyGoal || 10}" min="1" max="30">
       </div>
+      <div class="setting-row">
+        <label class="setting-label" for="settingChime">Chime when a block ends</label>
+        <input type="checkbox" id="settingChime" ${s.blockEndSound !== false ? 'checked' : ''}>
+      </div>
+      <div class="setting-row">
+        <span class="setting-label">Notify me when a block ends</span>
+        ${notificationSettingHtml()}
+      </div>
     </div>
 
     <div class="settings-group">
@@ -4463,7 +4677,7 @@ function renderSettings() {
       </div>
       <div class="setting-row">
         <span class="setting-label">Current streak</span>
-        <span style="font-size:13px;color:var(--text-primary)">${state.streak.current} days</span>
+        <span style="font-size:13px;color:var(--text-primary)">${getCurrentStreak()} days (best ${getBestStreak()})</span>
       </div>
       <div class="setting-row">
         <span class="setting-label">Custom steps</span>
@@ -4521,7 +4735,7 @@ function renderSettings() {
 
   el.innerHTML = html;
 
-  ['settingBlockDur', 'settingWarmupDur', 'settingMinBlocks', 'settingMaxBlocks', 'settingWeeklyGoal'].forEach(id => {
+  ['settingBlockDur', 'settingWarmupDur', 'settingMinBlocks', 'settingMaxBlocks', 'settingWeeklyGoal', 'settingChime'].forEach(id => {
     const input = document.getElementById(id);
     if (input) input.addEventListener('change', saveSettings);
   });
@@ -4533,7 +4747,16 @@ function saveSettings() {
   state.settings.blocksPerDay.min = parseInt(document.getElementById('settingMinBlocks')?.value) || 2;
   state.settings.blocksPerDay.max = parseInt(document.getElementById('settingMaxBlocks')?.value) || 4;
   state.settings.weeklyGoal = parseInt(document.getElementById('settingWeeklyGoal')?.value) || 10;
+  const chime = document.getElementById('settingChime');
+  if (chime) state.settings.blockEndSound = chime.checked;
   saveState();
+}
+
+function notificationSettingHtml() {
+  if (!('Notification' in window)) return `<span class="setting-note">Not supported in this browser</span>`;
+  if (Notification.permission === 'granted') return `<span class="setting-note">On</span>`;
+  if (Notification.permission === 'denied') return `<span class="setting-note">Blocked — allow it in your browser's site settings</span>`;
+  return `<button class="btn btn-outline btn-sm" onclick="Notification.requestPermission().then(renderSettings).catch(() => {})">Turn on</button>`;
 }
 
 function resetAllData() {
@@ -4591,7 +4814,7 @@ function getNewlyEarnedRewards() {
   }
   for (const tier of REWARD_TIERS_STREAK) {
     const tierState = state.rewards.tiers[tier.id] || {};
-    if (state.streak.current >= tier.threshold && !tierState.claimed && !tierState.notified) {
+    if (getBestStreak() >= tier.threshold && !tierState.claimed && !tierState.notified) {
       earned.push(tier);
     }
   }
@@ -4599,7 +4822,8 @@ function getNewlyEarnedRewards() {
 }
 
 function isRewardEarned(tier, isStreak) {
-  if (isStreak) return state.streak.current >= tier.threshold;
+  // Best, not current: a reward reached stays earned after a break.
+  if (isStreak) return getBestStreak() >= tier.threshold;
   return state.points >= tier.threshold;
 }
 
@@ -4665,7 +4889,7 @@ function renderRewardCard(tier, isStreak) {
   const tierState = state.rewards.tiers[tier.id] || {};
   const claimed = tierState.claimed || false;
   const chosenText = tierState.text || '';
-  const current = isStreak ? state.streak.current : state.points;
+  const current = isStreak ? getBestStreak() : state.points;
   const pct = Math.min(100, Math.round((current / tier.threshold) * 100));
 
   let statusClass = 'locked';
@@ -4806,7 +5030,7 @@ function renderProgress() {
   const totalBlocks = allFull.length;
   const blockMin = state.settings.blockDurationMin || 90;
   const totalHours = Math.round(totalBlocks * blockMin / 60 * 10) / 10;
-  const streak = state.streak.current;
+  const streak = getCurrentStreak();
   const pts = state.points;
 
   let html = `<div class="section-title">Progress</div>
@@ -4995,7 +5219,7 @@ function renderWeeklyReviewStep(step) {
           <div class="review-stat-lbl">Projects</div>
         </div>
         <div class="review-stat">
-          <div class="review-stat-val">${state.streak.current}</div>
+          <div class="review-stat-val">${getCurrentStreak()}</div>
           <div class="review-stat-lbl">Streak</div>
         </div>
       </div>
@@ -5083,6 +5307,160 @@ function reviewStep3() {
   saveState();
   showConfetti();
   renderWeeklyReviewStep(3);
+}
+
+// ================================================================
+// FEATURE 14: TODAY
+// ================================================================
+// A short list of what to work on today, across every project. Picks
+// carry over until they're done, so nothing silently falls off, and
+// finished picks stay (struck through) for the rest of the day. Steps due
+// within a week show underneath; with nothing picked, the card suggests
+// each project's next open step.
+
+const TODAY_SOFT_CAP = 3;
+const DUE_SOON_DAYS = 7;
+
+// Read-only status lookup: getStepState() would create an entry for every
+// step these lists scan.
+function stepStatus(stepId) {
+  return (state.steps[stepId] && state.steps[stepId].status) || 'pending';
+}
+
+function isPickedForToday(stepId) {
+  return !!(state.todayPicks && state.todayPicks[stepId]);
+}
+
+function setTodayPick(stepId, milestoneId, picked) {
+  if (!state.todayPicks) state.todayPicks = {};
+  if (picked) state.todayPicks[stepId] = { milestoneId, date: todayStr() };
+  else delete state.todayPicks[stepId];
+}
+
+function toggleTodayPick(milestoneId, stepId) {
+  setTodayPick(stepId, milestoneId, !isPickedForToday(stepId));
+  saveState();
+  refreshCurrentView();
+}
+
+// Picks worth showing: open ones (including those carried over from
+// earlier days) and ones finished today. Picks whose step was finished on
+// an earlier day, archived or deleted are dropped.
+function getTodayItems() {
+  const today = todayStr();
+  const items = [];
+  let pruned = false;
+  for (const [stepId, pick] of Object.entries(state.todayPicks || {})) {
+    const step = getAllSteps(pick.milestoneId).find(s => s.id === stepId);
+    const ss = state.steps[stepId] || {};
+    if (!step || (ss.status === 'done' && ss.doneDate !== today)) {
+      delete state.todayPicks[stepId];
+      pruned = true;
+      continue;
+    }
+    items.push({ step, milestoneId: pick.milestoneId, trackId: getTrackForMilestone(pick.milestoneId), done: ss.status === 'done', date: pick.date });
+  }
+  if (pruned) saveState();
+  items.sort((a, b) => (a.done - b.done) || a.date.localeCompare(b.date));
+  return items;
+}
+
+// Open steps on active projects due within DUE_SOON_DAYS (or overdue).
+function getDueSoonItems(excludeIds) {
+  const limit = new Date(todayStr() + 'T00:00:00');
+  limit.setDate(limit.getDate() + DUE_SOON_DAYS);
+  const limitStr = localDateStr(limit);
+  const out = [];
+  for (const trackId of getActiveTrackIds()) {
+    for (const ms of getMilestonesForTrack(trackId)) {
+      for (const step of getAllSteps(ms.id)) {
+        const due = state.dueDates[step.id];
+        if (!due || due > limitStr || excludeIds.has(step.id) || stepStatus(step.id) === 'done') continue;
+        out.push({ step, milestoneId: ms.id, trackId, due });
+      }
+    }
+  }
+  return out.sort((a, b) => a.due.localeCompare(b.due));
+}
+
+// Each project's next open step, this week's focus projects first.
+function getTodaySuggestions(excludeIds) {
+  const active = getActiveTrackIds();
+  const focus = (state.weeklyPlan.focusProjects || []).filter(t => active.includes(t));
+  const out = [];
+  for (const trackId of [...focus, ...active.filter(t => !focus.includes(t))]) {
+    const ms = getCurrentMilestone(trackId);
+    if (!ms) continue;
+    const step = getAllSteps(ms.id).find(s => stepStatus(s.id) !== 'done' && !excludeIds.has(s.id));
+    if (step) out.push({ step, milestoneId: ms.id, trackId });
+    if (out.length >= TODAY_SOFT_CAP) break;
+  }
+  return out;
+}
+
+function formatDueLabel(due) {
+  const days = Math.round((new Date(due + 'T00:00:00') - new Date(todayStr() + 'T00:00:00')) / 86400000);
+  if (days < 0) return { text: days === -1 ? 'Overdue since yesterday' : `Overdue by ${-days} days`, cls: 'overdue' };
+  if (days === 0) return { text: 'Due today', cls: 'today' };
+  if (days === 1) return { text: 'Due tomorrow', cls: 'soon' };
+  return { text: 'Due ' + qaFormatDue(due), cls: '' };
+}
+
+function todayRowHtml({ step, milestoneId, trackId }, picked) {
+  const done = stepStatus(step.id) === 'done';
+  const ms = getMilestone(milestoneId);
+  const due = state.dueDates[step.id];
+  const dueInfo = due && !done ? formatDueLabel(due) : null;
+  const meta = `<span class="today-proj" style="--pc:${getTrackColor(trackId)}">${escapeHtml(getTrackLabel(trackId))}</span>`
+    + (ms ? ` · ${escapeHtml(ms.title)}` : '')
+    + (dueInfo ? ` · <span class="today-due ${dueInfo.cls}">${dueInfo.text}</span>` : '');
+  let actions;
+  if (picked) {
+    actions = (done ? '' : `<button type="button" class="today-act" title="Start focus" aria-label="Start focus" onclick="navigate('#focus/${milestoneId}/${step.id}')">${ICONS.play}</button>`)
+      + `<button type="button" class="today-act" title="Remove from Today" aria-label="Remove from Today" onclick="toggleTodayPick('${milestoneId}','${step.id}')">${ICONS.xSm}</button>`;
+  } else {
+    actions = `<button type="button" class="today-act today-pick" title="Add to Today" onclick="toggleTodayPick('${milestoneId}','${step.id}')">${ICONS.plus}<span>Today</span></button>`;
+  }
+  return `<li class="today-row${done ? ' done' : ''}" style="--node-accent:${getTrackColor(trackId)}">
+    ${stepCheckHtml(milestoneId, step.id, done)}
+    <div class="today-main" role="button" tabindex="0" onclick="openStepDrawer('${milestoneId}','${step.id}')">
+      <div class="today-title">${escapeHtml(step.title)}</div>
+      <div class="today-meta">${meta}</div>
+    </div>
+    <div class="today-actions">${actions}</div>
+  </li>`;
+}
+
+function renderTodayCard() {
+  const items = getTodayItems();
+  const open = items.filter(i => !i.done);
+  const pickedIds = new Set(items.map(i => i.step.id));
+  const due = getDueSoonItems(pickedIds);
+
+  let html = `<section class="card today-card" aria-labelledby="todayTitle">
+    <div class="today-head">
+      <h2 class="today-heading" id="todayTitle">Today</h2>
+      ${items.length ? `<span class="today-count">${items.length - open.length} of ${items.length} done</span>` : ''}
+      <button type="button" class="btn btn-ghost btn-sm today-add-btn" onclick="openQuickAdd({ kind: 'task', today: true })">${ICONS.plus} Add</button>
+    </div>`;
+  if (items.length) {
+    html += `<ul class="today-list">${items.map(i => todayRowHtml(i, true)).join('')}</ul>`;
+    if (open.length > TODAY_SOFT_CAP) {
+      html += `<p class="today-hint">That's a full day. ${TODAY_SOFT_CAP} things finished beats ${open.length} things started.</p>`;
+    } else if (!open.length) {
+      html += `<p class="today-hint">All done for today. Rest is productive too.</p>`;
+    }
+  } else {
+    const suggestions = getTodaySuggestions(new Set(due.map(d => d.step.id)));
+    html += `<p class="today-empty">Pick up to ${TODAY_SOFT_CAP} things to do today.${suggestions.length ? ' Some ideas:' : ''}</p>`;
+    if (suggestions.length) html += `<ul class="today-list">${suggestions.map(i => todayRowHtml(i, false)).join('')}</ul>`;
+  }
+  if (due.length) {
+    html += `<div class="today-sub">Due soon</div><ul class="today-list">${due.slice(0, 5).map(i => todayRowHtml(i, false)).join('')}</ul>`;
+    if (due.length > 5) html += `<p class="today-hint">+ ${due.length - 5} more due in the next ${DUE_SOON_DAYS} days</p>`;
+  }
+  html += `</section>`;
+  return html;
 }
 
 // ================================================================
@@ -5211,7 +5589,9 @@ function qaLines() {
   return (el ? el.value : '').split(/\r?\n/).map(l => l.trim()).filter(Boolean);
 }
 
-// opts: { kind, trackId, milestoneId, text, onAdded }
+// opts: { kind, trackId, milestoneId, text, onAdded, note,
+//         today (pick new tasks for Today), insertAfter (stepId to place
+//         new tasks right after, in the same milestone) }
 function openQuickAdd(opts = {}) {
   const returnFocus = document.activeElement;
   closeQuickAdd();
@@ -5240,7 +5620,9 @@ function openQuickAdd(opts = {}) {
     due: '',
     newProjectName: '',
     newMilestoneName: '',
-    note: '',
+    note: opts.note || (opts.today ? 'These go on today’s list.' : ''),
+    today: !!opts.today,
+    insertAfter: opts.insertAfter || null,
     onAdded: opts.onAdded || null,
     returnFocus
   };
@@ -5518,7 +5900,7 @@ function qaApply(lines) {
   // Lines tagged with another #project go to that project's open
   // milestone, created on first use.
   const otherTargets = {};
-  const placed = new Map();
+  const placed = new Map(); // "track/milestone" → new step ids
   for (const line of lines) {
     const p = qaParseLine(line);
     if (!p.title) continue;
@@ -5534,10 +5916,16 @@ function qaApply(lines) {
       urgency: p.urgency || qa.urgency,
       due: p.due || qa.due
     });
-    if (stepId) placed.set(t + '/' + m, (placed.get(t + '/' + m) || 0) + 1);
+    if (!stepId) continue;
+    if (!placed.has(t + '/' + m)) placed.set(t + '/' + m, []);
+    placed.get(t + '/' + m).push(stepId);
+    if (qa.today) setTodayPick(stepId, m, true);
   }
-  const total = [...placed.values()].reduce((a, b) => a + b, 0);
+  const total = [...placed.values()].reduce((a, ids) => a + ids.length, 0);
   if (!total) return null;
+  // Break-it-down: the new steps follow the step they came from.
+  const sameMs = placed.get(trackId + '/' + milestoneId);
+  if (qa.insertAfter && sameMs) placeStepsAfter(milestoneId, qa.insertAfter, sameMs);
   const [firstKey] = placed.keys();
   const [ft, fm] = firstKey.split('/');
   const msTitle = (getMilestone(fm) || {}).title || '';
@@ -5545,6 +5933,17 @@ function qaApply(lines) {
     ? `Added ${qaCount(total, 'task')} to ${getTrackLabel(ft)} › ${msTitle}`
     : `Added ${qaCount(total, 'task')} across ${placed.size} milestones`;
   return { message, view: `#path/${ft}/${fm}`, trackId };
+}
+
+// Move `ids` to sit right after `anchorId` in a milestone's step order
+// (a pure stepOrder overlay, like moveStep).
+function placeStepsAfter(milestoneId, anchorId, ids) {
+  const order = getAllStepsRaw(milestoneId).map(s => s.id).filter(id => !ids.includes(id));
+  const at = order.indexOf(anchorId);
+  if (at < 0) return;
+  order.splice(at + 1, 0, ...ids);
+  if (!state.stepOrder) state.stepOrder = {};
+  state.stepOrder[milestoneId] = order;
 }
 
 // Re-render whatever is on screen so new items show up. The focus view is
@@ -5773,6 +6172,16 @@ document.addEventListener('keydown', (e) => {
       closeDrawer();
     }
   }
+});
+
+// Clickable cards are divs with role="button"; make Enter and Space work
+// on them like a real button when they have keyboard focus.
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter' && e.key !== ' ') return;
+  const t = e.target;
+  if (!t || t.getAttribute('role') !== 'button' || /^(BUTTON|A|INPUT|SELECT|TEXTAREA)$/.test(t.tagName)) return;
+  e.preventDefault();
+  t.click();
 });
 
 // Hash change

@@ -26,6 +26,10 @@ const QUEST_DATA = {
             "Tried a shortcut: ~2 (blocks), ! (important), @fri (due date)"
           ],
           estimated_blocks: 1 },
+        { id: "start-today", title: "Pick up to 3 things for today",
+          desc: "The Today list at the top of Home is your short list. Tap + Today next to a suggestion, or open any task and press Add to Today. Tick things off with the round check. Anything unfinished carries over to tomorrow, so nothing falls off. Stuck on a big, vague task? Open it and press Break it down with AI.",
+          checklist: ["Picked something for today", "Ticked it off with the round check"],
+          estimated_blocks: 1 },
         { id: "start-2", title: "Try a 25-minute warm-up block",
           desc: "Starting is the hardest part, so begin small. Open a task, press Start Focus, pick Warm-up and press Start. You can leave the page — the timer keeps going.",
           checklist: ["Started a warm-up block", "Saw the timer pill follow you to another page"],
