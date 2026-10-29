@@ -4,3 +4,7 @@
 *.zip
 __pycache__/
 .DS_Store
+# App icons are real assets, not screenshots
+!icon-*.png
+# Product build output (tools/build-edition.mjs)
+dist/

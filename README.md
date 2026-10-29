@@ -21,3 +21,10 @@ Every Monday at 9am PDT, a GitHub Action creates a new Issue with a weekly refle
 ## Daily Snapshots
 Every day at 6am PDT, a commit is made to `snapshots/` as an audit trail.  
 Export your board state from the Quest Board → paste into that day's snapshot file.
+
+## Product build
+The app code is shared; everything personal lives in `SOMA_PROFILE` in `data.js`.
+`node tools/build-edition.mjs` builds the sellable starter edition from `editions/starter/`
+into `dist/starter/` (plus a zip) without any personal data. See `product/STRATEGY.md`.
+
+Quick add: press **N** or tap **+** anywhere to add tasks, milestones, projects, ideas or admin items.
