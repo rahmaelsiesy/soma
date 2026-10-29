@@ -6,11 +6,20 @@
              F5 admin tab, F6 prep/batch system
    ============================================================ */
 
+// ---- Profile ----
+// Everything personal to one install (which projects ship active, their
+// labels/colors, docs, sync target, AI prompt persona) lives in
+// SOMA_PROFILE, declared by data.js. app.js stays generic: swap data.js
+// for editions/starter/data.js and the same code becomes the product build.
+const PROFILE = (typeof SOMA_PROFILE === 'object' && SOMA_PROFILE) || {};
+
 // ---- Constants ----
 // Defaults: tracks that start active unless the user has archived them via
 // state.trackOverrides[trackId].active. See isTrackActive / getActiveTrackIds.
-const ACTIVE_TRACKS_DEFAULT = ['dlpfc', 'package', 'bd2', 'dg'];
-const ARCHIVED_TRACKS_DEFAULT = ['fic', 'eef2', 'network', 'cursor', 'learning', 'career', 'concord_sae', 'assortativity', 'dementia_review'];
+// With no profile list, every QUEST_DATA track starts active.
+const ACTIVE_TRACKS_DEFAULT = PROFILE.activeTracks
+  || ((typeof QUEST_DATA === 'object' && QUEST_DATA) ? Object.keys(QUEST_DATA) : []);
+const ARCHIVED_TRACKS_DEFAULT = PROFILE.archivedTracks || [];
 
 function isTrackActive(trackId) {
   const override = (state && state.trackOverrides) ? state.trackOverrides[trackId] : null;
@@ -140,6 +149,12 @@ function getTrackColor(trackId) {
   if (cp && cp.color) return cp.color;
   return TRACK_COLORS[trackId] || 'var(--text-muted)';
 }
+// Chart.js paints on canvas and can't resolve CSS variables, so charts
+// need a literal hex even when the track has no explicit color.
+function getTrackHexColor(trackId) {
+  const c = getTrackColor(trackId);
+  return c.startsWith('#') ? c : '#5a5a66';
+}
 function getTrackDescription(trackId) {
   const override = state.projectOverrides && state.projectOverrides[trackId];
   if (override && typeof override.description === 'string') return override.description;
@@ -157,40 +172,35 @@ function getTrackIconKey(trackId) {
 function getTrackIcon(trackId) {
   return MILESTONE_ICONS[getTrackIconKey(trackId)] || MILESTONE_ICONS.dot;
 }
-// Board-game color pass: every track gets its own distinct hue (previously
-// most archived tracks silently duplicated an active track's color).
-// Values mirror the --c-* custom properties in style.css so the candy-path
-// board and every other UI surface agree on one palette.
-const TRACK_COLORS = {
-  dlpfc: '#e07a5f', package: '#a3c586', bd2: '#8e7cc3', dg: '#4f8fc0',
-  fic: '#d98c3f', eef2: '#e6b422', network: '#9ca3af', cursor: '#5c8a7a',
-  learning: '#3f6b8b', career: '#b84a62',
-  concord_sae: '#7c6fc9', assortativity: '#a3874a', dementia_review: '#6b8fa3',
-  ml_curriculum: '#5b8f7a', antibodies: '#c1638a', ucsf_fic: '#d1495b'
-};
-const TRACK_LABELS = {
-  dlpfc: 'DLPFC AD Project', package: 'txomics Package', bd2: 'BD2 ACC', dg: 'DG Neurogenesis',
-  fic: 'RUSH FIC AD', eef2: 'EEF2 Methods', network: 'Network & ML', cursor: 'Cursor Plan',
-  learning: 'Learning Plan', career: 'Career Path',
-  concord_sae: 'CONCORD SAE', assortativity: 'Tissue Assortativity', dementia_review: 'Dementia Review'
-};
+// Per-track base colors and labels come from the profile (see data.js).
+// Always read colors through getTrackColor() so user edits and custom
+// projects win over these defaults.
+const TRACK_COLORS = PROFILE.trackColors || {};
+const TRACK_LABELS = PROFILE.trackLabels || {};
 const TYPE_COLORS = {
   code: '#7db88a', figure: '#b07da8', writing: '#c49a6c', lab: '#6ba3b5', wetlab: '#6ba3b5',
   career: '#9ca3af', paper: '#c49a6c', learning: '#8b8b96', qc: '#d4a44c'
 };
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
 const STORAGE_KEY = 'questboard_v3';
+// Lab sample-prep batches (protocol_data.js) are a profile opt-in feature.
+const LAB_PREP_ENABLED = !!PROFILE.labPrep;
 
 // ── GITHUB SYNC ──────────────────────────────────────────────────────────────
 // State is pushed to state.json in the repo 4 seconds after any change.
 // Token is stored in localStorage only — never committed to the repo.
+// Only enabled when the profile names a repo; product builds leave it off.
+const GITHUB_SYNC_ENABLED = !!(PROFILE.githubSync && PROFILE.githubSync.repo);
 const GITHUB_TOKEN_KEY = 'soma_github_pat';
-const GITHUB_REPO_ID   = 'rahmaelsiesy/soma';
-const GITHUB_STATE_FILE = 'state.json';
+const GITHUB_REPO_ID   = GITHUB_SYNC_ENABLED ? PROFILE.githubSync.repo : '';
+const GITHUB_STATE_FILE = (PROFILE.githubSync && PROFILE.githubSync.file) || 'state.json';
 let _ghPushTimer  = null;
 let _ghSyncStatus = 'idle'; // 'idle' | 'syncing' | 'synced' | 'error'
 
-function getGithubToken()        { return localStorage.getItem(GITHUB_TOKEN_KEY) || ''; }
+function getGithubToken() {
+  if (!GITHUB_SYNC_ENABLED) return '';
+  return localStorage.getItem(GITHUB_TOKEN_KEY) || '';
+}
 function saveGithubToken(token)  { localStorage.setItem(GITHUB_TOKEN_KEY, token.trim()); }
 
 function scheduleGithubPush() {
@@ -394,16 +404,31 @@ function getTheme() {
 applyTheme(getTheme());
 
 // ---- State helpers ----
-function defaultState() {
-  // Task 12: seed dementia_review as done — it's a completed retrospective track.
-  const demSteps = {};
-  for (const id of ['dem-ad','dem-ftd-als','dem-lewy-vasc','dem-prion-cte','dem-molecular','dem-convergence']) {
-    demSteps[id] = { status: 'done', blocksCompleted: 1, notes: '', checklist: {} };
+// Task 12: some profiles ship tracks that are already finished (e.g. a
+// completed retrospective). PROFILE.seedDone lists their step/milestone ids;
+// they're marked done once, guarded by PROFILE.seedDone.flag on state.
+function applySeedDone(s) {
+  const seed = PROFILE.seedDone;
+  if (!seed || !seed.flag || s[seed.flag]) return;
+  s.steps = s.steps || {};
+  for (const id of (seed.steps || [])) {
+    if (!s.steps[id] || s.steps[id].status !== 'done') {
+      s.steps[id] = { status: 'done', blocksCompleted: 1, notes: '', checklist: {} };
+    }
   }
-  return {
-    steps: { ...demSteps },
-    milestones: { 'dem-review-1': { status: 'done', notes: '' } },
-    _demReviewSeeded: true,
+  s.milestones = s.milestones || {};
+  for (const id of (seed.milestones || [])) {
+    if (!s.milestones[id] || s.milestones[id].status !== 'done') {
+      s.milestones[id] = { status: 'done', notes: '' };
+    }
+  }
+  s[seed.flag] = true;
+}
+
+function defaultState() {
+  const fresh = {
+    steps: {},
+    milestones: {},
     focusLog: [],
     weeklyPlan: { weekOf: null, blocks: {}, approved: false, focusProjects: [], perProjectBlocks: {}, rollover: {}, history: [], weekGoal: null },
     ideas: [],
@@ -440,6 +465,8 @@ function defaultState() {
     // Task 10: QC gate item checks, keyed by `${milestoneId}.${gateIndex}`
     qcChecks: {}
   };
+  applySeedDone(fresh);
+  return fresh;
 }
 
 function loadState() {
@@ -501,23 +528,9 @@ function loadState() {
         if (!stepOrder[msId]) stepOrder[msId] = arr.map(st => st.id);
         customSteps[msId] = arr.filter(st => !st._base);
       }
-      // Task 12 migration: dementia_review is a completed retrospective track.
-      // Pre-mark its step statuses as done so the progress bars reflect reality.
+      // Task 12 migration: mark the profile's already-finished tracks done.
       // Only runs once — guarded by a version flag on state.
-      const demStepIds = ['dem-ad','dem-ftd-als','dem-lewy-vasc','dem-prion-cte','dem-molecular','dem-convergence'];
-      if (!s._demReviewSeeded) {
-        s.steps = s.steps || {};
-        for (const id of demStepIds) {
-          if (!s.steps[id] || s.steps[id].status !== 'done') {
-            s.steps[id] = { status: 'done', blocksCompleted: 1, notes: '', checklist: {} };
-          }
-        }
-        s.milestones = s.milestones || {};
-        if (!s.milestones['dem-review-1'] || s.milestones['dem-review-1'].status !== 'done') {
-          s.milestones['dem-review-1'] = { status: 'done', notes: '' };
-        }
-        s._demReviewSeeded = true;
-      }
+      applySeedDone(s);
       const merged = {
         ...d, ...s,
         settings: { ...d.settings, ...(s.settings || {}) },
@@ -979,7 +992,8 @@ function getNextQueuedTask() {
 }
 
 // Feature 2 + Round 5: effective track label.
-// Priority: projectOverrides.label → trackOverrides.label (legacy) → customProjects.label → TRACK_LABELS.
+// Priority: projectOverrides.label → trackOverrides.label (legacy) → customProjects.label
+// → TRACK_LABELS → CATEGORY_META (data.js) → raw id.
 function getTrackLabel(trackId) {
   const po = state.projectOverrides && state.projectOverrides[trackId];
   if (po && po.label) return po.label;
@@ -987,7 +1001,9 @@ function getTrackLabel(trackId) {
   if (override && override.label) return override.label;
   const cp = getCustomProject(trackId);
   if (cp && cp.label) return cp.label;
-  return TRACK_LABELS[trackId] || trackId;
+  if (TRACK_LABELS[trackId]) return TRACK_LABELS[trackId];
+  const meta = (typeof CATEGORY_META === 'object' && CATEGORY_META) ? CATEGORY_META[trackId] : null;
+  return (meta && meta.label) || trackId;
 }
 
 // Feature 3: get urgency for item
@@ -1078,7 +1094,7 @@ function handleRoute() {
       renderProjects();
       document.getElementById('view-projects').classList.add('active');
       // Task 2: if ?template=prep, auto-open prep drawer.
-      if (hash.indexOf('template=prep') !== -1) {
+      if (LAB_PREP_ENABLED && hash.indexOf('template=prep') !== -1) {
         openPrepDrawer();
       }
       break;
@@ -1156,7 +1172,7 @@ function openMoreDrawer() {
     { hash: '#admin', label: 'Admin', desc: 'Admin tasks and inbox' },
     { hash: '#docs', label: 'Docs', desc: 'Reference and help' },
     { hash: '#settings', label: 'Settings', desc: 'Themes, blocks, preferences' }
-  ];
+  ].filter(it => it.hash !== '#docs' || DOCS.length);
   drawer.innerHTML = `
     <div class="drawer-header">
       <h2>More</h2>
@@ -1431,7 +1447,7 @@ function renderWeeklyPlanPanel(opts) {
     html += `<button class="week-plan-autofill" onclick="autoFillWeeklyPlan()">Split remaining evenly</button>`;
   }
   const approveLabel = approvedThisWeek ? 'Re-approve and collapse' : 'Approve plan';
-  html += `<button class="week-plan-approve-btn" onclick="approveWeekPlan()">${approveLabel}</button>`;
+  html += `<button class="btn btn-primary week-plan-approve-btn" onclick="approveWeekPlan()">${approveLabel}</button>`;
   html += `</div>`;
 
   if (overLimit) {
@@ -1735,6 +1751,8 @@ function renderHome() {
     <div class="points-badge">${state.points} pts</div>
   </div>`;
 
+  html += renderBackupReminder();
+
   // Feature 11: Review done badge
   if (dayOfWeek() === 0 && isReviewDoneThisWeek()) {
     html += `<div class="review-done-badge">Review done this week</div>`;
@@ -1760,7 +1778,7 @@ function renderHome() {
   let weekSegsHtml = '';
   for (const [t, count] of Object.entries(weekByProject)) {
     const segWidth = weeklyGoal > 0 ? (count / weeklyGoal) * 100 : 0;
-    weekSegsHtml += `<div class="week-progress-seg" style="width:${segWidth}%;background:${TRACK_COLORS[t] || 'var(--text-muted)'}" title="${escapeHtml(getTrackLabel(t))}: ${count}"></div>`;
+    weekSegsHtml += `<div class="week-progress-seg" style="width:${segWidth}%;background:${getTrackColor(t)}" title="${escapeHtml(getTrackLabel(t))}: ${count}"></div>`;
   }
   // Work-week (Mon-Fri) pace target: Sunday counts as "day 5 elapsed" (end
   // of the previous work-week's pace) same as Saturday, so the dot only
@@ -1784,7 +1802,7 @@ function renderHome() {
         html += `<div class="block-circle bonus"></div>`;
       } else {
         const log = weekB[i];
-        const color = TRACK_COLORS[getTrackForMilestone(log.milestoneId)] || '#5a5a66';
+        const color = getTrackColor(getTrackForMilestone(log.milestoneId));
         html += `<div class="block-circle filled" style="background:${color}"></div>`;
       }
     } else if (i < weeklyGoal) {
@@ -1925,19 +1943,21 @@ function renderProjects() {
   }
 
   // Task 2: Templates section (Sample Prep as template).
-  html += `<div class="section-title section-title-sub" style="margin-top:2rem;">Templates</div>`;
-  html += `<div class="template-card" onclick="openPrepDrawer()">
-    <span class="dot" style="background:#6ba3b5"></span>
-    <div class="template-card-main">
-      <div class="template-card-title">Sample prep batch</div>
-      <div class="template-card-desc">Run the RNA-seq / library prep protocol checklist</div>
-    </div>
-    <span class="template-card-cta">Start ›</span>
-  </div>`;
+  if (LAB_PREP_ENABLED) {
+    html += `<div class="section-title section-title-sub" style="margin-top:2rem;">Templates</div>`;
+    html += `<div class="template-card" onclick="openPrepDrawer()">
+      <span class="dot" style="background:#6ba3b5"></span>
+      <div class="template-card-main">
+        <div class="template-card-title">Sample prep batch</div>
+        <div class="template-card-desc">Run the RNA-seq / library prep protocol checklist</div>
+      </div>
+      <span class="template-card-cta">Start ›</span>
+    </div>`;
+  }
 
-  html += `<div class="archive-toggle" id="archiveToggle" onclick="toggleArchive()">
+  if (archivedTracks.length) html += `<div class="archive-toggle" id="archiveToggle" onclick="toggleArchive()">
     ${ICONS.chevronRight}
-    <span>${archivedTracks.length} archived projects</span>
+    <span>${archivedTracks.length} archived project${archivedTracks.length === 1 ? '' : 's'}</span>
   </div>`;
   html += `<div class="archive-list" id="archiveList" style="display:none;">`;
   for (const track of archivedTracks) {
@@ -1998,7 +2018,7 @@ function setTrackActive(trackId, active) {
     state.customProjects[trackId].archived = !active;
   }
   saveState();
-  renderProjects();
+  handleRoute();
 }
 
 // Round 5 Task 3b: restore an archived custom project.
@@ -2110,7 +2130,8 @@ function _openProjectModal(titleText, {label, description, iconKey, color, mode,
       _saveProjectEdits(trackId, {label: name, description: desc, icon: selIcon, color: selColor});
     }
     _closeProjectModal();
-    renderProjects();
+    // Re-render whichever view opened the modal (Projects or a project's page).
+    handleRoute();
   });
 
   setTimeout(() => {
@@ -2140,21 +2161,42 @@ function openEditProjectModal(trackId) {
   });
 }
 
-function _createCustomProject({label, description, icon, color}) {
+// Unique id for user-created items. Date.now() alone collides when several
+// items are created in the same millisecond (Quick Add's multi-line paste),
+// and getAllSteps() silently dedupes colliding ids away.
+let _idSeq = 0;
+function makeId(prefix) {
+  return prefix + Date.now().toString(36) + (_idSeq++).toString(36);
+}
+
+// First palette color no active project is using yet, so new projects
+// don't all come out the same shade.
+function nextProjectColor() {
+  const used = new Set(getActiveTrackIds().map(t => String(getTrackColor(t)).toLowerCase()));
+  return CUSTOM_PROJECT_PALETTE.find(c => !used.has(c.toLowerCase())) || CUSTOM_PROJECT_PALETTE[0];
+}
+
+// Returns the new project's id. Caller saves.
+function createProject({label, description, icon, color}) {
   if (!state.customProjects) state.customProjects = {};
-  const id = 'custom_' + Date.now().toString(36);
+  const id = makeId('custom_');
   state.customProjects[id] = {
     id,
     label,
     description: description || '',
     icon: icon || 'target',
-    color: color || CUSTOM_PROJECT_PALETTE[0],
+    color: color || nextProjectColor(),
     archived: false,
     milestones: []
   };
   // Mark active in overrides so it appears in active list.
   if (!state.trackOverrides[id]) state.trackOverrides[id] = {};
   state.trackOverrides[id].active = true;
+  return id;
+}
+
+function _createCustomProject(fields) {
+  createProject(fields);
   saveState();
 }
 
@@ -2184,46 +2226,51 @@ function _saveProjectEdits(trackId, {label, description, icon, color}) {
 // Round 5 Task 3b + Feature 7: add a milestone to any track — a custom
 // project's own milestones array, or state.extraMilestones for a base
 // (QUEST_DATA) track, so data.js never needs hand-editing to grow.
-function addCustomMilestone(trackId) {
-  const title = (prompt('Milestone title') || '').trim();
-  if (!title) return;
+// Returns the new milestone's id. Caller saves.
+function createMilestone(trackId, title) {
+  const ms = { id: '', title, category: 'custom', estimated_blocks: 0, steps: [] };
   if (isCustomProject(trackId)) {
-    const id = 'cms_' + Date.now().toString(36);
-    const ms = { id, title, category: 'custom', estimated_blocks: 0, steps: [] };
+    ms.id = makeId('cms_');
     state.customProjects[trackId].milestones = state.customProjects[trackId].milestones || [];
     state.customProjects[trackId].milestones.push(ms);
   } else {
-    const id = 'xms_' + Date.now().toString(36);
-    const ms = { id, title, category: 'custom', estimated_blocks: 0, steps: [] };
+    ms.id = makeId('xms_');
     if (!state.extraMilestones) state.extraMilestones = {};
     if (!state.extraMilestones[trackId]) state.extraMilestones[trackId] = [];
     state.extraMilestones[trackId].push(ms);
   }
-  saveState();
-  renderTrack(trackId);
+  return ms.id;
 }
 
-// Round 5 Task 3b: add step to a milestone inside a custom project.
-function addCustomStepToMilestone(trackId, milestoneId) {
-  if (!isCustomProject(trackId)) return;
-  const title = (prompt('Step title') || '').trim();
-  if (!title) return;
-  const blocksStr = prompt('Estimated blocks (90 min each)', '1');
-  const estimated_blocks = Math.max(1, parseInt(blocksStr || '1') || 1);
-  const cp = state.customProjects[trackId];
-  const ms = (cp.milestones || []).find(m => m.id === milestoneId);
-  if (!ms) return;
-  ms.steps = ms.steps || [];
-  const step = {
-    id: 'cstep_' + Date.now().toString(36),
-    title,
-    type: 'custom',
-    desc: '',
-    estimated_blocks
-  };
-  ms.steps.push(step);
-  saveState();
-  renderPath(trackId, milestoneId);
+// Add a step to any milestone. Inside a custom project the step goes
+// straight into that milestone (Round 5 Task 3b); everywhere else it's a
+// Feature 1 custom step layered on via state.customSteps. Returns the new
+// step's id, or null if the milestone doesn't exist. Caller saves.
+function createStep(trackId, milestoneId, { title, estimated_blocks, urgency, due } = {}) {
+  const blocks = Math.min(20, Math.max(1, parseInt(estimated_blocks, 10) || 1));
+  let stepId;
+  if (isCustomProject(trackId)) {
+    const ms = (state.customProjects[trackId].milestones || []).find(m => m.id === milestoneId);
+    if (!ms) return null;
+    stepId = makeId('cstep_');
+    ms.steps = ms.steps || [];
+    ms.steps.push({ id: stepId, title, type: 'custom', desc: '', estimated_blocks: blocks });
+  } else {
+    if (!getMilestone(milestoneId)) return null;
+    stepId = makeId('custom-' + milestoneId + '-');
+    if (!state.customSteps[milestoneId]) state.customSteps[milestoneId] = [];
+    state.customSteps[milestoneId].push({ id: stepId, title, estimated_blocks: blocks, type: null, desc: '', isCustom: true });
+  }
+  if (urgency) state.urgency[stepId] = urgency;
+  if (due) state.dueDates[stepId] = due;
+  // A finished milestone that just gained an open step isn't finished.
+  const msState = getMilestoneState(milestoneId);
+  if (msState.status === 'done') msState.status = 'pending';
+  return stepId;
+}
+
+function addCustomMilestone(trackId) {
+  openQuickAdd({ kind: 'milestone', trackId });
 }
 
 function toggleArchive() {
@@ -2281,6 +2328,10 @@ function renderTrack(trackId) {
     <div class="track-header-info">
       <div class="track-title"><span class="dot" style="background:${color}"></span> <span ondblclick="startEditTrackName(event,'${trackId}')" class="proj-name-editable" style="font-size:inherit;font-weight:inherit;">${escapeHtml(label)}</span></div>
       ${tagsHtml}
+    </div>
+    <div class="header-actions">
+      <button class="btn btn-outline btn-sm" onclick="openEditProjectModal('${trackId}')">Edit</button>
+      <button class="btn btn-outline btn-sm" onclick="openQuickAdd({ kind: 'task', trackId: '${trackId}' })">${ICONS.plus} Add tasks</button>
     </div>
   </div>`;
 
@@ -2505,7 +2556,7 @@ function renderPath(trackId, milestoneId) {
   const ms = getMilestone(milestoneId);
   if (!ms) { el.innerHTML = '<p>Milestone not found.</p>'; return; }
   const track = trackId || getTrackForMilestone(milestoneId);
-  const color = TRACK_COLORS[track];
+  const color = getTrackColor(track);
   // Phase 1c: dedupe steps by id (defense-in-depth — getAllSteps already
   // dedupes, but guard against future regression).
   const steps = (() => {
@@ -2528,6 +2579,9 @@ function renderPath(trackId, milestoneId) {
   let html = `<div class="path-header">
     <button class="back-btn" onclick="navigate('#track/${track}')">${ICONS.arrowLeft}</button>
     <div class="path-title"><span class="dot" style="background:${color}"></span> ${escapeHtml(ms.title)}</div>
+    <div class="header-actions">
+      <button class="btn btn-outline btn-sm" onclick="openMilestoneModal('${milestoneId}','${track}')">Edit</button>
+    </div>
   </div>
   <div class="path-progress-text">${steps.length} step${steps.length === 1 ? '' : 's'} · ${blocksLogged} / ${totalBlocks} blocks${qcCount ? ` · ${qcCount} QC check${qcCount === 1 ? '' : 's'}` : ''}</div>
   <div class="winding-path candy-path" style="--track-accent:${color}">`;
@@ -2605,8 +2659,8 @@ function renderPath(trackId, milestoneId) {
   // Feature 1: Add step button
   html += `<div class="path-connector"></div>
     <div style="display:flex;justify-content:${steps.length % 2 === 0 ? 'flex-start' : 'flex-end'};">
-      <button class="add-step-btn" onclick="showAddStepForm('${milestoneId}','${track}')">
-        ${ICONS.plus} Add custom step
+      <button class="add-step-btn" onclick="openQuickAdd({ kind: 'task', trackId: '${track}', milestoneId: '${milestoneId}' })">
+        ${ICONS.plus} Add steps
       </button>
     </div>`;
 
@@ -2738,7 +2792,7 @@ function renderBlockLog(milestoneId, stepId) {
   if (!ms || !step) { el.innerHTML = '<p>Step not found.</p>'; return; }
 
   const track = getTrackForMilestone(milestoneId);
-  const color = TRACK_COLORS[track];
+  const color = getTrackColor(track);
   const ss = getStepState(stepId);
   const estBlocks = step.estimated_blocks || 1;
   const blocks = state.focusLog
@@ -2912,14 +2966,57 @@ function toggleMsArchive() {
 // than a new modal.
 function editMilestoneDesc(evt, milestoneId, trackId) {
   if (evt) evt.stopPropagation();
+  openMilestoneModal(milestoneId, trackId);
+}
+
+// Edit a milestone's title, description and due date in one place —
+// same overlay writes as the inline editors (milestoneOverrides /
+// dueDates), styled like the project modal.
+function openMilestoneModal(milestoneId, trackId) {
   const ms = getMilestone(milestoneId);
-  const val = prompt('Milestone description', (ms && ms.desc) || '');
-  if (val === null) return; // cancelled
-  if (!state.milestoneOverrides) state.milestoneOverrides = {};
-  if (!state.milestoneOverrides[milestoneId]) state.milestoneOverrides[milestoneId] = {};
-  state.milestoneOverrides[milestoneId].desc = val.trim();
-  saveState();
-  renderTrack(trackId);
+  if (!ms) return;
+  _closeProjectModal();
+  const overlay = document.createElement('div');
+  overlay.id = 'projectModalOverlay';
+  overlay.className = 'project-modal-overlay';
+  overlay.innerHTML = `
+    <div class="project-modal" role="dialog" aria-label="Edit milestone">
+      <div class="project-modal-title">Edit milestone</div>
+      <label class="project-modal-field">
+        <span>Name</span>
+        <input type="text" id="msModalTitle" value="${escapeHtml(ms.title)}" maxlength="80">
+      </label>
+      <label class="project-modal-field">
+        <span>Description</span>
+        <textarea id="msModalDesc" rows="3" placeholder="What does done look like?" maxlength="400">${escapeHtml(ms.desc || '')}</textarea>
+      </label>
+      <label class="project-modal-field">
+        <span>Due date</span>
+        <input type="date" class="drawer-due-date" id="msModalDue" value="${state.dueDates[milestoneId] || ''}">
+      </label>
+      <div class="project-modal-actions">
+        <button type="button" class="btn btn-outline" id="msModalCancel">Cancel</button>
+        <button type="button" class="btn btn-primary" id="msModalSave">Save</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  overlay.querySelector('#msModalCancel').addEventListener('click', _closeProjectModal);
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) _closeProjectModal(); });
+  overlay.querySelector('#msModalSave').addEventListener('click', () => {
+    const title = overlay.querySelector('#msModalTitle').value.trim();
+    if (!title) { overlay.querySelector('#msModalTitle').focus(); return; }
+    if (!state.milestoneOverrides) state.milestoneOverrides = {};
+    if (!state.milestoneOverrides[milestoneId]) state.milestoneOverrides[milestoneId] = {};
+    state.milestoneOverrides[milestoneId].title = title;
+    state.milestoneOverrides[milestoneId].desc = overlay.querySelector('#msModalDesc').value.trim();
+    const due = overlay.querySelector('#msModalDue').value;
+    if (due) state.dueDates[milestoneId] = due;
+    else delete state.dueDates[milestoneId];
+    saveState();
+    _closeProjectModal();
+    handleRoute();
+  });
+  setTimeout(() => overlay.querySelector('#msModalTitle').focus(), 50);
 }
 
 // Feature 2 + Feature 7: inline milestone name edit from the Track view —
@@ -2978,67 +3075,6 @@ function toggleStepArchive() {
   toggle.classList.toggle('open', open);
 }
 
-// Feature 1: add custom step form
-function showAddStepForm(milestoneId, trackId) {
-  // Show a simple prompt-style inline form
-  const el = document.getElementById('view-path');
-  const existing = el.querySelector('.add-step-form');
-  if (existing) { existing.remove(); return; }
-
-  const form = document.createElement('div');
-  form.className = 'add-step-form card';
-  form.style.cssText = 'margin-top:12px;padding:14px;display:flex;flex-direction:column;gap:10px;max-width:320px;';
-  form.innerHTML = `
-    <div style="font-size:13px;font-weight:600;color:var(--text-primary);">Add custom step</div>
-    <input class="idea-input" id="newStepTitle" placeholder="Step title" style="background:var(--bg);">
-    <input class="idea-input" id="newStepBlocks" type="number" placeholder="Estimated blocks (default 1)" min="1" max="20" style="background:var(--bg);">
-    <div style="display:flex;gap:8px;">
-      <button class="btn btn-outline" style="flex:1;" onclick="submitAddStep('${milestoneId}','${trackId}')">Add</button>
-      <button class="btn btn-ghost" onclick="this.closest('.add-step-form').remove()">Cancel</button>
-    </div>`;
-  el.querySelector('.winding-path').appendChild(form);
-  form.querySelector('#newStepTitle').focus();
-}
-
-function submitAddStep(milestoneId, trackId) {
-  const titleInput = document.getElementById('newStepTitle');
-  const blocksInput = document.getElementById('newStepBlocks');
-  const title = (titleInput ? titleInput.value : '').trim();
-  if (!title) return;
-  const estimated_blocks = parseInt(blocksInput ? blocksInput.value : '1') || 1;
-  // Round 5 Task 3b: inside a custom project, write the step directly into
-  // the milestone on state.customProjects so it becomes a first-class step.
-  if (isCustomProject(trackId)) {
-    const cp = state.customProjects[trackId];
-    const ms = (cp.milestones || []).find(m => m.id === milestoneId);
-    if (ms) {
-      ms.steps = ms.steps || [];
-      ms.steps.push({
-        id: 'cstep_' + Date.now().toString(36),
-        title,
-        type: 'custom',
-        desc: '',
-        estimated_blocks
-      });
-      saveState();
-      renderPath(trackId, milestoneId);
-      return;
-    }
-  }
-  const newStep = {
-    id: 'custom-' + milestoneId + '-' + Date.now(),
-    title,
-    estimated_blocks,
-    type: null,
-    desc: '',
-    isCustom: true
-  };
-  if (!state.customSteps[milestoneId]) state.customSteps[milestoneId] = [];
-  state.customSteps[milestoneId].push(newStep);
-  saveState();
-  renderPath(trackId, milestoneId);
-}
-
 // ---- Step Drawer ----
 // Round 2 Task C: primary signature is (milestoneId, stepId).
 // A legacy shim swaps arg order if an old caller still passes (stepId, milestoneId, track).
@@ -3056,7 +3092,7 @@ function openStepDrawer(milestoneId, stepId) {
   if (!step) return;
   const ss = getStepState(stepId);
   const track = getTrackForMilestone(milestoneId);
-  const color = TRACK_COLORS[track] || 'var(--c-dlpfc)';
+  const color = getTrackColor(track);
   const urgLevel = getUrgency(stepId);
 
   let html = `<button class="drawer-close" onclick="closeDrawer()">${ICONS.x}</button>
@@ -3066,8 +3102,10 @@ function openStepDrawer(milestoneId, stepId) {
     ${ICONS.play} Start Focus
   </button>`;
 
-  // Feature 7: description and estimated blocks are now editable for every
-  // step (base or custom), overlay-backed same as the title.
+  // Feature 7: title, description and estimated blocks are editable for
+  // every step (base or custom), overlay-backed.
+  html += `<div class="drawer-section-title">Title</div>
+    <input type="text" class="drawer-title-input" id="drawerStepTitle" maxlength="120" value="${escapeHtml(step.title)}">`;
   html += `<div class="drawer-section-title">Description</div>
     <textarea class="drawer-notes" id="drawerStepDesc" placeholder="What this step involves...">${escapeHtml(step.desc || '')}</textarea>`;
   html += `<div class="drawer-section-title">Estimated blocks</div>
@@ -3147,6 +3185,24 @@ function openStepDrawer(milestoneId, stepId) {
   // own object directly (same convention as the title); base steps (and
   // steps living inside a custom project's milestone) go through
   // stepOverrides instead.
+  const titleEl = document.getElementById('drawerStepTitle');
+  if (titleEl) {
+    titleEl.addEventListener('change', () => {
+      const val = titleEl.value.trim();
+      if (!val) { titleEl.value = step.title; return; }
+      const customStep = (state.customSteps[milestoneId] || []).find(s => s.id === stepId);
+      if (customStep) {
+        customStep.title = val;
+      } else {
+        if (!state.stepOverrides) state.stepOverrides = {};
+        if (!state.stepOverrides[stepId]) state.stepOverrides[stepId] = {};
+        state.stepOverrides[stepId].title = val;
+      }
+      saveState();
+      drawer.querySelector('h3').textContent = val;
+      refreshCurrentView();
+    });
+  }
   const descEl = document.getElementById('drawerStepDesc');
   if (descEl) {
     descEl.addEventListener('input', () => {
@@ -3254,8 +3310,13 @@ function renderFocus(milestoneId, stepId) {
   const el = document.getElementById('view-focus');
 
   if (!milestoneId || !stepId) {
+    // A block in progress (running or paused) wins over the queue, so the
+    // Focus tab and the timer pill return to it instead of the step-change
+    // reset below silently stopping it.
     const next = getNextQueuedTask();
-    if (next) { milestoneId = next.milestone.id; stepId = next.step.id; }
+    if (timerStepId && timerMilestoneId && (timerRunning || timerRemainingMs)) {
+      milestoneId = timerMilestoneId; stepId = timerStepId;
+    } else if (next) { milestoneId = next.milestone.id; stepId = next.step.id; }
     else { el.innerHTML = '<div class="focus-view"><p style="color:var(--text-muted)">No task queued. Pick a project first.</p></div>'; return; }
   }
 
@@ -3265,7 +3326,7 @@ function renderFocus(milestoneId, stepId) {
   if (!ms || !step) { el.innerHTML = '<div class="focus-view"><p style="color:var(--text-muted)">Task not found.</p></div>'; return; }
 
   const track = getTrackForMilestone(milestoneId);
-  const color = TRACK_COLORS[track];
+  const color = getTrackColor(track);
   const blocksOnStep = getBlocksForStep(stepId);
   const estBlocks = step.estimated_blocks || null;
   const todayFull = getTodayBlocks().filter(l => !l.warmup).length;
@@ -3535,7 +3596,7 @@ function updateTimerPill() {
   if (timeEl) timeEl.textContent = formatTime(timerRemaining);
   if (labelEl) labelEl.textContent = label;
   const track = getTrackForMilestone(timerMilestoneId);
-  const color = track ? TRACK_COLORS[track] : null;
+  const color = track ? getTrackColor(track) : null;
   if (color) pill.style.setProperty('--pill-color', color);
 }
 
@@ -3672,7 +3733,7 @@ function renderScheduleReview() {
   if (Object.keys(breakdown).length > 0) {
     html += `<div class="review-breakdown">`;
     for (const [track, count] of Object.entries(breakdown)) {
-      const color = TRACK_COLORS[track] || '#5a5a66';
+      const color = getTrackColor(track);
       html += `<div class="review-breakdown-item"><span class="dot" style="background:${color}"></span> ${escapeHtml(getTrackLabel(track))}: ${count} blocks</div>`;
     }
     html += `</div>`;
@@ -3700,7 +3761,7 @@ function renderSchedulePlan() {
     <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px;">Pick 1–2 to reduce context switching. Only selected projects appear in your daily queue.</p>`;
 
   for (const track of getActiveTrackIds()) {
-    const color = TRACK_COLORS[track];
+    const color = getTrackColor(track);
     const label = getTrackLabel(track);
     const selected = fps.includes(track);
     const ms = getCurrentMilestone(track);
@@ -3817,7 +3878,7 @@ function renderIdeas() {
       <div class="idea-text">${escapeHtml(idea.text)}</div>
       <div class="idea-meta">
         <span class="idea-time">${timeAgo(idea.createdAt)}</span>
-        ${idea.promoted ? '<span class="badge">promoted</span>' : `<button class="idea-promote" onclick="promoteIdea('${idea.id}')">Promote to step</button>`}
+        ${idea.promoted ? '<span class="badge">promoted</span>' : `<button class="idea-promote" onclick="promoteIdea('${idea.id}')">Make it a task</button>`}
       </div>
     </div>`;
   }
@@ -3836,9 +3897,19 @@ function addIdea() {
   renderIdeas();
 }
 
+// Opens Quick Add prefilled with the idea; it's only marked promoted once
+// a task actually gets created from it.
 function promoteIdea(ideaId) {
   const idea = state.ideas.find(i => i.id === ideaId);
-  if (idea) { idea.promoted = true; saveState(); renderIdeas(); }
+  if (!idea) return;
+  openQuickAdd({
+    kind: 'task',
+    text: idea.text,
+    onAdded: () => {
+      const current = state.ideas.find(i => i.id === ideaId);
+      if (current) current.promoted = true;
+    }
+  });
 }
 
 // ---- RENDER: Admin (Feature 5) ----
@@ -4109,7 +4180,9 @@ function generateWeeklyPrompt() {
   const todayBlocks = getTodayBlocks();
   const s = state.settings;
 
-  let prompt = `You are helping a PhD student (computational biology, 5th year, Caltech) prioritize their week. They have ADHD and get overwhelmed seeing everything at once — keep your advice concrete, calm, and focused on "what to do next" rather than listing everything.\n\n`;
+  const intro = PROFILE.aiPromptIntro
+    || 'You are helping someone prioritize their week. They have ADHD and get overwhelmed seeing everything at once — keep your advice concrete, calm, and focused on "what to do next" rather than listing everything.';
+  let prompt = `${intro}\n\n`;
   prompt += `Today: ${formatDate(now)}\n`;
   prompt += `Weekly goal: ${s.weeklyGoal || 10} focus blocks (${s.blockDurationMin || 90} min each), max ${s.blocksPerDay?.max || 4}/day, weekends off\n`;
   prompt += `This week so far: ${weekBlocks.length} blocks completed\n`;
@@ -4195,18 +4268,18 @@ function generateWeeklyPrompt() {
   }
 
   // Admin tasks
-  const pendingAdmin = (state.adminTasks || []).filter(t => !t.done);
+  const pendingAdmin = (state.adminTasks || []).filter(t => !t.completedDate);
   if (pendingAdmin.length > 0) {
     prompt += `--- ADMIN TASKS (misc, max 2/day) ---\n`;
     pendingAdmin.slice(0, 5).forEach(t => {
-      prompt += `  - ${t.title}\n`;
+      prompt += `  - ${t.text}\n`;
     });
     prompt += `\n`;
   }
 
   // Prep batches in progress
   const activeBatches = (state.prepBatches || []).filter(b => !b.steps.every(s => s.done));
-  if (activeBatches.length > 0) {
+  if (LAB_PREP_ENABLED && activeBatches.length > 0) {
     prompt += `--- SAMPLE PREP IN PROGRESS ---\n`;
     activeBatches.forEach(b => {
       const done = b.steps.filter(s => s.done).length;
@@ -4252,72 +4325,9 @@ async function copyWeeklyPrompt() {
 }
 
 // ---- RENDER: Docs ----
-const DOCS = [
-  {
-    id: 'master-strategy',
-    title: 'Master Analysis Strategy',
-    desc: 'Comprehensive methods and hypotheses for the seqFISH spatial transcriptomics pipeline across DLPFC, FIC, and DG regions.',
-    file: 'docs/master_analysis_strategy.md',
-    tags: ['dlpfc', 'bd2', 'dg', 'package'],
-    icon: 'strategy'
-  },
-  {
-    id: 'cursor-plan',
-    title: 'Cursor Coding Plan',
-    desc: 'Architect-reviewed, subagent-decomposed implementation plan for spatialpy. Phases P0 through P9 with acceptance criteria.',
-    file: 'docs/cursor_plan_improved.md',
-    tags: ['package', 'dlpfc'],
-    icon: 'code'
-  },
-  {
-    id: 'paper-prioritization',
-    title: 'Paper Prioritization',
-    desc: 'Framework for evaluating and prioritizing the portfolio of potential papers from seqFISH AD/FTD data.',
-    file: 'docs/paper_prioritization.md',
-    tags: ['dlpfc', 'bd2', 'dg'],
-    icon: 'papers'
-  },
-  {
-    id: 'gene-modules',
-    title: 'Gene Modules',
-    desc: 'Complete gene module reference for the 1,205-gene seqFISH probeset. Marker panels, cell typing modules, and pathway signatures.',
-    file: 'docs/gene_modules.md',
-    tags: ['dlpfc', 'bd2', 'dg', 'package'],
-    icon: 'dna'
-  },
-  {
-    id: 'robustness',
-    title: 'Robustness & Validation',
-    desc: 'Testing and wet lab validation guide. Statistical robustness gates, sensitivity analyses, and IF validation protocols.',
-    file: 'docs/robustness_and_validation.md',
-    tags: ['dlpfc', 'bd2', 'dg'],
-    icon: 'check'
-  },
-  {
-    id: 'singularity',
-    title: 'Singularity Recommendation',
-    desc: 'Technical recommendation for containerization of the txomics pipeline on HPC clusters.',
-    file: 'docs/singularity_recommendation.md',
-    tags: ['package'],
-    icon: 'server'
-  },
-  {
-    id: 'paper-plans',
-    title: 'Paper Plans',
-    desc: 'Detailed paper outlines and figure plans for all publications.',
-    file: 'docs/paper_plans.pdf',
-    tags: ['dlpfc', 'bd2', 'dg'],
-    icon: 'papers'
-  },
-  {
-    id: 'sample-processing',
-    title: 'Sample Processing Protocol',
-    desc: 'RNA Guide ASY-053.02-2 — wet lab sample processing protocol for seqFISH experiments.',
-    file: 'docs/Sample_Processing_for_RNA_Guide_ASY-053.02-2.pdf',
-    tags: ['dlpfc', 'bd2', 'dg'],
-    icon: 'lab'
-  }
-];
+// Reference docs are profile data (see SOMA_PROFILE.docs in data.js); each
+// entry is { id, title, desc, file, tags: [trackId…], icon: DOC_ICONS key }.
+const DOCS = Array.isArray(PROFILE.docs) ? PROFILE.docs : [];
 
 const DOC_ICONS = {
   strategy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>',
@@ -4333,23 +4343,32 @@ function renderDocs() {
   const el = document.getElementById('view-docs');
   let activeFilter = null;
 
+  if (!DOCS.length) {
+    el.innerHTML = `<div class="section-title">Reference Docs</div>
+      <p style="font-size:var(--text-sm);color:var(--text-secondary);">No reference docs yet.</p>`;
+    return;
+  }
+
+  // One filter per project that at least one doc is tagged with, in the
+  // same order projects appear everywhere else.
+  const taggedTracks = new Set(DOCS.flatMap(d => d.tags || []));
+  const filterTracks = getAllTrackIds().filter(t => taggedTracks.has(t));
+
   let html = `<div class="section-title">Reference Docs</div>
     <p style="font-size:var(--text-sm);color:var(--text-secondary);margin-bottom:var(--sp-5);">
-      Key documents from your research planning sessions. Tap to open.
+      Key documents from your planning sessions. Tap to open.
     </p>
     <div class="docs-filter" id="docsFilter">
       <button class="doc-filter-btn active" data-filter="all">All</button>
-      <button class="doc-filter-btn" data-filter="dlpfc" style="--fc:var(--c-dlpfc)">DLPFC</button>
-      <button class="doc-filter-btn" data-filter="package" style="--fc:var(--c-package)">txomics</button>
-      <button class="doc-filter-btn" data-filter="bd2" style="--fc:var(--c-bd2)">BD2</button>
-      <button class="doc-filter-btn" data-filter="dg" style="--fc:var(--c-dg)">DG</button>
+      ${filterTracks.map(t => `<button class="doc-filter-btn" data-filter="${t}" style="--fc:${getTrackColor(t)}">${escapeHtml(getTrackLabel(t).split(' ')[0])}</button>`).join('')}
     </div>
     <div class="docs-grid" id="docsGrid">`;
 
   DOCS.forEach(doc => {
+    doc.tags = doc.tags || [];
     const tagBadges = doc.tags.map(t => {
-      const color = TRACK_COLORS[t] || 'var(--text-muted)';
-      const label = TRACK_LABELS[t] || t;
+      const color = getTrackColor(t);
+      const label = getTrackLabel(t);
       return `<span class="doc-tag" style="color:${color};border-color:${color}30">${label.split(' ')[0]}</span>`;
     }).join('');
     const isPdf = doc.file.endsWith('.pdf');
@@ -4454,10 +4473,10 @@ function renderSettings() {
         <span class="setting-label">Admin tasks</span>
         <span style="font-size:13px;color:var(--text-primary)">${(state.adminTasks || []).length}</span>
       </div>
-      <div class="setting-row">
+      ${LAB_PREP_ENABLED ? `<div class="setting-row">
         <span class="setting-label">Prep batches</span>
         <span style="font-size:13px;color:var(--text-primary)">${(state.prepBatches || []).length}</span>
-      </div>
+      </div>` : ''}
     </div>
 
     <div class="settings-group">
@@ -4471,7 +4490,7 @@ function renderSettings() {
       <input type="file" class="import-file-input" id="importFileInput" accept=".json" onchange="handleImportFile(this)">
     </div>
 
-    <div class="settings-group">
+    ${GITHUB_SYNC_ENABLED ? `<div class="settings-group">
       <h4>GitHub Sync</h4>
       <p style="font-size:var(--text-xs);color:var(--text-muted);margin-bottom:var(--sp-3);">Your progress auto-syncs to <code style="font-size:11px;background:rgba(255,255,255,0.06);padding:1px 4px;border-radius:3px;">state.json</code> in your repo 4 seconds after any change. Paste a classic GitHub PAT with <code style="font-size:11px;background:rgba(255,255,255,0.06);padding:1px 4px;border-radius:3px;">repo</code> scope.</p>
       <div class="setting-row" style="gap:8px;">
@@ -4494,7 +4513,7 @@ function renderSettings() {
           Pull from GitHub
         </button>
       </div>
-    </div>
+    </div>` : ''}
 
     <div class="settings-group">
       <button class="btn btn-outline" style="width:100%;" onclick="resetAllData()">Reset all data</button>
@@ -4887,7 +4906,7 @@ function renderProgress() {
     if (projectBlocks[track]) {
       projLabels.push(getTrackLabel(track));
       projData.push(projectBlocks[track]);
-      projColors.push(TRACK_COLORS[track] || '#5a5a66');
+      projColors.push(getTrackHexColor(track));
     }
   }
 
@@ -4993,7 +5012,7 @@ function renderWeeklyReviewStep(step) {
     const fps = state.weeklyPlan.focusProjects || [];
     let projectPicker = '';
     for (const track of getActiveTrackIds()) {
-      const color = TRACK_COLORS[track];
+      const color = getTrackColor(track);
       const label = getTrackLabel(track);
       const selected = fps.includes(track);
       projectPicker += `<div class="focus-proj-toggle${selected ? ' selected' : ''}" data-track="${track}" style="${selected ? 'border-color:' + color : ''}" onclick="reviewToggleProject('${track}', this)">
@@ -5038,7 +5057,7 @@ function reviewToggleProject(track, el) {
   } else {
     fps.push(track);
     el.classList.add('selected');
-    el.style.borderColor = TRACK_COLORS[track] || '';
+    el.style.borderColor = getTrackColor(track);
   }
   state.weeklyPlan.focusProjects = fps;
   saveState();
@@ -5067,10 +5086,606 @@ function reviewStep3() {
 }
 
 // ================================================================
+// FEATURE 13: QUICK ADD
+// ================================================================
+// One capture box for tasks, milestones, projects, ideas and admin,
+// reachable from every view via the + button or the N key, so adding
+// work never means drilling Projects → project → milestone first.
+// Pasting several lines adds one item per line (brain dump). Optional
+// per-line shortcuts: #project  ~3 (blocks)  ! / !! (urgency)  @fri (due).
+// Every add can be undone from the toast.
+
+const QA_KINDS = [
+  { id: 'task',      label: 'Task',      noun: 'task',       placeholder: 'What needs doing? Paste a list to add several at once.' },
+  { id: 'milestone', label: 'Milestone', noun: 'milestone',  placeholder: 'A checkpoint, e.g. "Finish first draft"' },
+  { id: 'project',   label: 'Project',   noun: 'project',    placeholder: 'Project name' },
+  { id: 'idea',      label: 'Idea',      noun: 'idea',       placeholder: 'Park a thought for later' },
+  { id: 'admin',     label: 'Admin',     noun: 'admin task', placeholder: 'Email, form, errand…' }
+];
+const QA_NEW = '__new__';
+const QA_LAST_KEY = 'soma_quickadd_last';
+let qa = null; // selection state while the Quick Add modal is open
+
+function qaCount(n, noun) { return `${n} ${noun}${n === 1 ? '' : 's'}`; }
+
+// Where the user is decides the default destination.
+function qaRouteContext() {
+  const parts = (window.location.hash || '').slice(1).split('/');
+  switch (parts[0]) {
+    case 'track': return { trackId: parts[1] };
+    case 'path': return { trackId: parts[1], milestoneId: parts[2] };
+    case 'blocks': return { trackId: getTrackForMilestone(parts[1]), milestoneId: parts[1] };
+    case 'focus': {
+      const msId = parts[1] || timerMilestoneId;
+      return msId ? { trackId: getTrackForMilestone(msId), milestoneId: msId } : {};
+    }
+    default: return {};
+  }
+}
+
+// First milestone that isn't done yet — where new tasks land by default.
+// null when there are none open (Quick Add then makes a fresh one).
+function qaDefaultMilestone(trackId) {
+  const ms = getMilestonesForTrack(trackId).find(m => getMilestoneState(m.id).status !== 'done');
+  return ms ? ms.id : null;
+}
+
+function qaNormalize(s) { return String(s || '').toLowerCase().replace(/[^a-z0-9]/g, ''); }
+
+// "#thesis" → the active project whose id or label, or any word of the
+// label, starts with "thesis".
+function qaMatchProject(token) {
+  const tok = qaNormalize(token);
+  if (!tok) return null;
+  const tracks = getActiveTrackIds();
+  return tracks.find(t => qaNormalize(t) === tok || qaNormalize(getTrackLabel(t)) === tok)
+    || tracks.find(t => qaNormalize(getTrackLabel(t)).startsWith(tok)
+      || getTrackLabel(t).split(/\s+/).some(w => qaNormalize(w).startsWith(tok)))
+    || null;
+}
+
+function qaValidDate(y, mo, da) {
+  const d = new Date(y, mo - 1, da);
+  if (d.getFullYear() !== y || d.getMonth() !== mo - 1 || d.getDate() !== da) return null;
+  return localDateStr(d);
+}
+
+// "today", "tomorrow", "fri", "2026-11-03", "11/3" → YYYY-MM-DD (or null).
+// Weekdays mean the next one, counting today.
+function qaParseDate(token) {
+  const t = String(token).toLowerCase();
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  if (t === 'today' || t === 'tod') return localDateStr(d);
+  if (t === 'tomorrow' || t === 'tom' || t === 'tmr') { d.setDate(d.getDate() + 1); return localDateStr(d); }
+  const weekdays = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+  const wd = t.length >= 3 ? weekdays.findIndex(w => w.startsWith(t)) : -1;
+  if (wd >= 0) { d.setDate(d.getDate() + ((wd - d.getDay() + 7) % 7)); return localDateStr(d); }
+  let m = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (m) return qaValidDate(+m[1], +m[2], +m[3]);
+  m = t.match(/^(\d{1,2})[\/.](\d{1,2})$/);
+  if (m) {
+    const thisYear = qaValidDate(d.getFullYear(), +m[1], +m[2]);
+    if (thisYear && thisYear < localDateStr(d)) return qaValidDate(d.getFullYear() + 1, +m[1], +m[2]);
+    return thisYear;
+  }
+  return null;
+}
+
+// Strip list bullets/checkboxes from pasted lists, then pull out inline
+// shortcuts. Tokens that don't resolve (e.g. "#12" when no project
+// matches) stay in the title untouched.
+function qaParseLine(line) {
+  const out = { title: '', trackId: null, blocks: null, urgency: null, due: null };
+  let text = ' ' + line.replace(/^\s*(?:(?:[-*•–]|\d+[.)])\s+)?(?:\[[ xX]?\]\s*)?/, '') + ' ';
+  text = text.replace(/\s~(\d{1,2})(?=\s)/, (m, n) => {
+    out.blocks = Math.min(20, Math.max(1, +n));
+    return ' ';
+  });
+  text = text.replace(/\s(!!|!(?:critical|crit|high|urgent)|!(?:important|imp)?)(?=\s)/i, (m, tok) => {
+    out.urgency = (tok === '!!' || /crit|high|urgent/i.test(tok)) ? 'critical' : 'important';
+    return ' ';
+  });
+  text = text.replace(/\s@([\w\/.-]+)(?=\s)/, (m, tok) => {
+    const due = qaParseDate(tok);
+    if (!due) return m;
+    out.due = due;
+    return ' ';
+  });
+  text = text.replace(/\s#([\w-]+)(?=\s)/, (m, tok) => {
+    const t = qaMatchProject(tok);
+    if (!t) return m;
+    out.trackId = t;
+    return ' ';
+  });
+  out.title = text.replace(/\s+/g, ' ').trim();
+  return out;
+}
+
+function qaFormatDue(d) {
+  return new Date(d + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+}
+
+function qaLines() {
+  const el = document.getElementById('qaText');
+  return (el ? el.value : '').split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+}
+
+// opts: { kind, trackId, milestoneId, text, onAdded }
+function openQuickAdd(opts = {}) {
+  const returnFocus = document.activeElement;
+  closeQuickAdd();
+  const ctx = qaRouteContext();
+  const active = getActiveTrackIds();
+  const explicit = opts.trackId || ctx.trackId;
+  // An archived project can still be the target when the user is looking
+  // right at it; it's just not offered otherwise.
+  const extraTrack = explicit && !active.includes(explicit) && getAllTrackIds().includes(explicit) ? explicit : null;
+  let remembered = null;
+  try { remembered = localStorage.getItem(QA_LAST_KEY); } catch (e) { /* ignore */ }
+  const trackId = [explicit, remembered, (state.weeklyPlan.focusProjects || [])[0], active[0]]
+    .find(t => t && (active.includes(t) || t === extraTrack)) || QA_NEW;
+  let milestoneId = opts.milestoneId || (ctx.trackId === trackId ? ctx.milestoneId : null);
+  if (!milestoneId || trackId === QA_NEW || getTrackForMilestone(milestoneId) !== trackId) {
+    milestoneId = trackId === QA_NEW ? null : qaDefaultMilestone(trackId);
+  }
+
+  qa = {
+    kind: opts.kind || (timerRunning ? 'idea' : 'task'),
+    trackId,
+    milestoneId: milestoneId || QA_NEW,
+    extraTrack,
+    blocks: 1,
+    urgency: null,
+    due: '',
+    newProjectName: '',
+    newMilestoneName: '',
+    note: '',
+    onAdded: opts.onAdded || null,
+    returnFocus
+  };
+
+  const overlay = document.createElement('div');
+  overlay.id = 'qaOverlay';
+  overlay.className = 'project-modal-overlay qa-overlay';
+  overlay.innerHTML = `
+    <div class="project-modal qa-modal" role="dialog" aria-modal="true" aria-labelledby="qaTitle">
+      <div class="qa-head">
+        <div class="project-modal-title" id="qaTitle">Quick add</div>
+        <button type="button" class="btn btn-ghost qa-close" id="qaClose" aria-label="Close">${ICONS.x}</button>
+      </div>
+      <div class="qa-kinds" role="radiogroup" aria-label="What are you adding?">
+        ${QA_KINDS.map(k => `<button type="button" class="qa-kind" role="radio" data-kind="${k.id}">${k.label}</button>`).join('')}
+      </div>
+      <div class="qa-note" id="qaNote" hidden></div>
+      <textarea id="qaText" class="qa-text" rows="2" aria-label="Title"></textarea>
+      <div id="qaFields"></div>
+      <div id="qaPreview" class="qa-preview" aria-live="polite"></div>
+      <div class="qa-foot">
+        <span class="qa-hint"><kbd>Enter</kbd> add · <kbd>Shift</kbd>+<kbd>Enter</kbd> new line · <kbd>Esc</kbd> close</span>
+        <button type="button" class="btn btn-primary" id="qaSubmit">Add</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+
+  const text = overlay.querySelector('#qaText');
+  if (opts.text) text.value = opts.text;
+
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) closeQuickAdd(); });
+  // Esc closes only this modal, not a drawer underneath it.
+  overlay.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' || e.key === 'Esc') { e.stopPropagation(); closeQuickAdd(); }
+  });
+  overlay.querySelector('#qaClose').addEventListener('click', closeQuickAdd);
+  overlay.querySelector('#qaSubmit').addEventListener('click', qaSubmit);
+  overlay.querySelectorAll('.qa-kind').forEach(btn => {
+    btn.addEventListener('click', () => {
+      qa.kind = btn.dataset.kind;
+      qa.note = '';
+      qaRender();
+      text.focus();
+    });
+  });
+  text.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); qaSubmit(); }
+  });
+  text.addEventListener('input', () => { qaAutoGrow(text); qaRenderPreview(); });
+
+  // Fields are re-rendered on every project/kind change, so listen once
+  // on the container instead of rebinding each time.
+  const fields = overlay.querySelector('#qaFields');
+  fields.addEventListener('change', (e) => {
+    const t = e.target;
+    if (t.id === 'qaProject') {
+      qa.trackId = t.value;
+      qa.milestoneId = t.value === QA_NEW ? QA_NEW : (qaDefaultMilestone(t.value) || QA_NEW);
+      qaRender();
+    } else if (t.id === 'qaMilestone') {
+      qa.milestoneId = t.value;
+      qaRender();
+    } else if (t.id === 'qaDue') {
+      qa.due = t.value;
+      qaRenderPreview();
+    }
+  });
+  fields.addEventListener('input', (e) => {
+    if (e.target.id === 'qaNewProject') qa.newProjectName = e.target.value;
+    if (e.target.id === 'qaNewMilestone') qa.newMilestoneName = e.target.value;
+  });
+  fields.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && e.target.matches('input[type="text"]')) { e.preventDefault(); qaSubmit(); }
+  });
+  fields.addEventListener('click', (e) => {
+    const step = e.target.closest('[data-step]');
+    if (step) {
+      qa.blocks = Math.min(20, Math.max(1, qa.blocks + parseInt(step.dataset.step, 10)));
+      const val = document.getElementById('qaBlocksVal');
+      if (val) val.textContent = qa.blocks;
+      qaRenderPreview();
+      return;
+    }
+    const chip = e.target.closest('[data-urgency]');
+    if (chip) {
+      qa.urgency = chip.dataset.urgency || null;
+      fields.querySelectorAll('[data-urgency]').forEach(c => c.classList.toggle('active', c === chip));
+      qaRenderPreview();
+    }
+  });
+
+  qaRender();
+  qaAutoGrow(text);
+  setTimeout(() => { text.focus(); text.setSelectionRange(text.value.length, text.value.length); }, 30);
+}
+
+function closeQuickAdd() {
+  const overlay = document.getElementById('qaOverlay');
+  if (overlay) overlay.remove();
+  if (qa && qa.returnFocus && document.contains(qa.returnFocus)) {
+    try { qa.returnFocus.focus(); } catch (e) { /* ignore */ }
+  }
+  qa = null;
+}
+
+function qaAutoGrow(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 240) + 'px';
+}
+
+function qaRender() {
+  const overlay = document.getElementById('qaOverlay');
+  if (!overlay || !qa) return;
+  const kind = QA_KINDS.find(k => k.id === qa.kind);
+  overlay.querySelectorAll('.qa-kind').forEach(btn => {
+    const on = btn.dataset.kind === qa.kind;
+    btn.classList.toggle('active', on);
+    btn.setAttribute('aria-checked', on ? 'true' : 'false');
+  });
+  overlay.querySelector('#qaText').placeholder = kind.placeholder;
+  const note = overlay.querySelector('#qaNote');
+  note.hidden = !qa.note;
+  note.textContent = qa.note;
+  overlay.querySelector('#qaFields').innerHTML = qaFieldsHtml();
+  qaRenderPreview();
+}
+
+function qaProjectSelectHtml() {
+  const tracks = getActiveTrackIds();
+  if (qa.extraTrack) tracks.push(qa.extraTrack);
+  const opts = tracks.map(t =>
+    `<option value="${t}"${t === qa.trackId ? ' selected' : ''}>${escapeHtml(getTrackLabel(t))}${isTrackActive(t) ? '' : ' (archived)'}</option>`
+  ).join('');
+  return `<label class="qa-field"><span>Project</span>
+    <select id="qaProject" class="idea-input">${opts}<option value="${QA_NEW}"${qa.trackId === QA_NEW ? ' selected' : ''}>+ New project…</option></select>
+  </label>`;
+}
+
+function qaMilestoneSelectHtml() {
+  let opts = '';
+  if (qa.trackId !== QA_NEW) {
+    opts = getMilestonesForTrack(qa.trackId).map(m => {
+      const done = getMilestoneState(m.id).status === 'done';
+      return `<option value="${m.id}"${m.id === qa.milestoneId ? ' selected' : ''}>${escapeHtml(m.title)}${done ? ' ✓' : ''}</option>`;
+    }).join('');
+  }
+  return `<label class="qa-field"><span>Milestone</span>
+    <select id="qaMilestone" class="idea-input">${opts}<option value="${QA_NEW}"${qa.milestoneId === QA_NEW ? ' selected' : ''}>+ New milestone…</option></select>
+  </label>`;
+}
+
+function qaFieldsHtml() {
+  const k = qa.kind;
+  if (k === 'idea') {
+    return `<p class="qa-help">${timerRunning
+      ? 'Parked in Ideas, so you can get straight back to your block.'
+      : 'Saved to Ideas. Turn it into a task whenever you’re ready.'}</p>`;
+  }
+  if (k === 'admin') return `<p class="qa-help">Small chores live in Admin, capped at 2 a day so they don’t eat your focus time.</p>`;
+  if (k === 'project') return `<p class="qa-help">One project per line. Add one and you can give it tasks straight away.</p>`;
+
+  const dueField = `<label class="qa-field"><span>Due</span><input type="date" id="qaDue" class="drawer-due-date" value="${qa.due || ''}"></label>`;
+  let html = `<div class="qa-row">${qaProjectSelectHtml()}${k === 'task' ? qaMilestoneSelectHtml() : dueField}</div>`;
+  if (qa.trackId === QA_NEW) {
+    html += `<label class="qa-field qa-field-wide"><span>New project name</span>
+      <input type="text" id="qaNewProject" class="idea-input" maxlength="60" value="${escapeHtml(qa.newProjectName)}" placeholder="e.g. Side business">
+    </label>`;
+  }
+  if (k !== 'task') return html;
+
+  if (qa.milestoneId === QA_NEW) {
+    html += `<label class="qa-field qa-field-wide"><span>New milestone name</span>
+      <input type="text" id="qaNewMilestone" class="idea-input" maxlength="80" value="${escapeHtml(qa.newMilestoneName)}" placeholder="Tasks">
+    </label>`;
+  }
+  const mins = state.settings.blockDurationMin || 90;
+  const urgencyChips = [[null, 'None'], ['important', 'Important'], ['critical', 'Critical']].map(([v, l]) =>
+    `<button type="button" class="qa-chip${qa.urgency === v ? ' active' : ''}" data-urgency="${v || ''}">${v ? `<span class="urgency-dot ${v}"></span>` : ''}${l}</button>`
+  ).join('');
+  html += `<div class="qa-row">
+      <div class="qa-field qa-field-fit"><span>Focus blocks</span>
+        <div class="qa-stepper" title="${mins} min each">
+          <button type="button" class="qa-step" data-step="-1" aria-label="Fewer blocks">−</button>
+          <span class="qa-step-val" id="qaBlocksVal">${qa.blocks}</span>
+          <button type="button" class="qa-step" data-step="1" aria-label="More blocks">+</button>
+        </div>
+      </div>
+      <div class="qa-field qa-field-fit"><span>Urgency</span><div class="qa-chips">${urgencyChips}</div></div>
+      ${dueField}
+    </div>
+    <div class="qa-tips">Per-line shortcuts: <code>#project</code> <code>~2</code> blocks <code>!</code> important <code>!!</code> critical <code>@fri</code> due</div>`;
+  return html;
+}
+
+function qaRenderPreview() {
+  const el = document.getElementById('qaPreview');
+  const submit = document.getElementById('qaSubmit');
+  if (!el || !submit || !qa) return;
+  const kind = QA_KINDS.find(k => k.id === qa.kind);
+  const lines = qaLines();
+  submit.textContent = lines.length > 1 ? `Add ${qaCount(lines.length, kind.noun)}` : `Add ${kind.noun}`;
+  if (qa.kind !== 'task') {
+    el.innerHTML = lines.length > 1 ? `<div class="qa-preview-count">${qaCount(lines.length, kind.noun)}, one per line</div>` : '';
+    return;
+  }
+  // Only worth showing once it says something the fields don't: several
+  // lines, or a line using shortcuts.
+  const parsed = lines.map(qaParseLine).filter(p => p.title);
+  if (!(parsed.length > 1 || parsed.some(p => p.trackId || p.blocks || p.urgency || p.due))) {
+    el.innerHTML = '';
+    return;
+  }
+  const rows = parsed.slice(0, 8).map(p => {
+    const bits = [];
+    if (p.trackId) bits.push(`<span class="qa-pv-proj" style="--pv:${getTrackColor(p.trackId)}">${escapeHtml(getTrackLabel(p.trackId))}</span>`);
+    const blocks = p.blocks || qa.blocks;
+    bits.push(qaCount(blocks, 'block'));
+    const urg = p.urgency || qa.urgency;
+    if (urg) bits.push(`<span class="urgency-dot ${urg}"></span>${urg}`);
+    const due = p.due || qa.due;
+    if (due) bits.push('due ' + escapeHtml(qaFormatDue(due)));
+    return `<li><span class="qa-pv-title">${escapeHtml(p.title)}</span><span class="qa-pv-meta">${bits.join(' · ')}</span></li>`;
+  }).join('');
+  const more = parsed.length > 8 ? `<li class="qa-pv-more">+ ${parsed.length - 8} more</li>` : '';
+  el.innerHTML = `<ul class="qa-preview-list">${rows}${more}</ul>`;
+}
+
+// Applies the add to `state` (unsaved). Returns
+// { message, view, trackId, continueWith } or null when nothing was added
+// or a required field is missing — qaSubmit rolls state back on null.
+function qaApply(lines) {
+  const kind = qa.kind;
+  if (kind === 'idea') {
+    lines.forEach(text => state.ideas.push({ id: makeId('idea-'), text, createdAt: Date.now(), promoted: false }));
+    return { message: `${qaCount(lines.length, 'idea')} parked in Ideas`, view: '#ideas' };
+  }
+  if (kind === 'admin') {
+    if (!state.adminTasks) state.adminTasks = [];
+    lines.forEach(text => state.adminTasks.push({ id: makeId('admin-'), text, createdAt: localDateStr(new Date()), completedDate: null }));
+    return { message: `${qaCount(lines.length, 'admin task')} added`, view: '#admin' };
+  }
+  if (kind === 'project') {
+    const ids = lines.map(label => createProject({ label: label.slice(0, 60) }));
+    const one = ids.length === 1;
+    return {
+      message: one ? `Created ${getTrackLabel(ids[0])}` : `Created ${qaCount(ids.length, 'project')}`,
+      view: one ? `#track/${ids[0]}` : '#projects',
+      trackId: one ? ids[0] : null,
+      continueWith: one ? ids[0] : null
+    };
+  }
+
+  // Tasks and milestones both need a project.
+  let trackId = qa.trackId;
+  if (trackId === QA_NEW) {
+    const name = qa.newProjectName.trim();
+    if (!name) {
+      const input = document.getElementById('qaNewProject');
+      if (input) input.focus();
+      return null;
+    }
+    trackId = createProject({ label: name });
+  }
+
+  if (kind === 'milestone') {
+    lines.forEach(title => {
+      const id = createMilestone(trackId, title);
+      if (qa.due) state.dueDates[id] = qa.due;
+    });
+    return { message: `${qaCount(lines.length, 'milestone')} added to ${getTrackLabel(trackId)}`, view: `#track/${trackId}`, trackId };
+  }
+
+  let milestoneId = qa.trackId === trackId ? qa.milestoneId : QA_NEW;
+  if (milestoneId === QA_NEW) milestoneId = createMilestone(trackId, qa.newMilestoneName.trim() || 'Tasks');
+  // Lines tagged with another #project go to that project's open
+  // milestone, created on first use.
+  const otherTargets = {};
+  const placed = new Map();
+  for (const line of lines) {
+    const p = qaParseLine(line);
+    if (!p.title) continue;
+    let t = trackId;
+    let m = milestoneId;
+    if (p.trackId && p.trackId !== trackId) {
+      t = p.trackId;
+      m = otherTargets[t] || (otherTargets[t] = qaDefaultMilestone(t) || createMilestone(t, 'Tasks'));
+    }
+    const stepId = createStep(t, m, {
+      title: p.title,
+      estimated_blocks: p.blocks || qa.blocks,
+      urgency: p.urgency || qa.urgency,
+      due: p.due || qa.due
+    });
+    if (stepId) placed.set(t + '/' + m, (placed.get(t + '/' + m) || 0) + 1);
+  }
+  const total = [...placed.values()].reduce((a, b) => a + b, 0);
+  if (!total) return null;
+  const [firstKey] = placed.keys();
+  const [ft, fm] = firstKey.split('/');
+  const msTitle = (getMilestone(fm) || {}).title || '';
+  const message = placed.size === 1
+    ? `Added ${qaCount(total, 'task')} to ${getTrackLabel(ft)} › ${msTitle}`
+    : `Added ${qaCount(total, 'task')} across ${placed.size} milestones`;
+  return { message, view: `#path/${ft}/${fm}`, trackId };
+}
+
+// Re-render whatever is on screen so new items show up. The focus view is
+// left alone: re-rendering it can re-pick the queued step mid-block.
+function refreshCurrentView() {
+  if ((window.location.hash || '').startsWith('#focus')) return;
+  handleRoute();
+}
+
+function qaSubmit() {
+  if (!qa) return;
+  const lines = qaLines();
+  if (!lines.length) { document.getElementById('qaText').focus(); return; }
+  const snapshot = JSON.stringify(state);
+  let result = null;
+  try {
+    result = qaApply(lines);
+  } catch (e) {
+    console.warn('Quick add failed', e);
+  }
+  if (!result) { state = JSON.parse(snapshot); return; }
+  if (qa.onAdded) { qa.onAdded(); qa.onAdded = null; }
+  saveState();
+  if (result.trackId) {
+    try { localStorage.setItem(QA_LAST_KEY, result.trackId); } catch (e) { /* ignore */ }
+  }
+
+  qaToast(result.message, { view: result.view, snapshot });
+  if (result.continueWith) {
+    // A brand-new project is empty; roll straight into adding its tasks.
+    Object.assign(qa, {
+      kind: 'task', trackId: result.continueWith, milestoneId: QA_NEW,
+      newMilestoneName: '', note: `${getTrackLabel(result.continueWith)} is ready. What are its first tasks?`
+    });
+    const text = document.getElementById('qaText');
+    text.value = '';
+    qaAutoGrow(text);
+    qaRender();
+    text.focus();
+    refreshCurrentView();
+    return;
+  }
+  closeQuickAdd();
+  refreshCurrentView();
+}
+
+function qaToast(message, { view, snapshot } = {}) {
+  document.querySelectorAll('.qa-toast').forEach(t => t.remove());
+  const toast = document.createElement('div');
+  toast.className = 'qa-toast';
+  toast.setAttribute('role', 'status');
+  toast.innerHTML = `<span class="qa-toast-msg">${escapeHtml(message)}</span>
+    ${view ? '<button type="button" class="qa-toast-btn" data-act="view">View</button>' : ''}
+    ${snapshot ? '<button type="button" class="qa-toast-btn" data-act="undo">Undo</button>' : ''}`;
+  document.body.appendChild(toast);
+  const timer = setTimeout(() => toast.remove(), 7000);
+  toast.addEventListener('click', (e) => {
+    const act = e.target.dataset && e.target.dataset.act;
+    if (!act) return;
+    clearTimeout(timer);
+    toast.remove();
+    if (act === 'view') {
+      closeQuickAdd();
+      navigate(view);
+    } else if (act === 'undo') {
+      closeQuickAdd();
+      state = JSON.parse(snapshot);
+      saveState();
+      refreshCurrentView();
+      qaToast('Undone');
+    }
+  });
+}
+
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'n' && e.key !== 'N') return;
+  if (e.metaKey || e.ctrlKey || e.altKey || e.defaultPrevented) return;
+  if (document.getElementById('qaOverlay') || document.getElementById('projectModalOverlay')) return;
+  const t = e.target;
+  if (t && t.closest && t.closest('input, textarea, select, [contenteditable=""], [contenteditable="true"]')) return;
+  e.preventDefault();
+  openQuickAdd();
+});
+
+// ================================================================
 // FEATURE 12: EXPORT / IMPORT
 // ================================================================
 
+// Everything lives in this browser's localStorage, which a cleared cache
+// (or Safari's 7-day eviction for sites not added to the Home Screen) can
+// wipe. Ask the browser to keep it, and nudge for a backup file weekly.
+const BACKUP_KEY = 'soma_last_backup';
+const BACKUP_SNOOZE_KEY = 'soma_backup_snooze';
+const BACKUP_INTERVAL_DAYS = 7;
+
+function requestPersistentStorage() {
+  try {
+    if (navigator.storage && navigator.storage.persist) {
+      navigator.storage.persisted().then(p => { if (!p) navigator.storage.persist(); }).catch(() => {});
+    }
+  } catch (e) { /* unsupported */ }
+}
+
+function hasUserData() {
+  return state.focusLog.length > 0
+    || Object.keys(state.customProjects || {}).length > 0
+    || Object.values(state.customSteps || {}).some(a => a.length > 0)
+    || Object.entries(state.steps || {}).some(([id, s]) =>
+      s.status === 'done' && !((PROFILE.seedDone && PROFILE.seedDone.steps) || []).includes(id));
+}
+
+function daysSince(dateStr) {
+  if (!dateStr) return Infinity;
+  return (new Date(todayStr() + 'T00:00:00') - new Date(dateStr + 'T00:00:00')) / 86400000;
+}
+
+function isBackupDue() {
+  if (getGithubToken() || !hasUserData()) return false;
+  let last = null, snooze = null;
+  try { last = localStorage.getItem(BACKUP_KEY); snooze = localStorage.getItem(BACKUP_SNOOZE_KEY); } catch (e) { return false; }
+  return daysSince(last) >= BACKUP_INTERVAL_DAYS && daysSince(snooze) >= BACKUP_INTERVAL_DAYS;
+}
+
+function renderBackupReminder() {
+  if (!isBackupDue()) return '';
+  return `<div class="backup-reminder" role="status">
+    <span>Your plans live only in this browser. Save a backup file so clearing your browser can't erase them.</span>
+    <span class="backup-reminder-actions">
+      <button class="btn btn-outline btn-sm" onclick="exportData(); renderHome();">Back up now</button>
+      <button class="btn btn-ghost btn-sm" onclick="snoozeBackupReminder()">Later</button>
+    </span>
+  </div>`;
+}
+
+function snoozeBackupReminder() {
+  try { localStorage.setItem(BACKUP_SNOOZE_KEY, todayStr()); } catch (e) { /* ignore */ }
+  renderHome();
+}
+
 function exportData() {
+  try { localStorage.setItem(BACKUP_KEY, todayStr()); } catch (e) { /* ignore */ }
   const json = JSON.stringify(state, null, 2);
   const today = localDateStr(new Date());
   const filename = `soma-data-${today}.json`;
@@ -5147,9 +5762,12 @@ document.getElementById('drawerOverlay').addEventListener('click', (e) => {
   if (e.target === document.getElementById('drawerOverlay')) closeDrawer();
 });
 
-// Round 2 Task C: Esc key closes any open drawer.
+// Round 2 Task C: Esc key closes any open drawer. Modals sit above the
+// drawer, so they close first (even before focus has moved into them).
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' || e.key === 'Esc') {
+    if (document.getElementById('qaOverlay')) { closeQuickAdd(); return; }
+    if (document.getElementById('projectModalOverlay')) { _closeProjectModal(); return; }
     const overlay = document.getElementById('drawerOverlay');
     if (overlay && overlay.classList.contains('open')) {
       closeDrawer();
@@ -5159,6 +5777,10 @@ document.addEventListener('keydown', (e) => {
 
 // Hash change
 window.addEventListener('hashchange', handleRoute);
+
+// Feature 13: Quick add button (the N shortcut is bound with the feature).
+const quickAddFab = document.getElementById('quickAddFab');
+if (quickAddFab) quickAddFab.addEventListener('click', () => openQuickAdd());
 
 // Round 5: Weekly plan rollover runs inside loadState(). This hook remains
 // as a safety net to catch the (rare) case where the module was imported
@@ -5170,6 +5792,12 @@ window.addEventListener('hashchange', handleRoute);
 // Phase 1a: restore any in-flight timer block before the first render so
 // the timer pill / focus view show the correct elapsed time immediately.
 loadTimerFromStorage();
+requestPersistentStorage();
+// Product builds work offline once loaded (sw.js). Service workers need
+// http(s), so this is skipped when index.html is opened from disk.
+if (PROFILE.offline && 'serviceWorker' in navigator && location.protocol.startsWith('http')) {
+  navigator.serviceWorker.register('sw.js').catch(e => console.warn('Offline support unavailable', e));
+}
 
 // Init
 handleRoute();
