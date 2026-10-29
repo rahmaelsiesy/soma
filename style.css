@@ -3167,3 +3167,136 @@ a { color: inherit; text-decoration: none; }
 /* Step cards show "done" with the filled check, so the trophy flourish
    (which sat under it) is kept for milestones only. */
 .candy-node--step .candy-trophy { display: none; }
+
+/* ========================================
+   FEATURE 17: BOARD (Candy Land progress)
+   ======================================== */
+.board-header { display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; margin-bottom: var(--sp-2); }
+.board-header .section-title { margin-bottom: 0; margin-right: auto; }
+.board-project-select { flex: 0 1 280px; min-width: 0; }
+.board-summary { font-size: var(--text-sm); color: var(--text-secondary); margin: var(--sp-2) 0; }
+.board-summary strong { color: var(--text-primary); font-weight: 600; }
+.board-legend { display: flex; gap: var(--sp-4); font-size: var(--text-xs); color: var(--text-muted); margin-bottom: var(--sp-5); flex-wrap: wrap; }
+.board-legend > span { display: inline-flex; align-items: center; gap: 6px; }
+
+.board-wrap { max-width: 1000px; }
+.board-grid {
+  position: relative; display: grid; column-gap: 32px; row-gap: 40px;
+  padding: var(--sp-5); border-radius: 18px;
+  background: color-mix(in srgb, var(--road-trail) 5%, var(--bg));
+  border: 1px solid var(--border);
+}
+.board-road-svg { position: absolute; inset: 0; z-index: 0; pointer-events: none; overflow: visible; }
+.board-road, .board-trail, .board-road-dash { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.board-road { stroke: color-mix(in srgb, var(--text-muted) 24%, transparent); stroke-width: 18; }
+.board-trail { stroke: color-mix(in srgb, var(--road-trail) 60%, transparent); stroke-width: 18; }
+.board-road-dash { stroke: var(--surface); stroke-width: 3; stroke-dasharray: 1 11; opacity: 0.9; }
+
+.board-space {
+  position: relative; z-index: 1; min-height: 124px;
+  display: flex; flex-direction: column; gap: 6px;
+  padding: var(--sp-3); border-radius: 14px;
+  background: var(--surface); border: 2px solid var(--border);
+}
+.board-ms {
+  --candy: #e8647c;
+  cursor: pointer;
+  background: color-mix(in srgb, var(--candy) 13%, var(--surface));
+  border-color: color-mix(in srgb, var(--candy) 50%, var(--surface));
+  box-shadow: 0 3px 0 color-mix(in srgb, var(--candy) 40%, var(--surface));
+  transition: transform var(--t-fast), box-shadow var(--t-fast);
+}
+.board-ms:hover { transform: translateY(-2px); box-shadow: 0 5px 0 color-mix(in srgb, var(--candy) 40%, var(--surface)), 0 10px 20px rgba(0,0,0,0.08); }
+.board-ms.done { background: color-mix(in srgb, var(--candy) 28%, var(--surface)); }
+.board-ms.current {
+  border-color: var(--candy);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--candy) 28%, transparent), 0 3px 0 color-mix(in srgb, var(--candy) 40%, var(--surface));
+}
+.board-space-top { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); }
+.board-space-num {
+  width: 24px; height: 24px; border-radius: 50%; flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 700; color: #fff; background: var(--candy);
+}
+.board-space-badge { display: inline-flex; color: var(--candy); }
+.board-space-badge svg { width: 18px; height: 18px; }
+.board-here { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--candy); }
+.board-space-title {
+  font-size: var(--text-sm); font-weight: 600; color: var(--text-primary); line-height: 1.3;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+}
+.board-space-meta { font-size: var(--text-xs); color: var(--text-secondary); }
+.board-ms .board-blocks { margin-top: auto; }
+
+/* Focus-block squares: one per estimated block, grouped by step */
+.board-blocks { display: flex; flex-wrap: wrap; gap: 4px 7px; }
+.board-group { display: inline-flex; flex-wrap: wrap; gap: 3px; }
+.bb {
+  display: inline-block; width: 9px; height: 9px; border-radius: 2.5px;
+  background: var(--surface);
+  border: 1.5px solid color-mix(in srgb, var(--candy, var(--text-muted)) 65%, var(--surface));
+}
+.bb.f { background: var(--candy, var(--c-package)); border-color: var(--candy, var(--c-package)); }
+/* Extra blocks (logged past the estimate) are round, so they read as
+   different by shape even where a theme's gold is close to a candy color. */
+.bb.x { background: var(--c-gold); border-color: var(--c-gold); border-radius: 50%; }
+.board-more { font-size: 10px; color: var(--text-muted); align-self: center; }
+
+.board-end {
+  align-items: center; justify-content: center; text-align: center; min-height: 96px;
+  border-style: dashed; border-color: color-mix(in srgb, var(--road-trail) 45%, var(--surface));
+  background: color-mix(in srgb, var(--road-trail) 8%, var(--surface));
+}
+.board-end-icon { display: inline-flex; color: var(--road-trail); }
+.board-end-icon svg { width: 28px; height: 28px; }
+.board-end-label { font-size: var(--text-sm); font-weight: 700; color: var(--text-primary); }
+.board-finish.reached { border-style: solid; border-color: var(--c-gold); background: color-mix(in srgb, var(--c-gold) 22%, var(--surface)); }
+.board-finish.reached .board-end-icon { color: var(--c-gold); }
+
+/* The player's piece, perched on the current space */
+.board-token {
+  position: absolute; top: -11px; right: -11px; z-index: 2;
+  width: 24px; height: 24px; border-radius: 50%;
+  box-shadow: 0 0 0 3px var(--surface), 0 4px 10px rgba(0,0,0,0.25);
+  animation: boardTokenBounce 1.6s ease-in-out infinite;
+}
+@keyframes boardTokenBounce {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-5px) scale(1.08); }
+}
+
+/* Space drawer */
+.board-drawer-sub { font-size: var(--text-xs); color: var(--text-muted); margin: calc(-1 * var(--sp-2)) 0 var(--sp-3); }
+.board-drawer-desc { font-size: var(--text-sm); color: var(--text-secondary); margin-bottom: var(--sp-3); }
+.board-step-list { list-style: none; }
+.board-step { display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-2) 0; border-top: 1px solid var(--border); }
+.board-step:first-child { border-top: none; }
+.board-step-main { flex: 1; min-width: 0; cursor: pointer; border-radius: var(--r-sm); }
+.board-step-title { font-size: var(--text-sm); color: var(--text-primary); margin-bottom: 4px; }
+.board-step.done .board-step-title { color: var(--text-muted); text-decoration: line-through; }
+.board-step-qc { flex-shrink: 0; width: 22px; text-align: center; font-size: 10px; font-weight: 700; color: var(--c-gold); }
+
+/* Progress view: links to each project's board */
+.board-links { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin-bottom: var(--sp-5); }
+.board-links-label { font-size: var(--text-xs); color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; margin-right: var(--sp-1); }
+.board-link {
+  display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+  font-family: var(--font); font-size: var(--text-xs); color: var(--text-primary);
+  background: var(--surface); border: 1px solid var(--border); border-radius: 999px; padding: 4px 10px;
+}
+.board-link:hover { border-color: var(--pc); }
+.board-link-count { color: var(--text-muted); }
+
+@media (max-width: 600px) {
+  .board-grid { column-gap: 18px; row-gap: 28px; padding: var(--sp-3); }
+  .board-space { min-height: 112px; padding: var(--sp-2) var(--sp-3); }
+  .board-project-select { flex-basis: 100%; }
+}
+
+/* Respect the OS "reduce motion" setting (also skips confetti in JS). */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important; animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important; scroll-behavior: auto !important;
+  }
+}

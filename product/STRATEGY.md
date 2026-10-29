@@ -253,7 +253,7 @@ Packs and bundles add on top of this. Many indie launches sell very little after
 - [ ] Delete the broken legacy pages and the unused weekly-review Action.
 
 **Soon after (P1)**
-- [x] **Today list** on Home (pick up to 3, carry-over, due soon, suggestions), **tick-off checks** on task cards, **block-end alerts** (chime, notification, tab-title countdown, break nudge) and **Break it down with AI**. Done.
+- [x] **Today list** on Home (pick up to 3, carry-over, due soon, suggestions), **tick-off checks** on task cards, **block-end alerts** (chime, notification, tab-title countdown, break nudge), **Break it down with AI**, and a **Candy Land progress board** per project (milestones as spaces filled with focus-block squares). Done.
 - [ ] **AI plan paste-back** (your issue #2): the AI replies in a small JSON format, and Soma previews and applies it to the week.
 - [ ] **Pack import.** Buyers who already have Soma load a pack file that adds projects, so packs sell without a new build.
 - [ ] **Thesis pack:** copy `editions/starter`, then turn your `data.js` roadmap into generic, renamed milestones.

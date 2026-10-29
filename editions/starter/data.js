@@ -35,7 +35,7 @@ const QUEST_DATA = {
           checklist: ["Started a warm-up block", "Saw the timer pill follow you to another page"],
           estimated_blocks: 1 },
         { id: "start-3", title: "Plan this week's focus blocks",
-          desc: "On Home, the This week panel splits your weekly block goal across projects. Use + and − per project, then press Approve plan. Unfinished blocks roll over to next week automatically.",
+          desc: "On Home, the This week panel splits your weekly block goal across projects. Use + and − per project, then press Approve plan. Unfinished blocks roll over to next week automatically. Then open the Board tab to watch your piece move along the road as your focus blocks fill in.",
           checklist: ["Set a weekly goal you can actually hit", "Gave blocks to 1–2 projects", "Approved the plan"],
           estimated_blocks: 1 },
         { id: "start-4", title: "Choose your rewards",

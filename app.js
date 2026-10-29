@@ -1094,6 +1094,7 @@ function awardPoints(isWarmup) {
 
 // ---- Confetti ----
 function showConfetti() {
+  if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
   const container = document.getElementById('confettiContainer');
   container.innerHTML = '';
   const colors = ['#c49a6c', '#7db88a', '#b07da8', '#6ba3b5', '#d4a44c'];
@@ -1149,6 +1150,10 @@ function handleRoute() {
     case 'track':
       renderTrack(parts[1]);
       document.getElementById('view-track').classList.add('active');
+      break;
+    case 'board':
+      renderBoard(parts[1]);
+      document.getElementById('view-board').classList.add('active');
       break;
     case 'path':
       renderPath(parts[1], parts[2]);
@@ -2388,6 +2393,7 @@ function renderTrack(trackId) {
       ${tagsHtml}
     </div>
     <div class="header-actions">
+      <button class="btn btn-outline btn-sm" onclick="navigate('#board/${trackId}')">Board</button>
       <button class="btn btn-outline btn-sm" onclick="openEditProjectModal('${trackId}')">Edit</button>
       <button class="btn btn-outline btn-sm" onclick="openQuickAdd({ kind: 'task', trackId: '${trackId}' })">${ICONS.plus} Add tasks</button>
     </div>
@@ -3359,10 +3365,13 @@ function markStepDone(stepId, milestoneId) {
   handleRoute();
 }
 
-function stepCheckHtml(milestoneId, stepId, done) {
+// onToggle: optional JS to run instead of toggleStepDone (e.g. to also
+// refresh a drawer).
+function stepCheckHtml(milestoneId, stepId, done, onToggle) {
+  const action = onToggle || `toggleStepDone('${milestoneId}','${stepId}')`;
   return `<button type="button" class="step-check${done ? ' done' : ''}" role="checkbox" aria-checked="${done}"
     aria-label="${done ? 'Mark not done' : 'Mark done'}" title="${done ? 'Mark not done' : 'Mark done'}"
-    onclick="event.stopPropagation();toggleStepDone('${milestoneId}','${stepId}')">${ICONS.check}</button>`;
+    onclick="event.stopPropagation();${action}">${ICONS.check}</button>`;
 }
 
 // The round check on step cards and Today rows: flips done ↔ not done in
@@ -5034,6 +5043,7 @@ function renderProgress() {
   const pts = state.points;
 
   let html = `<div class="section-title">Progress</div>
+    ${renderBoardLinks()}
     <div class="progress-stats-grid">
       <div class="progress-stat-card">
         <div class="progress-stat-value">${totalHours}</div>
@@ -5461,6 +5471,287 @@ function renderTodayCard() {
   }
   html += `</section>`;
   return html;
+}
+
+// ================================================================
+// FEATURE 17: BOARD
+// ================================================================
+// A Candy Land–style board for one project: a winding road from Start to
+// Finish where every space is a milestone. Each space is filled with
+// small squares, one per focus block the milestone is estimated to take
+// (grouped by step), that fill in as blocks are logged. The game piece
+// sits on the first unfinished milestone. Tapping a space opens a drawer
+// with that milestone's steps.
+
+const BOARD_TRACK_KEY = 'soma_board_track';
+const BOARD_MAX_SQUARES = 48;
+// Candy colors cycled along the road (cherry, orange, lemon, mint,
+// blueberry, grape, bubblegum). Spaces mix them into the theme surface,
+// so the board stays readable on light and dark themes alike.
+const BOARD_CANDY = ['#e8647c', '#f0a830', '#e2b93b', '#5fb98a', '#4fa3d9', '#9b7fd4', '#ef8fb4'];
+let _boardTrack = null;
+let _boardCols = 0;
+let _boardObserver = null;
+
+function boardColumns() {
+  const main = document.getElementById('mainContent');
+  const w = main ? main.clientWidth : window.innerWidth;
+  return w >= 900 ? 4 : w >= 600 ? 3 : 2;
+}
+
+function boardDefaultTrack() {
+  const active = getActiveTrackIds();
+  let remembered = null;
+  try { remembered = localStorage.getItem(BOARD_TRACK_KEY); } catch (e) { /* ignore */ }
+  const focus = (state.weeklyPlan.focusProjects || [])[0];
+  return [remembered, focus, active[0]].find(t => t && active.includes(t)) || null;
+}
+
+// One group per step (plus one per QC check), each with its block squares.
+// A finished step counts as fully filled even if fewer blocks were logged;
+// blocks logged beyond the estimate show as gold "extra" squares.
+function milestoneBlockGroups(milestoneId) {
+  const groups = getAllSteps(milestoneId).map(step => {
+    const est = step.estimated_blocks || 1;
+    const logged = getBlocksForStep(step.id);
+    const done = stepStatus(step.id) === 'done';
+    return { step, label: step.title, est, filled: done ? est : Math.min(logged, est), extra: Math.max(0, logged - est), done };
+  });
+  getQcItems(milestoneId).forEach(qc => {
+    const checked = isQcChecked(milestoneId, qc.index);
+    groups.push({ label: 'QC: ' + qc.label, est: 1, filled: checked ? 1 : 0, extra: 0, done: checked });
+  });
+  return groups;
+}
+
+function blockSquaresHtml(groups, cap) {
+  let shown = 0;
+  let hidden = 0;
+  const parts = [];
+  for (const g of groups) {
+    const squares = [];
+    const count = g.est + g.extra;
+    for (let i = 0; i < count; i++) {
+      if (cap && shown >= cap) { hidden++; continue; }
+      const cls = i < g.filled ? ' f' : i >= g.est ? ' x' : '';
+      squares.push(`<span class="bb${cls}"></span>`);
+      shown++;
+    }
+    if (squares.length) parts.push(`<span class="board-group" title="${escapeHtml(g.label)}: ${g.filled}/${g.est} block${g.est === 1 ? '' : 's'}${g.extra ? ` (+${g.extra} extra)` : ''}">${squares.join('')}</span>`);
+  }
+  if (hidden) parts.push(`<span class="board-more">+${hidden}</span>`);
+  return parts.join('');
+}
+
+function renderBoard(trackId) {
+  const el = document.getElementById('view-board');
+  if (!trackId || !getAllTrackIds().includes(trackId)) trackId = boardDefaultTrack();
+  _boardTrack = trackId;
+  if (!trackId) {
+    el.innerHTML = `<div class="section-title">Board</div>
+      <p class="today-empty">No active projects yet. Add one with the + button and its board appears here.</p>`;
+    return;
+  }
+  try { localStorage.setItem(BOARD_TRACK_KEY, trackId); } catch (e) { /* ignore */ }
+
+  const milestones = getMilestonesForTrack(trackId);
+  const color = getTrackColor(trackId);
+  const curIdx = milestones.findIndex(m => getMilestoneState(m.id).status !== 'done');
+  const allDone = milestones.length > 0 && curIdx === -1;
+  const sum = getTrackProgressSummary(trackId);
+
+  const options = getActiveTrackIds();
+  if (!options.includes(trackId)) options.push(trackId);
+  let html = `<div class="board-header">
+      <div class="section-title">Board</div>
+      <select class="idea-input board-project-select" aria-label="Project" onchange="navigate('#board/' + this.value)">
+        ${options.map(t => `<option value="${t}"${t === trackId ? ' selected' : ''}>${escapeHtml(getTrackLabel(t))}</option>`).join('')}
+      </select>
+      <button class="btn btn-outline btn-sm" onclick="navigate('#track/${trackId}')">Manage milestones</button>
+    </div>`;
+
+  if (!milestones.length) {
+    el.innerHTML = html + `<p class="today-empty">This project has no milestones yet.</p>
+      <button class="btn btn-primary" onclick="openQuickAdd({ kind: 'milestone', trackId: '${trackId}' })">${ICONS.plus} Add milestones</button>`;
+    return;
+  }
+
+  const where = allDone
+    ? 'You reached the finish!'
+    : `You're on milestone ${curIdx + 1} of ${milestones.length}`;
+  const pct = sum.blocksTotal ? Math.round((sum.blocksDone / sum.blocksTotal) * 100) : 0;
+  html += `<div class="board-summary"><strong>${where}</strong> · ${sum.blocksDone} / ${sum.blocksTotal} blocks · ${pct}%</div>
+    <div class="board-legend" aria-hidden="true" style="--candy:${color}">
+      <span><span class="bb f"></span> block done</span>
+      <span><span class="bb"></span> to do</span>
+      <span><span class="bb x"></span> extra</span>
+    </div>`;
+
+  // Spaces snake back and forth: even rows run left → right, odd rows
+  // right → left, so each row's last space sits above the next row's first.
+  const cols = boardColumns();
+  _boardCols = cols;
+  const items = [{ kind: 'start' }, ...milestones.map((ms, i) => ({ kind: 'ms', ms, i })), { kind: 'finish' }];
+  const reached = allDone ? items.length - 1 : curIdx + 1;
+  const cell = (order) => {
+    const row = Math.floor(order / cols);
+    const pos = order % cols;
+    return `grid-row:${row + 1};grid-column:${(row % 2 === 0 ? pos : cols - 1 - pos) + 1}`;
+  };
+
+  let spaces = '';
+  items.forEach((it, order) => {
+    if (it.kind === 'start') {
+      spaces += `<div class="board-space board-end" data-board-order="${order}" style="${cell(order)}">
+        <span class="board-end-icon" aria-hidden="true">${MILESTONE_ICONS.flag}</span><span class="board-end-label">Start</span>
+      </div>`;
+      return;
+    }
+    if (it.kind === 'finish') {
+      spaces += `<div class="board-space board-end board-finish${allDone ? ' reached' : ''}" data-board-order="${order}" style="${cell(order)}">
+        <span class="board-end-icon" aria-hidden="true">${MILESTONE_ICONS.trophy}</span><span class="board-end-label">${allDone ? 'Finished!' : 'Finish'}</span>
+        ${allDone ? `<span class="board-token" style="background:${color}" aria-hidden="true"></span>` : ''}
+      </div>`;
+      return;
+    }
+    const { ms, i } = it;
+    const done = getMilestoneState(ms.id).status === 'done';
+    const current = i === curIdx;
+    const groups = milestoneBlockGroups(ms.id);
+    const est = groups.reduce((a, g) => a + g.est, 0);
+    const filled = groups.reduce((a, g) => a + g.filled, 0);
+    const due = state.dueDates[ms.id];
+    const status = done ? 'done' : current ? 'current' : 'upcoming';
+    const label = `Milestone ${i + 1} of ${milestones.length}: ${ms.title}. ${filled} of ${est} blocks.${done ? ' Done.' : current ? ' You are here.' : ''}`;
+    spaces += `<div class="board-space board-ms ${status}" role="button" tabindex="0" data-board-order="${order}"
+        style="${cell(order)};--candy:${BOARD_CANDY[i % BOARD_CANDY.length]}" aria-label="${escapeHtml(label)}"
+        onclick="openBoardSpace('${trackId}','${ms.id}')">
+      <div class="board-space-top">
+        <span class="board-space-num">${i + 1}</span>
+        ${done ? `<span class="board-space-badge">${ICONS.check}</span>` : current ? `<span class="board-here">You are here</span>` : ''}
+      </div>
+      <div class="board-space-title">${escapeHtml(ms.title)}</div>
+      <div class="board-blocks" aria-hidden="true">${blockSquaresHtml(groups, BOARD_MAX_SQUARES)}</div>
+      <div class="board-space-meta">${filled}/${est} blocks${due && !done ? ` · due ${escapeHtml(qaFormatDue(due))}` : ''}</div>
+      ${current ? `<span class="board-token" style="background:${color}" aria-hidden="true"></span>` : ''}
+    </div>`;
+  });
+
+  html += `<div class="board-wrap">
+    <div class="board-grid" id="boardGrid" data-reached="${reached}" style="grid-template-columns:repeat(${cols}, minmax(0, 1fr));--road-trail:${color}">
+      <svg class="board-road-svg" id="boardRoad" aria-hidden="true"></svg>
+      ${spaces}
+    </div>
+  </div>`;
+  el.innerHTML = html;
+
+  // The road is drawn from the spaces' real positions, once they're laid
+  // out, and redrawn whenever the board changes size.
+  requestAnimationFrame(drawBoardRoad);
+  if (_boardObserver) _boardObserver.disconnect();
+  if (window.ResizeObserver) {
+    _boardObserver = new ResizeObserver(() => drawBoardRoad());
+    _boardObserver.observe(document.getElementById('boardGrid'));
+  }
+}
+
+function drawBoardRoad() {
+  const grid = document.getElementById('boardGrid');
+  const svg = document.getElementById('boardRoad');
+  if (!grid || !svg) return;
+  const box = grid.getBoundingClientRect();
+  if (!box.width) return;
+  const pts = [...grid.querySelectorAll('[data-board-order]')]
+    .sort((a, b) => a.dataset.boardOrder - b.dataset.boardOrder)
+    .map(s => {
+      const r = s.getBoundingClientRect();
+      return [r.left - box.left + r.width / 2, r.top - box.top + r.height / 2];
+    });
+  const path = (list) => list.map((p, i) => `${i ? 'L' : 'M'}${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join(' ');
+  const reached = Number(grid.dataset.reached || 0);
+  svg.setAttribute('viewBox', `0 0 ${box.width.toFixed(1)} ${box.height.toFixed(1)}`);
+  svg.setAttribute('width', box.width);
+  svg.setAttribute('height', box.height);
+  svg.innerHTML = `<path class="board-road" d="${path(pts)}"/>`
+    + (reached > 0 ? `<path class="board-trail" d="${path(pts.slice(0, reached + 1))}"/>` : '')
+    + `<path class="board-road-dash" d="${path(pts)}"/>`;
+}
+
+window.addEventListener('resize', () => {
+  const view = document.getElementById('view-board');
+  if (!view || !view.classList.contains('active')) return;
+  if (boardColumns() !== _boardCols) renderBoard(_boardTrack);
+});
+
+// The drawer for one space: progress, the next block, and every step.
+function openBoardSpace(trackId, milestoneId) {
+  const ms = getMilestone(milestoneId);
+  if (!ms) return;
+  const milestones = getMilestonesForTrack(trackId);
+  const idx = milestones.findIndex(m => m.id === milestoneId);
+  const color = getTrackColor(trackId);
+  const steps = getAllSteps(milestoneId);
+  const groups = milestoneBlockGroups(milestoneId);
+  const est = groups.reduce((a, g) => a + g.est, 0);
+  const filled = groups.reduce((a, g) => a + g.filled, 0);
+  const stepsDone = steps.filter(s => stepStatus(s.id) === 'done').length;
+  const next = getActiveStep(milestoneId);
+
+  let html = `<button class="drawer-close" onclick="closeDrawer()" aria-label="Close">${ICONS.x}</button>
+    <h3>${escapeHtml(ms.title)}</h3>
+    <div class="board-drawer-sub">Milestone ${idx + 1} of ${milestones.length} · ${stepsDone}/${steps.length} steps · ${filled}/${est} blocks</div>
+    ${ms.desc ? `<p class="board-drawer-desc">${escapeHtml(ms.desc)}</p>` : ''}
+    <div class="drawer-quick-actions">
+      ${next ? `<button class="btn btn-primary" style="background:${color}" onclick="closeDrawer();navigate('#focus/${milestoneId}/${next.id}')">${ICONS.play} Start next block</button>` : ''}
+      <button class="btn btn-outline" onclick="closeDrawer();navigate('#path/${trackId}/${milestoneId}')">Open milestone</button>
+    </div>
+    <div class="drawer-section-title">Steps</div>
+    <ul class="board-step-list" style="--node-accent:${color};--candy:${color}">`;
+  groups.forEach(g => {
+    if (!g.step) {
+      html += `<li class="board-step${g.done ? ' done' : ''}"><span class="board-step-qc">QC</span>
+        <div class="board-step-main"><div class="board-step-title">${escapeHtml(g.label.replace(/^QC: /, ''))}</div>
+        <div class="board-blocks">${blockSquaresHtml([g])}</div></div></li>`;
+      return;
+    }
+    const s = g.step;
+    html += `<li class="board-step${g.done ? ' done' : ''}">
+      ${stepCheckHtml(milestoneId, s.id, g.done, `toggleBoardStep('${trackId}','${milestoneId}','${s.id}')`)}
+      <div class="board-step-main" role="button" tabindex="0" onclick="openStepDrawer('${milestoneId}','${s.id}')">
+        <div class="board-step-title">${escapeHtml(s.title)}</div>
+        <div class="board-blocks">${blockSquaresHtml([g])}</div>
+      </div>
+      ${g.done ? '' : `<button type="button" class="today-act" title="Start focus" aria-label="Start focus" onclick="closeDrawer();navigate('#focus/${milestoneId}/${s.id}')">${ICONS.play}</button>`}
+    </li>`;
+  });
+  html += `</ul>
+    <button class="btn btn-outline btn-sm" style="margin-top:var(--sp-3)" onclick="closeDrawer();openQuickAdd({ kind: 'task', trackId: '${trackId}', milestoneId: '${milestoneId}' })">${ICONS.plus} Add steps</button>`;
+
+  const drawer = document.getElementById('drawer');
+  drawer.setAttribute('data-drawer-kind', 'board');
+  drawer.innerHTML = html;
+  document.getElementById('drawerOverlay').classList.add('open');
+}
+
+// Ticking a step inside the board drawer updates the board behind it and
+// the drawer itself.
+function toggleBoardStep(trackId, milestoneId, stepId) {
+  toggleStepDone(milestoneId, stepId);
+  openBoardSpace(trackId, milestoneId);
+}
+
+// Progress view: one link per active project's board.
+function renderBoardLinks() {
+  const tracks = getActiveTrackIds();
+  if (!tracks.length) return '';
+  return `<div class="board-links"><span class="board-links-label">Boards</span>
+    ${tracks.map(t => {
+      const s = getTrackProgressSummary(t);
+      return `<button class="board-link" style="--pc:${getTrackColor(t)}" onclick="navigate('#board/${t}')">
+        <span class="dot" style="background:${getTrackColor(t)}"></span>${escapeHtml(getTrackLabel(t))}<span class="board-link-count">${s.msDone}/${s.msTotal}</span>
+      </button>`;
+    }).join('')}
+  </div>`;
 }
 
 // ================================================================
