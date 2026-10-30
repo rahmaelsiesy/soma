@@ -282,6 +282,12 @@ let timerRunning = false;
 let timerStepId = null;
 let timerMilestoneId = null;
 let timerIsWarmup = false;
+// Feature 18: "Just 5 minutes" — a tiny, low-stakes start that can roll
+// straight into a full block or warm-up. Not logged as a block itself.
+let timerIsStarter = false;
+const STARTER_MIN = 5;
+// Feature 18: the "5 minutes left" nudge fires once per block.
+let timerWarned = false;
 let pendingNavHash = null;
 // Feature 8: transient (un-persisted) selection state for Home's manual
 // "log a block" picker — mirrors the timer globals' pattern of living
@@ -317,6 +323,8 @@ function saveTimerToStorage() {
       stepId: timerStepId,
       msId: timerMilestoneId,
       warmup: timerIsWarmup,
+      starter: timerIsStarter,
+      warned: timerWarned,
     };
     localStorage.setItem('soma_timer', JSON.stringify(snap));
   } catch (e) { /* ignore quota */ }
@@ -331,6 +339,8 @@ function loadTimerFromStorage() {
     timerStepId = s.stepId;
     timerMilestoneId = s.msId;
     timerIsWarmup = !!s.warmup;
+    timerIsStarter = !!s.starter;
+    timerWarned = !!s.warned;
     timerTotal = s.total || 0;
     if (s.running && s.endTime && s.endTime > Date.now()) {
       // Block is still in-flight — resume it.
@@ -1647,7 +1657,7 @@ function renderHomeLogControl() {
       <select class="idea-input home-log-select" id="homeLogTrackSelect" onchange="onHomeLogProjectChange(this)">${trackOptsHtml}</select>
       <select class="idea-input home-log-select" id="homeLogStepSelect" data-msid="${stepOpts.msId || ''}" onchange="onHomeLogStepChange(this)">${stepOpts.html}</select>
     </div>
-    <input type="text" class="idea-input home-log-note" id="homeLogNote" placeholder="Optional note...">
+    <input type="text" class="idea-input home-log-note" id="homeLogNote" placeholder="Where did you leave off? (optional)">
     <div class="home-log-actions">
       <button class="btn btn-primary home-log-submit" onclick="logBlockManually()">Mark block done</button>
       <a class="home-log-timer-link" onclick="startFocusFromHomeLog()">or start a focus timer instead</a>
@@ -1678,6 +1688,7 @@ function logBlockManually() {
   homeLogStepId = stepId;
   const note = noteEl ? noteEl.value.trim() : '';
   completeBlock({ stepId, milestoneId, note, warmup: false });
+  if (note) setResumeNote(stepId, note);
   renderHome();
 }
 
@@ -2435,7 +2446,9 @@ function renderTrack(trackId) {
         else if (paceNum > weeklyGoal) paceClass = 'ms-pace-warn';
         paceHtml = `<span class="ms-pace-label ${paceClass}" title="${remaining} blocks remaining, ${weeks.toFixed(1)} weeks">~${pace} blocks/week</span>`;
       } else if (weeks === 0) {
-        paceHtml = `<span class="ms-pace-label ms-pace-crit">Due today or overdue</span>`;
+        paceHtml = dueDate < todayStr()
+          ? `<span class="ms-pace-label ms-pace-slipped">Slipped — pick a new date</span>`
+          : `<span class="ms-pace-label ms-pace-crit">Due today</span>`;
       }
     }
 
@@ -3168,9 +3181,13 @@ function openStepDrawer(milestoneId, stepId) {
   // Feature 14 + 15: plan it for today, or split it into smaller steps.
   const picked = isPickedForToday(stepId);
   html += `<div class="drawer-quick-actions">
+    <button class="btn btn-outline" onclick="startFocus('${milestoneId}','${stepId}','starter',true)" title="Can't get started? Just do 5 minutes.">Just ${STARTER_MIN} min</button>
     <button class="btn btn-outline" onclick="toggleTodayPick('${milestoneId}','${stepId}');openStepDrawer('${milestoneId}','${stepId}')">${picked ? 'Remove from Today' : 'Add to Today'}</button>
     <button class="btn btn-outline" onclick="breakDownWithAI('${milestoneId}','${stepId}')">Break it down with AI</button>
   </div>`;
+  // Feature 18: the note left at the end of the last block.
+  html += `<div class="drawer-section-title">Pick up here</div>
+    <input type="text" class="drawer-title-input" id="drawerResume" maxlength="200" placeholder="Where you left off, so restarting is easy" value="${escapeHtml(getResumeNote(stepId))}">`;
 
   // Feature 7: title, description and estimated blocks are editable for
   // every step (base or custom), overlay-backed.
@@ -3202,7 +3219,11 @@ function openStepDrawer(milestoneId, stepId) {
     <textarea class="drawer-notes" id="drawerNotes" placeholder="Your notes...">${escapeHtml(ss.notes || '')}</textarea>`;
 
   html += `<div class="drawer-section-title">Due date</div>
-    <input type="date" class="drawer-due-date" id="drawerDue" value="${state.dueDates[stepId] || ''}">`;
+    <input type="date" class="drawer-due-date" id="drawerDue" value="${state.dueDates[stepId] || ''}">
+    <div class="due-quick">
+      ${[['today', 'Today'], ['tomorrow', 'Tomorrow'], ['nextweek', 'Next week'], ['clear', 'No date']].map(([w, l]) =>
+        `<button type="button" class="qa-chip" onclick="rescheduleStep('${stepId}','${w}');openStepDrawer('${milestoneId}','${stepId}')">${l}</button>`).join('')}
+    </div>`;
 
   if (ss.status !== 'done') {
     html += `<button class="btn btn-outline" style="width:100%;margin-top:16px;" onclick="markStepDone('${stepId}','${milestoneId}')">Mark as done</button>`;
@@ -3255,6 +3276,8 @@ function openStepDrawer(milestoneId, stepId) {
   // own object directly (same convention as the title); base steps (and
   // steps living inside a custom project's milestone) go through
   // stepOverrides instead.
+  const resumeEl = document.getElementById('drawerResume');
+  if (resumeEl) resumeEl.addEventListener('change', () => setResumeNote(stepId, resumeEl.value));
   const titleEl = document.getElementById('drawerStepTitle');
   if (titleEl) {
     titleEl.addEventListener('change', () => {
@@ -3440,8 +3463,7 @@ function renderFocus(milestoneId, stepId) {
   timerStepId = stepId;
   timerMilestoneId = milestoneId;
 
-  const isWarmup = timerIsWarmup;
-  const duration = isWarmup ? state.settings.warmupDurationMin : state.settings.blockDurationMin;
+  const duration = timerDurationMin();
   if (stepChanged && timerRunning) {
     // Switching tasks mid-block: stop the current timer cleanly.
     clearInterval(timerInterval);
@@ -3453,6 +3475,7 @@ function renderFocus(milestoneId, stepId) {
     timerTotal = duration * 60;
     timerRemaining = timerTotal;
     timerEndTime = 0;
+    timerWarned = false;
   } else {
     // Recompute remaining from wall clock so the display is accurate
     // after a re-render (the timer was never actually paused).
@@ -3468,6 +3491,11 @@ function renderFocus(milestoneId, stepId) {
       <div class="focus-breadcrumb">${escapeHtml(getTrackLabel(track))} → ${escapeHtml(ms.title)} → ${escapeHtml(step.title)}</div>
       <div class="focus-step-title">${escapeHtml(step.title)}</div>
       ${step.desc ? `<div class="focus-step-desc">${escapeHtml(String(step.desc).length > 140 ? String(step.desc).slice(0, 140).trim() + '…' : step.desc)}</div>` : ''}
+      ${getResumeNote(stepId) ? `<div class="resume-note" role="note">
+        <span class="resume-note-label">Pick up here</span>
+        <span class="resume-note-text">${escapeHtml(getResumeNote(stepId))}</span>
+        <button type="button" class="resume-note-clear" aria-label="Clear note" title="Clear note" onclick="setResumeNote('${stepId}','');renderFocus('${milestoneId}','${stepId}')">${ICONS.xSm}</button>
+      </div>` : ''}
 
       <div class="timer-ring">
         <svg viewBox="0 0 180 180">
@@ -3497,8 +3525,9 @@ function renderFocus(milestoneId, stepId) {
       })()}
 
       <div class="focus-toggle">
-        <button class="${!timerIsWarmup ? 'active' : ''}" onclick="setTimerMode(false)">Full (${state.settings.blockDurationMin}m)</button>
-        <button class="${timerIsWarmup ? 'active' : ''}" onclick="setTimerMode(true)">Warm-up (${state.settings.warmupDurationMin}m)</button>
+        <button class="${timerMode() === 'full' ? 'active' : ''}" onclick="setTimerMode('full')">Full (${state.settings.blockDurationMin}m)</button>
+        <button class="${timerMode() === 'warmup' ? 'active' : ''}" onclick="setTimerMode('warmup')">Warm-up (${state.settings.warmupDurationMin}m)</button>
+        <button class="${timerMode() === 'starter' ? 'active' : ''}" onclick="setTimerMode('starter')" title="Can't get started? Just do 5 minutes.">Just ${STARTER_MIN} min</button>
       </div>
 
       <div class="focus-controls">
@@ -3599,21 +3628,51 @@ function formatTime(seconds) {
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
-function setTimerMode(warmup) {
+function timerMode() {
+  return timerIsStarter ? 'starter' : timerIsWarmup ? 'warmup' : 'full';
+}
+
+function timerDurationMin() {
+  if (timerIsStarter) return STARTER_MIN;
+  return timerIsWarmup ? state.settings.warmupDurationMin : state.settings.blockDurationMin;
+}
+
+// mode: 'full' | 'warmup' | 'starter' (true/false still mean warm-up/full
+// for older callers).
+function setTimerMode(mode) {
   if (timerRunning) return;
-  timerIsWarmup = warmup;
-  const duration = warmup ? state.settings.warmupDurationMin : state.settings.blockDurationMin;
-  timerTotal = duration * 60;
+  if (mode === true) mode = 'warmup';
+  if (mode === false) mode = 'full';
+  timerIsWarmup = mode === 'warmup';
+  timerIsStarter = mode === 'starter';
+  timerTotal = timerDurationMin() * 60;
   timerRemaining = timerTotal;
   timerRemainingMs = 0;
   timerEndTime = 0;
+  timerWarned = false;
   saveTimerToStorage();
   const display = document.getElementById('timerDisplay');
   if (display) display.textContent = formatTime(timerRemaining);
   updateTimerRing();
+  const order = ['full', 'warmup', 'starter'];
   document.querySelectorAll('.focus-toggle button').forEach((btn, i) => {
-    btn.classList.toggle('active', i === (warmup ? 1 : 0));
+    btn.classList.toggle('active', order[i] === mode);
   });
+}
+
+// Open the focus view on a step in a given mode, optionally starting
+// right away (used by "Just 5 min" buttons outside the focus view).
+function startFocus(milestoneId, stepId, mode, autostart) {
+  if (timerRunning && (timerStepId !== stepId)) return navigate(`#focus/${milestoneId}/${stepId}`);
+  closeDrawer();
+  if (!timerRunning) {
+    timerStepId = stepId;
+    timerMilestoneId = milestoneId;
+    timerRemainingMs = 0;
+    setTimerMode(mode || 'full');
+  }
+  navigate(`#focus/${milestoneId}/${stepId}`);
+  if (autostart && !timerRunning) setTimeout(() => { if (!timerRunning) toggleTimer(); }, 0);
 }
 
 function toggleTimer() {
@@ -3642,6 +3701,7 @@ function toggleTimer() {
     // click, so get both ready now for the end-of-block alert.
     unlockAudio();
     maybeAskNotificationPermission();
+    if (getBreak()) cancelBreak();
   }
   saveTimerToStorage();
   updateTimerPill();
@@ -3652,8 +3712,8 @@ function resetTimer() {
   timerRunning = false;
   timerEndTime = 0;
   timerRemainingMs = 0;
-  const duration = timerIsWarmup ? state.settings.warmupDurationMin : state.settings.blockDurationMin;
-  timerTotal = duration * 60;
+  timerWarned = false;
+  timerTotal = timerDurationMin() * 60;
   timerRemaining = timerTotal;
   saveTimerToStorage();
   const display = document.getElementById('timerDisplay');
@@ -3668,6 +3728,11 @@ function timerTick() {
   // Phase 1a: recompute from wall clock so backgrounded tabs (which
   // throttle setInterval) and re-renders don't lose time.
   timerRemaining = computeTimerRemaining();
+  if (!timerWarned && !timerIsStarter && timerTotal >= 15 * 60 && timerRemaining > 0 && timerRemaining <= 5 * 60) {
+    timerWarned = true;
+    saveTimerToStorage();
+    warnBlockEnding();
+  }
   if (timerRemaining <= 0) {
     timerRemaining = 0;
     clearInterval(timerInterval);
@@ -3675,8 +3740,12 @@ function timerTick() {
     timerEndTime = 0;
     timerRemainingMs = 0;
     saveTimerToStorage();
-    completeBlock();
-    notifyBlockEnd(timerIsWarmup);
+    if (timerIsStarter) {
+      finishStarter();
+    } else {
+      completeBlock();
+      notifyBlockEnd(timerIsWarmup);
+    }
   }
   const display = document.getElementById('timerDisplay');
   if (display) display.textContent = formatTime(timerRemaining);
@@ -3689,6 +3758,19 @@ function updateTimerPill() {
   const pill = document.getElementById('timerPill');
   if (!pill) return;
   if (!timerRunning || !timerStepId || !timerMilestoneId) {
+    // Feature 18: between blocks, the pill counts down an active break.
+    const brk = getBreak();
+    if (brk && brk.endTime > Date.now()) {
+      const left = Math.ceil((brk.endTime - Date.now()) / 1000);
+      pill.hidden = false;
+      pill.href = `#focus/${brk.milestoneId}/${brk.stepId}`;
+      const timeEl = document.getElementById('timerPillTime');
+      const labelEl = document.getElementById('timerPillLabel');
+      if (timeEl) timeEl.textContent = formatTime(left);
+      if (labelEl) labelEl.textContent = 'Break';
+      document.title = `Break ${formatTime(left)}`;
+      return;
+    }
     pill.hidden = true;
     document.title = BASE_TITLE;
     return;
@@ -3783,13 +3865,17 @@ function unlockAudio() {
   } catch (e) { /* no audio */ }
 }
 
-function playChime() {
+// Default: three rising sine notes (E5, A5, E6), each fading out over ~1s.
+const CHIME_DONE = [[659.25, 0], [880, 0.18], [1318.5, 0.36]];
+// A single soft note for heads-ups (5 minutes left, break over).
+const CHIME_SOFT = [[880, 0]];
+
+function playChime(notes) {
   unlockAudio();
   const ctx = _audioCtx;
   if (!ctx) return;
   const now = ctx.currentTime;
-  // Three rising sine notes (E5, A5, E6), each fading out over ~1s.
-  [[659.25, 0], [880, 0.18], [1318.5, 0.36]].forEach(([freq, at]) => {
+  (notes || CHIME_DONE).forEach(([freq, at]) => {
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.type = 'sine';
@@ -3834,7 +3920,161 @@ function notifyBlockEnd(warmup) {
   if (document.visibilityState !== 'visible') {
     showSystemNotification(title, `${step ? step.title + ': ' : ''}nice work. Take a ${breakMin}-minute break — stand up, stretch, drink some water.`);
   }
-  qaToast(`${title}. Take a ${breakMin}-minute break before the next one.`);
+  openBlockDonePanel({ title, breakMin, milestoneId: timerMilestoneId, stepId: timerStepId });
+}
+
+// ---- Feature 18: smoother starts, stops and restarts ----
+
+// 5 minutes before the end: a soft heads-up to wrap up and leave a note.
+function warnBlockEnding() {
+  if (state.settings.blockEndSound !== false) playChime(CHIME_SOFT);
+  const msg = '5 minutes left. Start wrapping up, and think about where you’ll pick up next time.';
+  if (document.visibilityState !== 'visible') showSystemNotification('5 minutes left', msg);
+  qaToast(msg);
+}
+
+// "Just 5 minutes" finished: celebrate starting, then offer to keep going
+// with the 5 minutes already counted.
+function finishStarter() {
+  timerIsStarter = false;
+  if (state.settings.blockEndSound !== false) playChime();
+  state.points += 1;
+  saveState();
+  showPointsPopup(1);
+  if (document.visibilityState !== 'visible') {
+    showSystemNotification('You started!', 'That was the hardest part. Keep going?');
+  }
+  const overlay = openSmallModal('starterDoneOverlay', `
+    <div class="project-modal-title">You started — that’s the hardest part</div>
+    <p class="modal-copy">Keep the momentum? The 5 minutes you just did count toward the block.</p>
+    <div class="project-modal-actions">
+      <button type="button" class="btn btn-outline" data-act="stop">Stop here</button>
+      <button type="button" class="btn btn-outline" data-act="warmup">Keep going (${state.settings.warmupDurationMin}m)</button>
+      <button type="button" class="btn btn-primary" data-act="full">Keep going (${state.settings.blockDurationMin}m)</button>
+    </div>`);
+  overlay.addEventListener('click', (e) => {
+    const act = e.target.dataset && e.target.dataset.act;
+    if (!act) return;
+    overlay.remove();
+    if (act === 'stop') {
+      setTimerMode('full');
+      refreshFocusIfOpen();
+      return;
+    }
+    continueAfterStarter(act);
+  });
+}
+
+function continueAfterStarter(mode) {
+  setTimerMode(mode);
+  // Credit the starter minutes: the new block begins part-way through.
+  const left = Math.max(60, timerTotal - STARTER_MIN * 60);
+  timerRemaining = left;
+  timerRemainingMs = left * 1000;
+  toggleTimer();
+  refreshFocusIfOpen();
+}
+
+function refreshFocusIfOpen() {
+  if ((window.location.hash || '').startsWith('#focus')) renderFocus(timerMilestoneId, timerStepId);
+}
+
+// A dismissable dialog in the project-modal style. Returns the overlay.
+function openSmallModal(id, innerHtml) {
+  const old = document.getElementById(id);
+  if (old) old.remove();
+  const overlay = document.createElement('div');
+  overlay.id = id;
+  overlay.className = 'project-modal-overlay small-modal-overlay';
+  overlay.innerHTML = `<div class="project-modal" role="dialog" aria-modal="true">${innerHtml}</div>`;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+  const first = overlay.querySelector('textarea, input, .btn-primary');
+  if (first) setTimeout(() => first.focus(), 30);
+  return overlay;
+}
+
+// After a block: one line on where you left off (shown next time you open
+// the step), then an optional break timer.
+function openBlockDonePanel({ title, breakMin, milestoneId, stepId }) {
+  const step = getAllSteps(milestoneId).find(s => s.id === stepId);
+  const current = (getStepState(stepId).resumeNote || {}).text || '';
+  const overlay = openSmallModal('blockDoneOverlay', `
+    <div class="project-modal-title">${escapeHtml(title)} 🎉</div>
+    ${step ? `<p class="modal-copy">Nice work on <strong>${escapeHtml(step.title)}</strong>.</p>` : ''}
+    <label class="project-modal-field">
+      <span>Where did you leave off?</span>
+      <textarea id="resumeNoteInput" rows="2" maxlength="200" placeholder="e.g. Fix the labels on figure 2">${escapeHtml(current)}</textarea>
+    </label>
+    <p class="modal-hint">You’ll see this next time you open the task, so restarting is easy.</p>
+    <div class="project-modal-actions">
+      <button type="button" class="btn btn-outline" data-act="done">Done</button>
+      <button type="button" class="btn btn-primary" data-act="break">Start ${breakMin}-min break</button>
+    </div>`);
+  overlay.addEventListener('click', (e) => {
+    const act = e.target.dataset && e.target.dataset.act;
+    if (!act) return;
+    setResumeNote(stepId, overlay.querySelector('#resumeNoteInput').value);
+    overlay.remove();
+    refreshCurrentView();
+    if (act === 'break') startBreak(breakMin, milestoneId, stepId);
+  });
+  overlay.querySelector('#resumeNoteInput').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); overlay.querySelector('[data-act="break"]').click(); }
+  });
+}
+
+function setResumeNote(stepId, text) {
+  const ss = getStepState(stepId);
+  const clean = String(text || '').trim();
+  if (clean) ss.resumeNote = { text: clean, date: todayStr() };
+  else delete ss.resumeNote;
+  saveState();
+}
+
+function getResumeNote(stepId) {
+  const ss = state.steps[stepId];
+  return ss && ss.resumeNote ? ss.resumeNote.text : '';
+}
+
+// Break timer: counts down in the timer pill and tab title, then nudges
+// back to the same task. Starting a new block cancels it.
+const BREAK_KEY = 'soma_break';
+let _breakInterval = null;
+
+function getBreak() {
+  try { return JSON.parse(localStorage.getItem(BREAK_KEY) || 'null'); } catch (e) { return null; }
+}
+
+function startBreak(minutes, milestoneId, stepId) {
+  try { localStorage.setItem(BREAK_KEY, JSON.stringify({ endTime: Date.now() + minutes * 60000, milestoneId, stepId })); } catch (e) { /* ignore */ }
+  runBreakTicker();
+}
+
+function cancelBreak() {
+  try { localStorage.removeItem(BREAK_KEY); } catch (e) { /* ignore */ }
+  if (_breakInterval) clearInterval(_breakInterval);
+  _breakInterval = null;
+  updateTimerPill();
+}
+
+function runBreakTicker() {
+  if (_breakInterval) clearInterval(_breakInterval);
+  const tick = () => {
+    const b = getBreak();
+    if (!b) { cancelBreak(); return; }
+    if (Date.now() >= b.endTime) {
+      cancelBreak();
+      if (state.settings.blockEndSound !== false) playChime(CHIME_SOFT);
+      const msg = 'Break’s over. Ready for the next block?';
+      if (document.visibilityState !== 'visible') showSystemNotification('Break’s over', msg);
+      qaToast(msg, { view: `#focus/${b.milestoneId}/${b.stepId}`, viewLabel: 'Start' });
+      return;
+    }
+    updateTimerPill();
+  };
+  tick();
+  if (getBreak()) _breakInterval = setInterval(tick, 1000);
 }
 
 function showPointsPopup(pts) {
@@ -5353,6 +5593,17 @@ function toggleTodayPick(milestoneId, stepId) {
   refreshCurrentView();
 }
 
+// when: 'today' | 'tomorrow' | 'nextweek' (next Monday) | 'clear'
+function rescheduleStep(stepId, when) {
+  const d = new Date(todayStr() + 'T00:00:00');
+  if (when === 'tomorrow') d.setDate(d.getDate() + 1);
+  if (when === 'nextweek') d.setDate(d.getDate() + (((8 - d.getDay()) % 7) || 7));
+  if (when === 'clear') delete state.dueDates[stepId];
+  else state.dueDates[stepId] = localDateStr(d);
+  saveState();
+  refreshCurrentView();
+}
+
 // Picks worth showing: open ones (including those carried over from
 // earlier days) and ones finished today. Picks whose step was finished on
 // an earlier day, archived or deleted are dropped.
@@ -5408,9 +5659,11 @@ function getTodaySuggestions(excludeIds) {
   return out;
 }
 
+// "Slipped", not "overdue": dates move, and a past date is a cue to pick
+// a new one, not a failure.
 function formatDueLabel(due) {
   const days = Math.round((new Date(due + 'T00:00:00') - new Date(todayStr() + 'T00:00:00')) / 86400000);
-  if (days < 0) return { text: days === -1 ? 'Overdue since yesterday' : `Overdue by ${-days} days`, cls: 'overdue' };
+  if (days < 0) return { text: days === -1 ? 'Slipped since yesterday' : `Slipped ${-days} days`, cls: 'slipped' };
   if (days === 0) return { text: 'Due today', cls: 'today' };
   if (days === 1) return { text: 'Due tomorrow', cls: 'soon' };
   return { text: 'Due ' + qaFormatDue(due), cls: '' };
@@ -5421,9 +5674,10 @@ function todayRowHtml({ step, milestoneId, trackId }, picked) {
   const ms = getMilestone(milestoneId);
   const due = state.dueDates[step.id];
   const dueInfo = due && !done ? formatDueLabel(due) : null;
+  // The date comes before the milestone so it survives truncation.
   const meta = `<span class="today-proj" style="--pc:${getTrackColor(trackId)}">${escapeHtml(getTrackLabel(trackId))}</span>`
-    + (ms ? ` · ${escapeHtml(ms.title)}` : '')
-    + (dueInfo ? ` · <span class="today-due ${dueInfo.cls}">${dueInfo.text}</span>` : '');
+    + (dueInfo ? ` · <span class="today-due ${dueInfo.cls}">${dueInfo.text}</span>` : '')
+    + (ms ? ` · ${escapeHtml(ms.title)}` : '');
   let actions;
   if (picked) {
     actions = (done ? '' : `<button type="button" class="today-act" title="Start focus" aria-label="Start focus" onclick="navigate('#focus/${milestoneId}/${step.id}')">${ICONS.play}</button>`)
@@ -5431,11 +5685,18 @@ function todayRowHtml({ step, milestoneId, trackId }, picked) {
   } else {
     actions = `<button type="button" class="today-act today-pick" title="Add to Today" onclick="toggleTodayPick('${milestoneId}','${step.id}')">${ICONS.plus}<span>Today</span></button>`;
   }
+  // One tap to give a slipped date a new home.
+  if (dueInfo && dueInfo.cls === 'slipped') {
+    actions += `<button type="button" class="today-act" title="Move to tomorrow" onclick="rescheduleStep('${step.id}','tomorrow')">Tomorrow</button>`
+      + `<button type="button" class="today-act" title="Move to next Monday" onclick="rescheduleStep('${step.id}','nextweek')">Next week</button>`;
+  }
+  const next = getResumeNote(step.id);
   return `<li class="today-row${done ? ' done' : ''}" style="--node-accent:${getTrackColor(trackId)}">
     ${stepCheckHtml(milestoneId, step.id, done)}
     <div class="today-main" role="button" tabindex="0" onclick="openStepDrawer('${milestoneId}','${step.id}')">
       <div class="today-title">${escapeHtml(step.title)}</div>
       <div class="today-meta">${meta}</div>
+      ${next && !done ? `<div class="today-next">Next: ${escapeHtml(next.replace(/^next\s*[:\-–]\s*/i, ''))}</div>` : ''}
     </div>
     <div class="today-actions">${actions}</div>
   </li>`;
@@ -6281,13 +6542,13 @@ function qaSubmit() {
   refreshCurrentView();
 }
 
-function qaToast(message, { view, snapshot } = {}) {
+function qaToast(message, { view, snapshot, viewLabel } = {}) {
   document.querySelectorAll('.qa-toast').forEach(t => t.remove());
   const toast = document.createElement('div');
   toast.className = 'qa-toast';
   toast.setAttribute('role', 'status');
   toast.innerHTML = `<span class="qa-toast-msg">${escapeHtml(message)}</span>
-    ${view ? '<button type="button" class="qa-toast-btn" data-act="view">View</button>' : ''}
+    ${view ? `<button type="button" class="qa-toast-btn" data-act="view">${escapeHtml(viewLabel || 'View')}</button>` : ''}
     ${snapshot ? '<button type="button" class="qa-toast-btn" data-act="undo">Undo</button>' : ''}`;
   document.body.appendChild(toast);
   const timer = setTimeout(() => toast.remove(), 7000);
@@ -6312,7 +6573,7 @@ function qaToast(message, { view, snapshot } = {}) {
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'n' && e.key !== 'N') return;
   if (e.metaKey || e.ctrlKey || e.altKey || e.defaultPrevented) return;
-  if (document.getElementById('qaOverlay') || document.getElementById('projectModalOverlay')) return;
+  if (document.getElementById('qaOverlay') || document.getElementById('projectModalOverlay') || document.querySelector('.small-modal-overlay')) return;
   const t = e.target;
   if (t && t.closest && t.closest('input, textarea, select, [contenteditable=""], [contenteditable="true"]')) return;
   e.preventDefault();
@@ -6457,6 +6718,8 @@ document.getElementById('drawerOverlay').addEventListener('click', (e) => {
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' || e.key === 'Esc') {
     if (document.getElementById('qaOverlay')) { closeQuickAdd(); return; }
+    const small = document.querySelector('.small-modal-overlay');
+    if (small) { small.remove(); return; }
     if (document.getElementById('projectModalOverlay')) { _closeProjectModal(); return; }
     const overlay = document.getElementById('drawerOverlay');
     if (overlay && overlay.classList.contains('open')) {
@@ -6492,6 +6755,7 @@ if (quickAddFab) quickAddFab.addEventListener('click', () => openQuickAdd());
 // Phase 1a: restore any in-flight timer block before the first render so
 // the timer pill / focus view show the correct elapsed time immediately.
 loadTimerFromStorage();
+if (getBreak()) runBreakTicker();
 requestPersistentStorage();
 // Product builds work offline once loaded (sw.js). Service workers need
 // http(s), so this is skipped when index.html is opened from disk.
