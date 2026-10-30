@@ -28,7 +28,7 @@ const out = join(root, 'dist', edition);
 rmSync(out, { recursive: true, force: true });
 mkdirSync(out, { recursive: true });
 
-const APP_FILES = ['app.js', 'style.css', 'sw.js', 'manifest.json', 'icon.svg', 'icon-192.png', 'icon-512.png'];
+const APP_FILES = ['app.js', 'style.css', 'guide.html', 'sw.js', 'manifest.json', 'icon.svg', 'icon-192.png', 'icon-512.png'];
 for (const f of APP_FILES) cpSync(join(root, f), join(out, f));
 
 // Edition files win over shared ones (e.g. an edition may ship its own

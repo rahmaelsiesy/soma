@@ -1233,7 +1233,7 @@ function openMoreDrawer() {
     { hash: '#rewards', label: 'Rewards', desc: 'Claim milestone rewards' },
     { hash: '#ideas', label: 'Ideas', desc: 'Capture and triage ideas' },
     { hash: '#admin', label: 'Admin', desc: 'Admin tasks and inbox' },
-    { hash: '#docs', label: 'Docs', desc: 'Reference and help' },
+    { hash: '#docs', label: 'Guide & docs', desc: 'How to use Soma, and reference docs' },
     { hash: '#settings', label: 'Settings', desc: 'Themes, blocks, preferences' }
   ].filter(it => it.hash !== '#docs' || DOCS.length);
   drawer.innerHTML = `
@@ -4865,7 +4865,9 @@ function renderSettings() {
 
   const currentTheme = getTheme();
 
+  const guide = DOCS.find(d => d.id === 'guide');
   let html = `<div class="section-title">Settings</div>
+    ${guide ? `<a class="settings-guide-link" href="${guide.file}" target="_blank" rel="noopener">New here, or stuck? Read <strong>How to use Soma</strong> →</a>` : ''}
 
     <div class="settings-group">
       <h4>Theme</h4>
@@ -6080,7 +6082,7 @@ function qaValidDate(y, mo, da) {
   return localDateStr(d);
 }
 
-// "today", "tomorrow", "fri", "2026-11-03", "11/3" → YYYY-MM-DD (or null).
+// "today", "tomorrow", "nextweek", "fri", "2026-11-03", "11/3" → YYYY-MM-DD (or null).
 // Weekdays mean the next one, counting today.
 function qaParseDate(token) {
   const t = String(token).toLowerCase();
@@ -6088,6 +6090,8 @@ function qaParseDate(token) {
   d.setHours(0, 0, 0, 0);
   if (t === 'today' || t === 'tod') return localDateStr(d);
   if (t === 'tomorrow' || t === 'tom' || t === 'tmr') { d.setDate(d.getDate() + 1); return localDateStr(d); }
+  // Next Monday, same as the "Next week" reschedule button.
+  if (t === 'nextweek' || t === 'next-week' || t === 'nw') { d.setDate(d.getDate() + (((8 - d.getDay()) % 7) || 7)); return localDateStr(d); }
   const weekdays = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
   const wd = t.length >= 3 ? weekdays.findIndex(w => w.startsWith(t)) : -1;
   if (wd >= 0) { d.setDate(d.getDate() + ((wd - d.getDay() + 7) % 7)); return localDateStr(d); }

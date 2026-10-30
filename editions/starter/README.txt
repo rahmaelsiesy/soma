@@ -27,11 +27,15 @@ Installing gives Soma its own window and icon, and keeps your data safer.
 
 3. START WITH "START HERE"
 -------------------------
-The "Start here" project walks you through everything in seven small
+The "Start here" project walks you through everything in eight small
 steps. Archive it when you're done.
 
 The one thing to remember: press N (or tap +) on any screen to add a
 task. Paste a list and every line becomes its own task.
+
+The full guide (daily and weekly routines, and setups for thesis work,
+studying, client work, job hunting and more) is under
+More > Guide & docs, or open guide.html in this folder.
 
 
 4. YOUR DATA IS PRIVATE — AND YOURS TO BACK UP

@@ -2126,8 +2126,16 @@ const SOMA_PROFILE = {
   // Sample-prep batch template (protocol_data.js).
   labPrep: true,
 
-  // Reference docs shown under More → Docs.
+  // Reference docs shown under More → Guide & docs.
   docs: [
+    {
+      id: 'guide',
+      title: 'How to use Soma',
+      desc: 'Daily and weekly routines, what every feature does, and setups for thesis, lab, coursework, client and other kinds of work.',
+      file: 'guide.html',
+      tags: [],
+      icon: 'strategy'
+    },
     {
       id: 'master-strategy',
       title: 'Master Analysis Strategy',

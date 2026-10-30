@@ -2,8 +2,8 @@
 // is set (the product build). Network-first: online users always get the
 // latest files; the cache is only a fallback when offline, so a new
 // release never gets stuck behind a stale copy.
-const CACHE = 'soma-v1';
-const SHELL = ['./', 'index.html', 'app.js', 'data.js', 'style.css', 'manifest.json', 'icon.svg'];
+const CACHE = 'soma-v2';
+const SHELL = ['./', 'index.html', 'app.js', 'data.js', 'style.css', 'guide.html', 'manifest.json', 'icon.svg'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL)).then(() => self.skipWaiting()));

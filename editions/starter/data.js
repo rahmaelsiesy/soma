@@ -19,7 +19,7 @@ const QUEST_DATA = {
       category: "start",
       steps: [
         { id: "start-1", title: "Add your first tasks with +",
-          desc: "Press N on your keyboard (or tap the + button) from any screen. Type a task and press Enter. Paste a whole list to add one task per line — great for a brain dump.",
+          desc: "Press N on your keyboard (or tap the + button) from any screen. Type a task and press Enter. Paste a whole list to add one task per line — great for a brain dump. For the full guide, with setups for different kinds of work, open More → Guide & docs.",
           checklist: [
             "Added one task with the + button",
             "Pasted a list of 3 or more tasks at once",
@@ -122,7 +122,7 @@ const QUEST_DATA = {
 
 // ---- PROFILE ----
 // See the root data.js for what each field does. The starter edition
-// ships no lab template, no GitHub sync and no reference docs.
+// ships no lab template and no GitHub sync; its only doc is the guide.
 const SOMA_PROFILE = {
   activeTracks: ['start', 'example_launch', 'example_learning'],
   archivedTracks: [],
@@ -133,7 +133,16 @@ const SOMA_PROFILE = {
     example_learning: 'Example: Learn a new skill'
   },
   labPrep: false,
-  docs: [],
+  docs: [
+    {
+      id: 'guide',
+      title: 'How to use Soma',
+      desc: 'Daily and weekly routines, what every feature does, and setups for thesis, coursework, client work, job hunting and more.',
+      file: 'guide.html',
+      tags: [],
+      icon: 'strategy'
+    }
+  ],
   // Register sw.js so the hosted app keeps working offline.
   offline: true
 };
