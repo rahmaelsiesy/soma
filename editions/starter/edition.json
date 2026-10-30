@@ -1,0 +1,21 @@
+{
+  "_readme": "Your details for this edition. tools/build-edition.mjs fills them into the README, LICENSE and landing page, and gives the app the licensing settings. Replace every YOUR-… value before you sell; the build lists any you missed. Only put PUBLIC values here (no API keys or secrets): it ships inside the app.",
+  "productName": "Soma",
+  "sellerName": "YOUR-NAME-OR-STUDIO",
+  "supportEmail": "YOUR-SUPPORT-EMAIL",
+  "siteUrl": "https://YOUR-DOMAIN",
+  "appUrl": "https://YOUR-DOMAIN/app/",
+  "buyUrl": "https://YOUR-CHECKOUT-LINK",
+  "priceLabel": "$39",
+  "refundPolicy": "Not happy? Email within 14 days for a full refund.",
+  "founderNote": "Soma started as the planner I built to get through my own PhD: one calm screen, one task at a time, and a way to see progress on work that takes years. Now it's yours too.",
+  "licensing": {
+    "provider": "polar",
+    "organizationId": "YOUR-POLAR-ORGANIZATION-ID",
+    "apiBase": "https://api.polar.sh",
+    "storeId": "",
+    "productId": "",
+    "freeProjectLimit": 3,
+    "proFeatures": ["unlimitedProjects", "board", "weeklyPlan", "rewards", "aiPlanner", "themes", "progressCharts"]
+  }
+}

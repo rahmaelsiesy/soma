@@ -6,11 +6,20 @@
              F5 admin tab, F6 prep/batch system
    ============================================================ */
 
+// ---- Profile ----
+// Everything personal to one install (which projects ship active, their
+// labels/colors, docs, sync target, AI prompt persona) lives in
+// SOMA_PROFILE, declared by data.js. app.js stays generic: swap data.js
+// for editions/starter/data.js and the same code becomes the product build.
+const PROFILE = (typeof SOMA_PROFILE === 'object' && SOMA_PROFILE) || {};
+
 // ---- Constants ----
 // Defaults: tracks that start active unless the user has archived them via
 // state.trackOverrides[trackId].active. See isTrackActive / getActiveTrackIds.
-const ACTIVE_TRACKS_DEFAULT = ['dlpfc', 'package', 'bd2', 'dg'];
-const ARCHIVED_TRACKS_DEFAULT = ['fic', 'eef2', 'network', 'cursor', 'learning', 'career', 'concord_sae', 'assortativity', 'dementia_review'];
+// With no profile list, every QUEST_DATA track starts active.
+const ACTIVE_TRACKS_DEFAULT = PROFILE.activeTracks
+  || ((typeof QUEST_DATA === 'object' && QUEST_DATA) ? Object.keys(QUEST_DATA) : []);
+const ARCHIVED_TRACKS_DEFAULT = PROFILE.archivedTracks || [];
 
 function isTrackActive(trackId) {
   const override = (state && state.trackOverrides) ? state.trackOverrides[trackId] : null;
@@ -140,6 +149,12 @@ function getTrackColor(trackId) {
   if (cp && cp.color) return cp.color;
   return TRACK_COLORS[trackId] || 'var(--text-muted)';
 }
+// Chart.js paints on canvas and can't resolve CSS variables, so charts
+// need a literal hex even when the track has no explicit color.
+function getTrackHexColor(trackId) {
+  const c = getTrackColor(trackId);
+  return c.startsWith('#') ? c : '#5a5a66';
+}
 function getTrackDescription(trackId) {
   const override = state.projectOverrides && state.projectOverrides[trackId];
   if (override && typeof override.description === 'string') return override.description;
@@ -157,40 +172,35 @@ function getTrackIconKey(trackId) {
 function getTrackIcon(trackId) {
   return MILESTONE_ICONS[getTrackIconKey(trackId)] || MILESTONE_ICONS.dot;
 }
-// Board-game color pass: every track gets its own distinct hue (previously
-// most archived tracks silently duplicated an active track's color).
-// Values mirror the --c-* custom properties in style.css so the candy-path
-// board and every other UI surface agree on one palette.
-const TRACK_COLORS = {
-  dlpfc: '#e07a5f', package: '#a3c586', bd2: '#8e7cc3', dg: '#4f8fc0',
-  fic: '#d98c3f', eef2: '#e6b422', network: '#9ca3af', cursor: '#5c8a7a',
-  learning: '#3f6b8b', career: '#b84a62',
-  concord_sae: '#7c6fc9', assortativity: '#a3874a', dementia_review: '#6b8fa3',
-  ml_curriculum: '#5b8f7a', antibodies: '#c1638a', ucsf_fic: '#d1495b'
-};
-const TRACK_LABELS = {
-  dlpfc: 'DLPFC AD Project', package: 'txomics Package', bd2: 'BD2 ACC', dg: 'DG Neurogenesis',
-  fic: 'RUSH FIC AD', eef2: 'EEF2 Methods', network: 'Network & ML', cursor: 'Cursor Plan',
-  learning: 'Learning Plan', career: 'Career Path',
-  concord_sae: 'CONCORD SAE', assortativity: 'Tissue Assortativity', dementia_review: 'Dementia Review'
-};
+// Per-track base colors and labels come from the profile (see data.js).
+// Always read colors through getTrackColor() so user edits and custom
+// projects win over these defaults.
+const TRACK_COLORS = PROFILE.trackColors || {};
+const TRACK_LABELS = PROFILE.trackLabels || {};
 const TYPE_COLORS = {
   code: '#7db88a', figure: '#b07da8', writing: '#c49a6c', lab: '#6ba3b5', wetlab: '#6ba3b5',
   career: '#9ca3af', paper: '#c49a6c', learning: '#8b8b96', qc: '#d4a44c'
 };
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
 const STORAGE_KEY = 'questboard_v3';
+// Lab sample-prep batches (protocol_data.js) are a profile opt-in feature.
+const LAB_PREP_ENABLED = !!PROFILE.labPrep;
 
 // ── GITHUB SYNC ──────────────────────────────────────────────────────────────
 // State is pushed to state.json in the repo 4 seconds after any change.
 // Token is stored in localStorage only — never committed to the repo.
+// Only enabled when the profile names a repo; product builds leave it off.
+const GITHUB_SYNC_ENABLED = !!(PROFILE.githubSync && PROFILE.githubSync.repo);
 const GITHUB_TOKEN_KEY = 'soma_github_pat';
-const GITHUB_REPO_ID   = 'rahmaelsiesy/soma';
-const GITHUB_STATE_FILE = 'state.json';
+const GITHUB_REPO_ID   = GITHUB_SYNC_ENABLED ? PROFILE.githubSync.repo : '';
+const GITHUB_STATE_FILE = (PROFILE.githubSync && PROFILE.githubSync.file) || 'state.json';
 let _ghPushTimer  = null;
 let _ghSyncStatus = 'idle'; // 'idle' | 'syncing' | 'synced' | 'error'
 
-function getGithubToken()        { return localStorage.getItem(GITHUB_TOKEN_KEY) || ''; }
+function getGithubToken() {
+  if (!GITHUB_SYNC_ENABLED) return '';
+  return localStorage.getItem(GITHUB_TOKEN_KEY) || '';
+}
 function saveGithubToken(token)  { localStorage.setItem(GITHUB_TOKEN_KEY, token.trim()); }
 
 function scheduleGithubPush() {
@@ -272,6 +282,12 @@ let timerRunning = false;
 let timerStepId = null;
 let timerMilestoneId = null;
 let timerIsWarmup = false;
+// Feature 18: "Just 5 minutes" — a tiny, low-stakes start that can roll
+// straight into a full block or warm-up. Not logged as a block itself.
+let timerIsStarter = false;
+const STARTER_MIN = 5;
+// Feature 18: the "5 minutes left" nudge fires once per block.
+let timerWarned = false;
 let pendingNavHash = null;
 // Feature 8: transient (un-persisted) selection state for Home's manual
 // "log a block" picker — mirrors the timer globals' pattern of living
@@ -307,6 +323,8 @@ function saveTimerToStorage() {
       stepId: timerStepId,
       msId: timerMilestoneId,
       warmup: timerIsWarmup,
+      starter: timerIsStarter,
+      warned: timerWarned,
     };
     localStorage.setItem('soma_timer', JSON.stringify(snap));
   } catch (e) { /* ignore quota */ }
@@ -321,6 +339,8 @@ function loadTimerFromStorage() {
     timerStepId = s.stepId;
     timerMilestoneId = s.msId;
     timerIsWarmup = !!s.warmup;
+    timerIsStarter = !!s.starter;
+    timerWarned = !!s.warned;
     timerTotal = s.total || 0;
     if (s.running && s.endTime && s.endTime > Date.now()) {
       // Block is still in-flight — resume it.
@@ -386,7 +406,11 @@ function getTheme() {
     stored = LEGACY_THEME_MAP[stored];
     localStorage.setItem('soma_theme', stored);
   }
-  if (!THEMES.find(t => t.id === stored)) return 'rose-pine-dawn';
+  if (!THEMES.find(t => t.id === stored)) {
+    // First launch: follow the computer's light/dark setting.
+    const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    return prefersDark ? 'catppuccin-mocha' : 'rose-pine-dawn';
+  }
   return stored;
 }
 
@@ -394,23 +418,38 @@ function getTheme() {
 applyTheme(getTheme());
 
 // ---- State helpers ----
-function defaultState() {
-  // Task 12: seed dementia_review as done — it's a completed retrospective track.
-  const demSteps = {};
-  for (const id of ['dem-ad','dem-ftd-als','dem-lewy-vasc','dem-prion-cte','dem-molecular','dem-convergence']) {
-    demSteps[id] = { status: 'done', blocksCompleted: 1, notes: '', checklist: {} };
+// Task 12: some profiles ship tracks that are already finished (e.g. a
+// completed retrospective). PROFILE.seedDone lists their step/milestone ids;
+// they're marked done once, guarded by PROFILE.seedDone.flag on state.
+function applySeedDone(s) {
+  const seed = PROFILE.seedDone;
+  if (!seed || !seed.flag || s[seed.flag]) return;
+  s.steps = s.steps || {};
+  for (const id of (seed.steps || [])) {
+    if (!s.steps[id] || s.steps[id].status !== 'done') {
+      s.steps[id] = { status: 'done', blocksCompleted: 1, notes: '', checklist: {} };
+    }
   }
-  return {
-    steps: { ...demSteps },
-    milestones: { 'dem-review-1': { status: 'done', notes: '' } },
-    _demReviewSeeded: true,
+  s.milestones = s.milestones || {};
+  for (const id of (seed.milestones || [])) {
+    if (!s.milestones[id] || s.milestones[id].status !== 'done') {
+      s.milestones[id] = { status: 'done', notes: '' };
+    }
+  }
+  s[seed.flag] = true;
+}
+
+function defaultState() {
+  const fresh = {
+    steps: {},
+    milestones: {},
     focusLog: [],
     weeklyPlan: { weekOf: null, blocks: {}, approved: false, focusProjects: [], perProjectBlocks: {}, rollover: {}, history: [], weekGoal: null },
     ideas: [],
     points: 0,
-    streak: { current: 0, lastDate: null },
+    streak: { current: 0, lastDate: null, best: 0, restWeek: null },
     dueDates: {},
-    settings: { blocksPerDay: { min: 2, max: 4 }, blockDurationMin: 90, warmupDurationMin: 25, weeklyGoal: 10 },
+    settings: { blocksPerDay: { min: 2, max: 4 }, blockDurationMin: 90, warmupDurationMin: 25, weeklyGoal: 10, blockEndSound: true },
     protocolChecks: {},
     lastAction: null,
     // Feature 1: custom steps per milestone
@@ -438,8 +477,12 @@ function defaultState() {
     // Feature 11: weekly reviews
     weeklyReviews: [],
     // Task 10: QC gate item checks, keyed by `${milestoneId}.${gateIndex}`
-    qcChecks: {}
+    qcChecks: {},
+    // Feature 14: steps picked for Today, keyed by stepId → { milestoneId, date }
+    todayPicks: {}
   };
+  applySeedDone(fresh);
+  return fresh;
 }
 
 function loadState() {
@@ -501,23 +544,9 @@ function loadState() {
         if (!stepOrder[msId]) stepOrder[msId] = arr.map(st => st.id);
         customSteps[msId] = arr.filter(st => !st._base);
       }
-      // Task 12 migration: dementia_review is a completed retrospective track.
-      // Pre-mark its step statuses as done so the progress bars reflect reality.
+      // Task 12 migration: mark the profile's already-finished tracks done.
       // Only runs once — guarded by a version flag on state.
-      const demStepIds = ['dem-ad','dem-ftd-als','dem-lewy-vasc','dem-prion-cte','dem-molecular','dem-convergence'];
-      if (!s._demReviewSeeded) {
-        s.steps = s.steps || {};
-        for (const id of demStepIds) {
-          if (!s.steps[id] || s.steps[id].status !== 'done') {
-            s.steps[id] = { status: 'done', blocksCompleted: 1, notes: '', checklist: {} };
-          }
-        }
-        s.milestones = s.milestones || {};
-        if (!s.milestones['dem-review-1'] || s.milestones['dem-review-1'].status !== 'done') {
-          s.milestones['dem-review-1'] = { status: 'done', notes: '' };
-        }
-        s._demReviewSeeded = true;
-      }
+      applySeedDone(s);
       const merged = {
         ...d, ...s,
         settings: { ...d.settings, ...(s.settings || {}) },
@@ -548,7 +577,8 @@ function loadState() {
         prepBatches: s.prepBatches || [],
         rewards: s.rewards || { tiers: {}, claimedHistory: [] },
         weeklyReviews: s.weeklyReviews || [],
-        qcChecks: s.qcChecks || {}
+        qcChecks: s.qcChecks || {},
+        todayPicks: s.todayPicks || {}
       };
       // Round 5: let state be visible before running rollover so helpers
       // that read `state` (like computeCompletedByTrack) resolve correctly.
@@ -979,7 +1009,8 @@ function getNextQueuedTask() {
 }
 
 // Feature 2 + Round 5: effective track label.
-// Priority: projectOverrides.label → trackOverrides.label (legacy) → customProjects.label → TRACK_LABELS.
+// Priority: projectOverrides.label → trackOverrides.label (legacy) → customProjects.label
+// → TRACK_LABELS → CATEGORY_META (data.js) → raw id.
 function getTrackLabel(trackId) {
   const po = state.projectOverrides && state.projectOverrides[trackId];
   if (po && po.label) return po.label;
@@ -987,7 +1018,9 @@ function getTrackLabel(trackId) {
   if (override && override.label) return override.label;
   const cp = getCustomProject(trackId);
   if (cp && cp.label) return cp.label;
-  return TRACK_LABELS[trackId] || trackId;
+  if (TRACK_LABELS[trackId]) return TRACK_LABELS[trackId];
+  const meta = (typeof CATEGORY_META === 'object' && CATEGORY_META) ? CATEGORY_META[trackId] : null;
+  return (meta && meta.label) || trackId;
 }
 
 // Feature 3: get urgency for item
@@ -996,25 +1029,66 @@ function getUrgency(itemId) {
 }
 
 // ---- Streak ----
+// Forgiving by design: weekends never count against you, and one missed
+// weekday per week is a free rest day that keeps the streak going. The
+// best streak is remembered, so streak rewards stay earned once reached.
+
+// Weekdays strictly between two YYYY-MM-DD dates.
+function workdaysBetween(fromStr, toStr) {
+  if (!fromStr || fromStr >= toStr) return 0;
+  const d = new Date(fromStr + 'T00:00:00');
+  const end = new Date(toStr + 'T00:00:00');
+  let n = 0;
+  d.setDate(d.getDate() + 1);
+  while (d < end) {
+    if (d.getDay() !== 0 && d.getDay() !== 6) n++;
+    d.setDate(d.getDate() + 1);
+  }
+  return n;
+}
+
+function restDayAvailable(today) {
+  return state.streak.restWeek !== getWeekStart(today);
+}
+
 function updateStreak() {
   const today = todayStr();
   if (!isWeekday(today)) return;
   const todayBlocks = getTodayBlocks().filter(l => !l.warmup);
-  if (todayBlocks.length >= state.settings.blocksPerDay.min) {
-    if (state.streak.lastDate === today) return;
-    const d = new Date(today + 'T00:00:00');
-    let prev = new Date(d);
-    prev.setDate(prev.getDate() - 1);
-    while (prev.getDay() === 0 || prev.getDay() === 6) prev.setDate(prev.getDate() - 1);
-    const prevStr = localDateStr(prev);
-    if (state.streak.lastDate === prevStr || state.streak.current === 0) {
-      state.streak.current++;
-    } else {
-      state.streak.current = 1;
-    }
-    state.streak.lastDate = today;
-    saveState();
+  if (todayBlocks.length < state.settings.blocksPerDay.min) return;
+  if (state.streak.lastDate === today) return;
+  const missed = workdaysBetween(state.streak.lastDate, today);
+  if (state.streak.current === 0 || missed === 0) {
+    state.streak.current++;
+  } else if (missed === 1 && restDayAvailable(today)) {
+    state.streak.current++;
+    state.streak.restWeek = getWeekStart(today);
+  } else {
+    state.streak.current = 1;
   }
+  state.streak.lastDate = today;
+  state.streak.best = Math.max(state.streak.best || 0, state.streak.current);
+  saveState();
+}
+
+// The streak as it stands today (state.streak.current only updates when a
+// block is logged, so a long gap would otherwise keep showing an old run).
+// Today itself isn't over, so it never counts as missed.
+function getCurrentStreak() {
+  const { current, lastDate } = state.streak;
+  if (!current || !lastDate) return 0;
+  const missed = workdaysBetween(lastDate, todayStr());
+  if (missed === 0 || (missed === 1 && restDayAvailable(todayStr()))) return current;
+  return 0;
+}
+
+function getBestStreak() {
+  return Math.max(state.streak.best || 0, state.streak.current || 0);
+}
+
+function daysShownUpThisMonth() {
+  const prefix = todayStr().slice(0, 7);
+  return new Set(state.focusLog.filter(l => l.date && l.date.startsWith(prefix)).map(l => l.date)).size;
 }
 
 // ---- Points ----
@@ -1030,6 +1104,7 @@ function awardPoints(isWarmup) {
 
 // ---- Confetti ----
 function showConfetti() {
+  if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
   const container = document.getElementById('confettiContainer');
   container.innerHTML = '';
   const colors = ['#c49a6c', '#7db88a', '#b07da8', '#6ba3b5', '#d4a44c'];
@@ -1078,13 +1153,17 @@ function handleRoute() {
       renderProjects();
       document.getElementById('view-projects').classList.add('active');
       // Task 2: if ?template=prep, auto-open prep drawer.
-      if (hash.indexOf('template=prep') !== -1) {
+      if (LAB_PREP_ENABLED && hash.indexOf('template=prep') !== -1) {
         openPrepDrawer();
       }
       break;
     case 'track':
       renderTrack(parts[1]);
       document.getElementById('view-track').classList.add('active');
+      break;
+    case 'board':
+      renderBoard(parts[1]);
+      document.getElementById('view-board').classList.add('active');
       break;
     case 'path':
       renderPath(parts[1], parts[2]);
@@ -1154,9 +1233,9 @@ function openMoreDrawer() {
     { hash: '#rewards', label: 'Rewards', desc: 'Claim milestone rewards' },
     { hash: '#ideas', label: 'Ideas', desc: 'Capture and triage ideas' },
     { hash: '#admin', label: 'Admin', desc: 'Admin tasks and inbox' },
-    { hash: '#docs', label: 'Docs', desc: 'Reference and help' },
+    { hash: '#docs', label: 'Guide & docs', desc: 'How to use Soma, and reference docs' },
     { hash: '#settings', label: 'Settings', desc: 'Themes, blocks, preferences' }
-  ];
+  ].filter(it => it.hash !== '#docs' || DOCS.length);
   drawer.innerHTML = `
     <div class="drawer-header">
       <h2>More</h2>
@@ -1309,6 +1388,9 @@ function renderWeeklyPlanPanel(opts) {
   const placement = opts.placement || 'top'; // 'top' or 'bottom'
   const activeIds = getActiveTrackIds();
   if (activeIds.length === 0) return '';
+  if (!hasFeature('weeklyPlan')) {
+    return placement === 'top' ? proLockedCard('weeklyPlan', 'Split your weekly block goal across projects, and roll unfinished blocks into next week automatically.') : '';
+  }
 
   const weeklyGoal = getEffectiveWeeklyGoal();
   const perProject = state.weeklyPlan.perProjectBlocks || {};
@@ -1413,7 +1495,7 @@ function renderWeeklyPlanPanel(opts) {
       : '';
     html += `<div class="week-plan-row" data-track="${track}">
       <span class="week-plan-dot" style="background:${color}"></span>
-      <span class="week-plan-label">${escapeHtml(label)}${carriedBadge}</span>
+      <span class="week-plan-label" title="${escapeHtml(label)}">${escapeHtml(label)}${carriedBadge}</span>
       <div class="week-plan-stepper" role="group" aria-label="${escapeHtml(label)} blocks per week">
         <button class="week-plan-step-btn" aria-label="Decrease" onclick="adjustProjectBlocks('${track}', -1)">−</button>
         <span class="week-plan-count"><span class="week-plan-done">${done}</span><span class="week-plan-sep"> / </span><span class="week-plan-planned">${planned}</span></span>
@@ -1431,7 +1513,7 @@ function renderWeeklyPlanPanel(opts) {
     html += `<button class="week-plan-autofill" onclick="autoFillWeeklyPlan()">Split remaining evenly</button>`;
   }
   const approveLabel = approvedThisWeek ? 'Re-approve and collapse' : 'Approve plan';
-  html += `<button class="week-plan-approve-btn" onclick="approveWeekPlan()">${approveLabel}</button>`;
+  html += `<button class="btn btn-primary week-plan-approve-btn" onclick="approveWeekPlan()">${approveLabel}</button>`;
   html += `</div>`;
 
   if (overLimit) {
@@ -1578,7 +1660,7 @@ function renderHomeLogControl() {
       <select class="idea-input home-log-select" id="homeLogTrackSelect" onchange="onHomeLogProjectChange(this)">${trackOptsHtml}</select>
       <select class="idea-input home-log-select" id="homeLogStepSelect" data-msid="${stepOpts.msId || ''}" onchange="onHomeLogStepChange(this)">${stepOpts.html}</select>
     </div>
-    <input type="text" class="idea-input home-log-note" id="homeLogNote" placeholder="Optional note...">
+    <input type="text" class="idea-input home-log-note" id="homeLogNote" placeholder="Where did you leave off? (optional)">
     <div class="home-log-actions">
       <button class="btn btn-primary home-log-submit" onclick="logBlockManually()">Mark block done</button>
       <a class="home-log-timer-link" onclick="startFocusFromHomeLog()">or start a focus timer instead</a>
@@ -1609,6 +1691,7 @@ function logBlockManually() {
   homeLogStepId = stepId;
   const note = noteEl ? noteEl.value.trim() : '';
   completeBlock({ stepId, milestoneId, note, warmup: false });
+  if (note) setResumeNote(stepId, note);
   renderHome();
 }
 
@@ -1735,6 +1818,9 @@ function renderHome() {
     <div class="points-badge">${state.points} pts</div>
   </div>`;
 
+  const backupHtml = renderBackupReminder();
+  html += backupHtml || renderInstallPrompt();
+
   // Feature 11: Review done badge
   if (dayOfWeek() === 0 && isReviewDoneThisWeek()) {
     html += `<div class="review-done-badge">Review done this week</div>`;
@@ -1745,6 +1831,9 @@ function renderHome() {
   }
 
   html += `<div class="home-layout"><div class="home-primary">`;
+
+  // Feature 14: what to do today comes first.
+  html += renderTodayCard();
 
   // Feature 8: weekly bar promoted to the top as the primary, central
   // element — a segmented slice per project, sized by blocks completed
@@ -1760,7 +1849,7 @@ function renderHome() {
   let weekSegsHtml = '';
   for (const [t, count] of Object.entries(weekByProject)) {
     const segWidth = weeklyGoal > 0 ? (count / weeklyGoal) * 100 : 0;
-    weekSegsHtml += `<div class="week-progress-seg" style="width:${segWidth}%;background:${TRACK_COLORS[t] || 'var(--text-muted)'}" title="${escapeHtml(getTrackLabel(t))}: ${count}"></div>`;
+    weekSegsHtml += `<div class="week-progress-seg" style="width:${segWidth}%;background:${getTrackColor(t)}" title="${escapeHtml(getTrackLabel(t))}: ${count}"></div>`;
   }
   // Work-week (Mon-Fri) pace target: Sunday counts as "day 5 elapsed" (end
   // of the previous work-week's pace) same as Saturday, so the dot only
@@ -1784,7 +1873,7 @@ function renderHome() {
         html += `<div class="block-circle bonus"></div>`;
       } else {
         const log = weekB[i];
-        const color = TRACK_COLORS[getTrackForMilestone(log.milestoneId)] || '#5a5a66';
+        const color = getTrackColor(getTrackForMilestone(log.milestoneId));
         html += `<div class="block-circle filled" style="background:${color}"></div>`;
       }
     } else if (i < weeklyGoal) {
@@ -1820,7 +1909,7 @@ function renderHome() {
   const nextReward = getNextPointReward();
   if (nextReward) {
     const chosen = (state.rewards.tiers[nextReward.id] || {}).text || nextReward.defaultReward;
-    html += `<div class="next-reward-card" onclick="navigate('#rewards')">
+    html += `<div class="next-reward-card" role="button" tabindex="0" onclick="navigate('#rewards')">
       <div>
         <div class="next-reward-label">Next reward</div>
         <div class="next-reward-text">${escapeHtml(chosen)}</div>
@@ -1852,8 +1941,15 @@ function renderHome() {
   if (state.lastAction) {
     html += `<div class="where-was-i">Last: ${state.lastAction}</div>`;
   }
-  if (state.streak.current > 0) {
-    html += `<div class="streak-line">${state.streak.current}-day streak</div>`;
+  // Forgiving streak line: never a "0-day streak", just what went well.
+  const streakNow = getCurrentStreak();
+  const monthDays = daysShownUpThisMonth();
+  const streakBits = [];
+  if (streakNow > 0) streakBits.push(`${streakNow}-day streak`);
+  if (monthDays > 0) streakBits.push(`${monthDays} day${monthDays === 1 ? '' : 's'} of focus this month`);
+  if (!streakNow && getBestStreak() > 1) streakBits.push(`Welcome back. Your best run is ${getBestStreak()} days`);
+  if (streakBits.length) {
+    html += `<div class="streak-line">${streakBits.join(' · ')}</div>`;
   }
 
   // Feature 9: Reward unlocked banner
@@ -1877,7 +1973,7 @@ function renderProjects() {
   let html = '<div class="section-title">Projects</div>';
 
   // Round 5 Task 3b: + New project card.
-  html += `<div class="project-new-card" onclick="openCreateProjectModal()">
+  html += `<div class="project-new-card" role="button" tabindex="0" onclick="openCreateProjectModal()">
     <span class="project-new-plus" aria-hidden="true">+</span>
     <span class="project-new-label">New project</span>
   </div>`;
@@ -1913,7 +2009,7 @@ function renderProjects() {
       : 0;
     const overGoal = blocksPct > 100;
     const barWidth = Math.min(100, blocksPct);
-    html += `<div class="project-card" style="--card-accent:${color}" onclick="navigate('#track/${track}')" title="${escapeHtml(tooltip)}">
+    html += `<div class="project-card" role="button" tabindex="0" style="--card-accent:${color}" onclick="navigate('#track/${track}')" title="${escapeHtml(tooltip)}">
       <span class="dot" style="background:${color}"></span>
       <span class="proj-name proj-name-editable" data-track="${track}" ondblclick="startEditProjectName(event,'${track}')">${escapeHtml(label)}</span>
       <span class="proj-milestone">${escapeHtml(msTitle)}</span>
@@ -1925,19 +2021,21 @@ function renderProjects() {
   }
 
   // Task 2: Templates section (Sample Prep as template).
-  html += `<div class="section-title section-title-sub" style="margin-top:2rem;">Templates</div>`;
-  html += `<div class="template-card" onclick="openPrepDrawer()">
-    <span class="dot" style="background:#6ba3b5"></span>
-    <div class="template-card-main">
-      <div class="template-card-title">Sample prep batch</div>
-      <div class="template-card-desc">Run the RNA-seq / library prep protocol checklist</div>
-    </div>
-    <span class="template-card-cta">Start ›</span>
-  </div>`;
+  if (LAB_PREP_ENABLED) {
+    html += `<div class="section-title section-title-sub" style="margin-top:2rem;">Templates</div>`;
+    html += `<div class="template-card" role="button" tabindex="0" onclick="openPrepDrawer()">
+      <span class="dot" style="background:#6ba3b5"></span>
+      <div class="template-card-main">
+        <div class="template-card-title">Sample prep batch</div>
+        <div class="template-card-desc">Run the RNA-seq / library prep protocol checklist</div>
+      </div>
+      <span class="template-card-cta">Start ›</span>
+    </div>`;
+  }
 
-  html += `<div class="archive-toggle" id="archiveToggle" onclick="toggleArchive()">
+  if (archivedTracks.length) html += `<div class="archive-toggle" id="archiveToggle" onclick="toggleArchive()">
     ${ICONS.chevronRight}
-    <span>${archivedTracks.length} archived projects</span>
+    <span>${archivedTracks.length} archived project${archivedTracks.length === 1 ? '' : 's'}</span>
   </div>`;
   html += `<div class="archive-list" id="archiveList" style="display:none;">`;
   for (const track of archivedTracks) {
@@ -1951,7 +2049,7 @@ function renderProjects() {
     const restoreBtn = isCustom
       ? `<button class="proj-archive-btn proj-restore-btn" data-restore-custom="${track}" title="Restore this custom project" aria-label="Restore project">Restore</button>`
       : `<button class="proj-archive-btn proj-activate-btn" data-activate-track="${track}" title="Move this project back into active rotation" aria-label="Activate project">Activate</button>`;
-    html += `<div class="project-card project-card-archived" style="--card-accent:${color}" onclick="navigate('#track/${track}')">
+    html += `<div class="project-card project-card-archived" role="button" tabindex="0" style="--card-accent:${color}" onclick="navigate('#track/${track}')">
       <span class="dot" style="background:${color}"></span>
       <span class="proj-name">${escapeHtml(label)}</span>
       <span class="proj-milestone">${escapeHtml(msTitle)}</span>
@@ -1998,7 +2096,7 @@ function setTrackActive(trackId, active) {
     state.customProjects[trackId].archived = !active;
   }
   saveState();
-  renderProjects();
+  handleRoute();
 }
 
 // Round 5 Task 3b: restore an archived custom project.
@@ -2104,13 +2202,15 @@ function _openProjectModal(titleText, {label, description, iconKey, color, mode,
       return;
     }
     const desc = (document.getElementById('projectModalDesc').value || '').trim();
+    if (mode === 'create' && !canCreateProjects()) { _closeProjectModal(); showUpgrade('unlimitedProjects'); return; }
     if (mode === 'create') {
       _createCustomProject({label: name, description: desc, icon: selIcon, color: selColor});
     } else {
       _saveProjectEdits(trackId, {label: name, description: desc, icon: selIcon, color: selColor});
     }
     _closeProjectModal();
-    renderProjects();
+    // Re-render whichever view opened the modal (Projects or a project's page).
+    handleRoute();
   });
 
   setTimeout(() => {
@@ -2140,21 +2240,42 @@ function openEditProjectModal(trackId) {
   });
 }
 
-function _createCustomProject({label, description, icon, color}) {
+// Unique id for user-created items. Date.now() alone collides when several
+// items are created in the same millisecond (Quick Add's multi-line paste),
+// and getAllSteps() silently dedupes colliding ids away.
+let _idSeq = 0;
+function makeId(prefix) {
+  return prefix + Date.now().toString(36) + (_idSeq++).toString(36);
+}
+
+// First palette color no active project is using yet, so new projects
+// don't all come out the same shade.
+function nextProjectColor() {
+  const used = new Set(getActiveTrackIds().map(t => String(getTrackColor(t)).toLowerCase()));
+  return CUSTOM_PROJECT_PALETTE.find(c => !used.has(c.toLowerCase())) || CUSTOM_PROJECT_PALETTE[0];
+}
+
+// Returns the new project's id. Caller saves.
+function createProject({label, description, icon, color}) {
   if (!state.customProjects) state.customProjects = {};
-  const id = 'custom_' + Date.now().toString(36);
+  const id = makeId('custom_');
   state.customProjects[id] = {
     id,
     label,
     description: description || '',
     icon: icon || 'target',
-    color: color || CUSTOM_PROJECT_PALETTE[0],
+    color: color || nextProjectColor(),
     archived: false,
     milestones: []
   };
   // Mark active in overrides so it appears in active list.
   if (!state.trackOverrides[id]) state.trackOverrides[id] = {};
   state.trackOverrides[id].active = true;
+  return id;
+}
+
+function _createCustomProject(fields) {
+  createProject(fields);
   saveState();
 }
 
@@ -2184,46 +2305,51 @@ function _saveProjectEdits(trackId, {label, description, icon, color}) {
 // Round 5 Task 3b + Feature 7: add a milestone to any track — a custom
 // project's own milestones array, or state.extraMilestones for a base
 // (QUEST_DATA) track, so data.js never needs hand-editing to grow.
-function addCustomMilestone(trackId) {
-  const title = (prompt('Milestone title') || '').trim();
-  if (!title) return;
+// Returns the new milestone's id. Caller saves.
+function createMilestone(trackId, title) {
+  const ms = { id: '', title, category: 'custom', estimated_blocks: 0, steps: [] };
   if (isCustomProject(trackId)) {
-    const id = 'cms_' + Date.now().toString(36);
-    const ms = { id, title, category: 'custom', estimated_blocks: 0, steps: [] };
+    ms.id = makeId('cms_');
     state.customProjects[trackId].milestones = state.customProjects[trackId].milestones || [];
     state.customProjects[trackId].milestones.push(ms);
   } else {
-    const id = 'xms_' + Date.now().toString(36);
-    const ms = { id, title, category: 'custom', estimated_blocks: 0, steps: [] };
+    ms.id = makeId('xms_');
     if (!state.extraMilestones) state.extraMilestones = {};
     if (!state.extraMilestones[trackId]) state.extraMilestones[trackId] = [];
     state.extraMilestones[trackId].push(ms);
   }
-  saveState();
-  renderTrack(trackId);
+  return ms.id;
 }
 
-// Round 5 Task 3b: add step to a milestone inside a custom project.
-function addCustomStepToMilestone(trackId, milestoneId) {
-  if (!isCustomProject(trackId)) return;
-  const title = (prompt('Step title') || '').trim();
-  if (!title) return;
-  const blocksStr = prompt('Estimated blocks (90 min each)', '1');
-  const estimated_blocks = Math.max(1, parseInt(blocksStr || '1') || 1);
-  const cp = state.customProjects[trackId];
-  const ms = (cp.milestones || []).find(m => m.id === milestoneId);
-  if (!ms) return;
-  ms.steps = ms.steps || [];
-  const step = {
-    id: 'cstep_' + Date.now().toString(36),
-    title,
-    type: 'custom',
-    desc: '',
-    estimated_blocks
-  };
-  ms.steps.push(step);
-  saveState();
-  renderPath(trackId, milestoneId);
+// Add a step to any milestone. Inside a custom project the step goes
+// straight into that milestone (Round 5 Task 3b); everywhere else it's a
+// Feature 1 custom step layered on via state.customSteps. Returns the new
+// step's id, or null if the milestone doesn't exist. Caller saves.
+function createStep(trackId, milestoneId, { title, estimated_blocks, urgency, due } = {}) {
+  const blocks = Math.min(20, Math.max(1, parseInt(estimated_blocks, 10) || 1));
+  let stepId;
+  if (isCustomProject(trackId)) {
+    const ms = (state.customProjects[trackId].milestones || []).find(m => m.id === milestoneId);
+    if (!ms) return null;
+    stepId = makeId('cstep_');
+    ms.steps = ms.steps || [];
+    ms.steps.push({ id: stepId, title, type: 'custom', desc: '', estimated_blocks: blocks });
+  } else {
+    if (!getMilestone(milestoneId)) return null;
+    stepId = makeId('custom-' + milestoneId + '-');
+    if (!state.customSteps[milestoneId]) state.customSteps[milestoneId] = [];
+    state.customSteps[milestoneId].push({ id: stepId, title, estimated_blocks: blocks, type: null, desc: '', isCustom: true });
+  }
+  if (urgency) state.urgency[stepId] = urgency;
+  if (due) state.dueDates[stepId] = due;
+  // A finished milestone that just gained an open step isn't finished.
+  const msState = getMilestoneState(milestoneId);
+  if (msState.status === 'done') msState.status = 'pending';
+  return stepId;
+}
+
+function addCustomMilestone(trackId) {
+  openQuickAdd({ kind: 'milestone', trackId });
 }
 
 function toggleArchive() {
@@ -2282,6 +2408,11 @@ function renderTrack(trackId) {
       <div class="track-title"><span class="dot" style="background:${color}"></span> <span ondblclick="startEditTrackName(event,'${trackId}')" class="proj-name-editable" style="font-size:inherit;font-weight:inherit;">${escapeHtml(label)}</span></div>
       ${tagsHtml}
     </div>
+    <div class="header-actions">
+      <button class="btn btn-outline btn-sm" onclick="navigate('#board/${trackId}')">Board</button>
+      <button class="btn btn-outline btn-sm" onclick="openEditProjectModal('${trackId}')">Edit</button>
+      <button class="btn btn-outline btn-sm" onclick="openQuickAdd({ kind: 'task', trackId: '${trackId}' })">${ICONS.plus} Add tasks</button>
+    </div>
   </div>`;
 
   const weeklyGoal = state.settings.weeklyGoal || 10;
@@ -2320,7 +2451,9 @@ function renderTrack(trackId) {
         else if (paceNum > weeklyGoal) paceClass = 'ms-pace-warn';
         paceHtml = `<span class="ms-pace-label ${paceClass}" title="${remaining} blocks remaining, ${weeks.toFixed(1)} weeks">~${pace} blocks/week</span>`;
       } else if (weeks === 0) {
-        paceHtml = `<span class="ms-pace-label ms-pace-crit">Due today or overdue</span>`;
+        paceHtml = dueDate < todayStr()
+          ? `<span class="ms-pace-label ms-pace-slipped">Slipped — pick a new date</span>`
+          : `<span class="ms-pace-label ms-pace-crit">Due today</span>`;
       }
     }
 
@@ -2337,7 +2470,7 @@ function renderTrack(trackId) {
       : `<div class="candy-desc candy-desc-empty" onclick="event.stopPropagation();editMilestoneDesc(event,'${ms.id}','${trackId}')">+ add description</div>`;
 
     html += `<div class="candy-row candy-row--${side}">
-      <div class="candy-node ${variantClass}" data-msid="${ms.id}" onclick="navigate('#path/${trackId}/${ms.id}')" style="--node-accent:${color}">
+      <div class="candy-node ${variantClass}" role="button" tabindex="0" data-msid="${ms.id}" onclick="navigate('#path/${trackId}/${ms.id}')" style="--node-accent:${color}">
         <span class="milestone-flag-badge" aria-hidden="true" title="Milestone checkpoint">${MILESTONE_ICONS.flag}</span>
         <div class="candy-icon" aria-hidden="true">${iconSvg}</div>
         <div class="candy-body">
@@ -2505,7 +2638,7 @@ function renderPath(trackId, milestoneId) {
   const ms = getMilestone(milestoneId);
   if (!ms) { el.innerHTML = '<p>Milestone not found.</p>'; return; }
   const track = trackId || getTrackForMilestone(milestoneId);
-  const color = TRACK_COLORS[track];
+  const color = getTrackColor(track);
   // Phase 1c: dedupe steps by id (defense-in-depth — getAllSteps already
   // dedupes, but guard against future regression).
   const steps = (() => {
@@ -2528,6 +2661,9 @@ function renderPath(trackId, milestoneId) {
   let html = `<div class="path-header">
     <button class="back-btn" onclick="navigate('#track/${track}')">${ICONS.arrowLeft}</button>
     <div class="path-title"><span class="dot" style="background:${color}"></span> ${escapeHtml(ms.title)}</div>
+    <div class="header-actions">
+      <button class="btn btn-outline btn-sm" onclick="openMilestoneModal('${milestoneId}','${track}')">Edit</button>
+    </div>
   </div>
   <div class="path-progress-text">${steps.length} step${steps.length === 1 ? '' : 's'} · ${blocksLogged} / ${totalBlocks} blocks${qcCount ? ` · ${qcCount} QC check${qcCount === 1 ? '' : 's'}` : ''}</div>
   <div class="winding-path candy-path" style="--track-accent:${color}">`;
@@ -2579,11 +2715,11 @@ function renderPath(trackId, milestoneId) {
         <div class="candy-icon" aria-hidden="true">${iconSvg}</div>
         <div class="candy-body">
           <div class="candy-step-num">Step ${idx + 1}${isCustom ? ' · custom' : ''}</div>
-          <div class="candy-title" onclick="openStepDrawer('${milestoneId}','${step.id}')">${urgDot}<span class="step-title-label">${escapeHtml(step.title)}</span></div>
+          <div class="candy-title" role="button" tabindex="0" onclick="openStepDrawer('${milestoneId}','${step.id}')">${urgDot}<span class="step-title-label">${escapeHtml(step.title)}</span></div>
           <div class="candy-step-meta" onclick="openStepDrawer('${milestoneId}','${step.id}')">
             ${typeBadge}
             <div class="step-block-dots" onclick="event.stopPropagation();navigate('#blocks/${milestoneId}/${step.id}')" title="View block history">${dotsHtml}</div>
-            ${ss.status === 'done' ? `<span class="done-check">${ICONS.check}</span>` : ''}
+            ${stepCheckHtml(milestoneId, step.id, ss.status === 'done')}
           </div>
         </div>
         ${reorderHtml}
@@ -2605,8 +2741,8 @@ function renderPath(trackId, milestoneId) {
   // Feature 1: Add step button
   html += `<div class="path-connector"></div>
     <div style="display:flex;justify-content:${steps.length % 2 === 0 ? 'flex-start' : 'flex-end'};">
-      <button class="add-step-btn" onclick="showAddStepForm('${milestoneId}','${track}')">
-        ${ICONS.plus} Add custom step
+      <button class="add-step-btn" onclick="openQuickAdd({ kind: 'task', trackId: '${track}', milestoneId: '${milestoneId}' })">
+        ${ICONS.plus} Add steps
       </button>
     </div>`;
 
@@ -2738,7 +2874,7 @@ function renderBlockLog(milestoneId, stepId) {
   if (!ms || !step) { el.innerHTML = '<p>Step not found.</p>'; return; }
 
   const track = getTrackForMilestone(milestoneId);
-  const color = TRACK_COLORS[track];
+  const color = getTrackColor(track);
   const ss = getStepState(stepId);
   const estBlocks = step.estimated_blocks || 1;
   const blocks = state.focusLog
@@ -2912,14 +3048,57 @@ function toggleMsArchive() {
 // than a new modal.
 function editMilestoneDesc(evt, milestoneId, trackId) {
   if (evt) evt.stopPropagation();
+  openMilestoneModal(milestoneId, trackId);
+}
+
+// Edit a milestone's title, description and due date in one place —
+// same overlay writes as the inline editors (milestoneOverrides /
+// dueDates), styled like the project modal.
+function openMilestoneModal(milestoneId, trackId) {
   const ms = getMilestone(milestoneId);
-  const val = prompt('Milestone description', (ms && ms.desc) || '');
-  if (val === null) return; // cancelled
-  if (!state.milestoneOverrides) state.milestoneOverrides = {};
-  if (!state.milestoneOverrides[milestoneId]) state.milestoneOverrides[milestoneId] = {};
-  state.milestoneOverrides[milestoneId].desc = val.trim();
-  saveState();
-  renderTrack(trackId);
+  if (!ms) return;
+  _closeProjectModal();
+  const overlay = document.createElement('div');
+  overlay.id = 'projectModalOverlay';
+  overlay.className = 'project-modal-overlay';
+  overlay.innerHTML = `
+    <div class="project-modal" role="dialog" aria-label="Edit milestone">
+      <div class="project-modal-title">Edit milestone</div>
+      <label class="project-modal-field">
+        <span>Name</span>
+        <input type="text" id="msModalTitle" value="${escapeHtml(ms.title)}" maxlength="80">
+      </label>
+      <label class="project-modal-field">
+        <span>Description</span>
+        <textarea id="msModalDesc" rows="3" placeholder="What does done look like?" maxlength="400">${escapeHtml(ms.desc || '')}</textarea>
+      </label>
+      <label class="project-modal-field">
+        <span>Due date</span>
+        <input type="date" class="drawer-due-date" id="msModalDue" value="${state.dueDates[milestoneId] || ''}">
+      </label>
+      <div class="project-modal-actions">
+        <button type="button" class="btn btn-outline" id="msModalCancel">Cancel</button>
+        <button type="button" class="btn btn-primary" id="msModalSave">Save</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  overlay.querySelector('#msModalCancel').addEventListener('click', _closeProjectModal);
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) _closeProjectModal(); });
+  overlay.querySelector('#msModalSave').addEventListener('click', () => {
+    const title = overlay.querySelector('#msModalTitle').value.trim();
+    if (!title) { overlay.querySelector('#msModalTitle').focus(); return; }
+    if (!state.milestoneOverrides) state.milestoneOverrides = {};
+    if (!state.milestoneOverrides[milestoneId]) state.milestoneOverrides[milestoneId] = {};
+    state.milestoneOverrides[milestoneId].title = title;
+    state.milestoneOverrides[milestoneId].desc = overlay.querySelector('#msModalDesc').value.trim();
+    const due = overlay.querySelector('#msModalDue').value;
+    if (due) state.dueDates[milestoneId] = due;
+    else delete state.dueDates[milestoneId];
+    saveState();
+    _closeProjectModal();
+    handleRoute();
+  });
+  setTimeout(() => overlay.querySelector('#msModalTitle').focus(), 50);
 }
 
 // Feature 2 + Feature 7: inline milestone name edit from the Track view —
@@ -2978,67 +3157,6 @@ function toggleStepArchive() {
   toggle.classList.toggle('open', open);
 }
 
-// Feature 1: add custom step form
-function showAddStepForm(milestoneId, trackId) {
-  // Show a simple prompt-style inline form
-  const el = document.getElementById('view-path');
-  const existing = el.querySelector('.add-step-form');
-  if (existing) { existing.remove(); return; }
-
-  const form = document.createElement('div');
-  form.className = 'add-step-form card';
-  form.style.cssText = 'margin-top:12px;padding:14px;display:flex;flex-direction:column;gap:10px;max-width:320px;';
-  form.innerHTML = `
-    <div style="font-size:13px;font-weight:600;color:var(--text-primary);">Add custom step</div>
-    <input class="idea-input" id="newStepTitle" placeholder="Step title" style="background:var(--bg);">
-    <input class="idea-input" id="newStepBlocks" type="number" placeholder="Estimated blocks (default 1)" min="1" max="20" style="background:var(--bg);">
-    <div style="display:flex;gap:8px;">
-      <button class="btn btn-outline" style="flex:1;" onclick="submitAddStep('${milestoneId}','${trackId}')">Add</button>
-      <button class="btn btn-ghost" onclick="this.closest('.add-step-form').remove()">Cancel</button>
-    </div>`;
-  el.querySelector('.winding-path').appendChild(form);
-  form.querySelector('#newStepTitle').focus();
-}
-
-function submitAddStep(milestoneId, trackId) {
-  const titleInput = document.getElementById('newStepTitle');
-  const blocksInput = document.getElementById('newStepBlocks');
-  const title = (titleInput ? titleInput.value : '').trim();
-  if (!title) return;
-  const estimated_blocks = parseInt(blocksInput ? blocksInput.value : '1') || 1;
-  // Round 5 Task 3b: inside a custom project, write the step directly into
-  // the milestone on state.customProjects so it becomes a first-class step.
-  if (isCustomProject(trackId)) {
-    const cp = state.customProjects[trackId];
-    const ms = (cp.milestones || []).find(m => m.id === milestoneId);
-    if (ms) {
-      ms.steps = ms.steps || [];
-      ms.steps.push({
-        id: 'cstep_' + Date.now().toString(36),
-        title,
-        type: 'custom',
-        desc: '',
-        estimated_blocks
-      });
-      saveState();
-      renderPath(trackId, milestoneId);
-      return;
-    }
-  }
-  const newStep = {
-    id: 'custom-' + milestoneId + '-' + Date.now(),
-    title,
-    estimated_blocks,
-    type: null,
-    desc: '',
-    isCustom: true
-  };
-  if (!state.customSteps[milestoneId]) state.customSteps[milestoneId] = [];
-  state.customSteps[milestoneId].push(newStep);
-  saveState();
-  renderPath(trackId, milestoneId);
-}
-
 // ---- Step Drawer ----
 // Round 2 Task C: primary signature is (milestoneId, stepId).
 // A legacy shim swaps arg order if an old caller still passes (stepId, milestoneId, track).
@@ -3056,18 +3174,30 @@ function openStepDrawer(milestoneId, stepId) {
   if (!step) return;
   const ss = getStepState(stepId);
   const track = getTrackForMilestone(milestoneId);
-  const color = TRACK_COLORS[track] || 'var(--c-dlpfc)';
+  const color = getTrackColor(track);
   const urgLevel = getUrgency(stepId);
 
   let html = `<button class="drawer-close" onclick="closeDrawer()">${ICONS.x}</button>
     <h3>${escapeHtml(step.title)}</h3>`;
 
-  html += `<button class="btn btn-primary" style="background:${color};width:100%;margin-bottom:16px;" onclick="closeDrawer();navigate('#focus/${milestoneId}/${stepId}')">
+  html += `<button class="btn btn-primary" style="background:${color};width:100%;margin-bottom:8px;" onclick="closeDrawer();navigate('#focus/${milestoneId}/${stepId}')">
     ${ICONS.play} Start Focus
   </button>`;
+  // Feature 14 + 15: plan it for today, or split it into smaller steps.
+  const picked = isPickedForToday(stepId);
+  html += `<div class="drawer-quick-actions">
+    <button class="btn btn-outline" onclick="startFocus('${milestoneId}','${stepId}','starter',true)" title="Can't get started? Just do 5 minutes.">Just ${STARTER_MIN} min</button>
+    <button class="btn btn-outline" onclick="toggleTodayPick('${milestoneId}','${stepId}');openStepDrawer('${milestoneId}','${stepId}')">${picked ? 'Remove from Today' : 'Add to Today'}</button>
+    <button class="btn btn-outline" onclick="breakDownWithAI('${milestoneId}','${stepId}')">Break it down with AI</button>
+  </div>`;
+  // Feature 18: the note left at the end of the last block.
+  html += `<div class="drawer-section-title">Pick up here</div>
+    <input type="text" class="drawer-title-input" id="drawerResume" maxlength="200" placeholder="Where you left off, so restarting is easy" value="${escapeHtml(getResumeNote(stepId))}">`;
 
-  // Feature 7: description and estimated blocks are now editable for every
-  // step (base or custom), overlay-backed same as the title.
+  // Feature 7: title, description and estimated blocks are editable for
+  // every step (base or custom), overlay-backed.
+  html += `<div class="drawer-section-title">Title</div>
+    <input type="text" class="drawer-title-input" id="drawerStepTitle" maxlength="120" value="${escapeHtml(step.title)}">`;
   html += `<div class="drawer-section-title">Description</div>
     <textarea class="drawer-notes" id="drawerStepDesc" placeholder="What this step involves...">${escapeHtml(step.desc || '')}</textarea>`;
   html += `<div class="drawer-section-title">Estimated blocks</div>
@@ -3094,7 +3224,11 @@ function openStepDrawer(milestoneId, stepId) {
     <textarea class="drawer-notes" id="drawerNotes" placeholder="Your notes...">${escapeHtml(ss.notes || '')}</textarea>`;
 
   html += `<div class="drawer-section-title">Due date</div>
-    <input type="date" class="drawer-due-date" id="drawerDue" value="${state.dueDates[stepId] || ''}">`;
+    <input type="date" class="drawer-due-date" id="drawerDue" value="${state.dueDates[stepId] || ''}">
+    <div class="due-quick">
+      ${[['today', 'Today'], ['tomorrow', 'Tomorrow'], ['nextweek', 'Next week'], ['clear', 'No date']].map(([w, l]) =>
+        `<button type="button" class="qa-chip" onclick="rescheduleStep('${stepId}','${w}');openStepDrawer('${milestoneId}','${stepId}')">${l}</button>`).join('')}
+    </div>`;
 
   if (ss.status !== 'done') {
     html += `<button class="btn btn-outline" style="width:100%;margin-top:16px;" onclick="markStepDone('${stepId}','${milestoneId}')">Mark as done</button>`;
@@ -3147,6 +3281,26 @@ function openStepDrawer(milestoneId, stepId) {
   // own object directly (same convention as the title); base steps (and
   // steps living inside a custom project's milestone) go through
   // stepOverrides instead.
+  const resumeEl = document.getElementById('drawerResume');
+  if (resumeEl) resumeEl.addEventListener('change', () => setResumeNote(stepId, resumeEl.value));
+  const titleEl = document.getElementById('drawerStepTitle');
+  if (titleEl) {
+    titleEl.addEventListener('change', () => {
+      const val = titleEl.value.trim();
+      if (!val) { titleEl.value = step.title; return; }
+      const customStep = (state.customSteps[milestoneId] || []).find(s => s.id === stepId);
+      if (customStep) {
+        customStep.title = val;
+      } else {
+        if (!state.stepOverrides) state.stepOverrides = {};
+        if (!state.stepOverrides[stepId]) state.stepOverrides[stepId] = {};
+        state.stepOverrides[stepId].title = val;
+      }
+      saveState();
+      drawer.querySelector('h3').textContent = val;
+      refreshCurrentView();
+    });
+  }
   const descEl = document.getElementById('drawerStepDesc');
   if (descEl) {
     descEl.addEventListener('input', () => {
@@ -3208,21 +3362,52 @@ function renderUrgencyInDrawer(itemId) {
 
 // (closeDrawer defined earlier — Task 1 version handles the More drawer too.)
 
-function markStepDone(stepId, milestoneId) {
+// Mark a step done or not done. Finishing the last open step completes
+// the milestone (with confetti); reopening a step reopens its milestone.
+// Caller saves.
+function setStepDone(stepId, milestoneId, done) {
   const ss = getStepState(stepId);
-  ss.status = 'done';
-  const steps = getAllSteps(milestoneId);
-  const allDone = steps.every(s => getStepState(s.id).status === 'done');
-  if (allDone) {
-    getMilestoneState(milestoneId).status = 'done';
-    showConfetti();
+  const msState = getMilestoneState(milestoneId);
+  if (done) {
+    ss.status = 'done';
+    ss.doneDate = todayStr();
+    const allDone = getAllSteps(milestoneId).every(s => getStepState(s.id).status === 'done');
+    if (allDone && msState.status !== 'done') {
+      msState.status = 'done';
+      showConfetti();
+    }
+    const track = getTrackForMilestone(milestoneId);
+    const ms = getMilestone(milestoneId);
+    state.lastAction = `${getTrackLabel(track)} → ${ms ? ms.title : ''} → done`;
+  } else {
+    ss.status = (ss.blocksCompleted || 0) > 0 ? 'active' : 'pending';
+    delete ss.doneDate;
+    if (msState.status === 'done') msState.status = 'pending';
   }
-  const track = getTrackForMilestone(milestoneId);
-  const ms = getMilestone(milestoneId);
-  state.lastAction = `${getTrackLabel(track)} → ${ms ? ms.title : ''} → done`;
+}
+
+function markStepDone(stepId, milestoneId) {
+  setStepDone(stepId, milestoneId, true);
   saveState();
   closeDrawer();
   handleRoute();
+}
+
+// onToggle: optional JS to run instead of toggleStepDone (e.g. to also
+// refresh a drawer).
+function stepCheckHtml(milestoneId, stepId, done, onToggle) {
+  const action = onToggle || `toggleStepDone('${milestoneId}','${stepId}')`;
+  return `<button type="button" class="step-check${done ? ' done' : ''}" role="checkbox" aria-checked="${done}"
+    aria-label="${done ? 'Mark not done' : 'Mark done'}" title="${done ? 'Mark not done' : 'Mark done'}"
+    onclick="event.stopPropagation();${action}">${ICONS.check}</button>`;
+}
+
+// The round check on step cards and Today rows: flips done ↔ not done in
+// place, without opening the drawer.
+function toggleStepDone(milestoneId, stepId) {
+  setStepDone(stepId, milestoneId, getStepState(stepId).status !== 'done');
+  saveState();
+  refreshCurrentView();
 }
 
 // Feature 1: delete custom step. Round 5 Task 3b: also handles steps living
@@ -3254,8 +3439,13 @@ function renderFocus(milestoneId, stepId) {
   const el = document.getElementById('view-focus');
 
   if (!milestoneId || !stepId) {
+    // A block in progress (running or paused) wins over the queue, so the
+    // Focus tab and the timer pill return to it instead of the step-change
+    // reset below silently stopping it.
     const next = getNextQueuedTask();
-    if (next) { milestoneId = next.milestone.id; stepId = next.step.id; }
+    if (timerStepId && timerMilestoneId && (timerRunning || timerRemainingMs)) {
+      milestoneId = timerMilestoneId; stepId = timerStepId;
+    } else if (next) { milestoneId = next.milestone.id; stepId = next.step.id; }
     else { el.innerHTML = '<div class="focus-view"><p style="color:var(--text-muted)">No task queued. Pick a project first.</p></div>'; return; }
   }
 
@@ -3265,7 +3455,7 @@ function renderFocus(milestoneId, stepId) {
   if (!ms || !step) { el.innerHTML = '<div class="focus-view"><p style="color:var(--text-muted)">Task not found.</p></div>'; return; }
 
   const track = getTrackForMilestone(milestoneId);
-  const color = TRACK_COLORS[track];
+  const color = getTrackColor(track);
   const blocksOnStep = getBlocksForStep(stepId);
   const estBlocks = step.estimated_blocks || null;
   const todayFull = getTodayBlocks().filter(l => !l.warmup).length;
@@ -3278,8 +3468,7 @@ function renderFocus(milestoneId, stepId) {
   timerStepId = stepId;
   timerMilestoneId = milestoneId;
 
-  const isWarmup = timerIsWarmup;
-  const duration = isWarmup ? state.settings.warmupDurationMin : state.settings.blockDurationMin;
+  const duration = timerDurationMin();
   if (stepChanged && timerRunning) {
     // Switching tasks mid-block: stop the current timer cleanly.
     clearInterval(timerInterval);
@@ -3291,6 +3480,7 @@ function renderFocus(milestoneId, stepId) {
     timerTotal = duration * 60;
     timerRemaining = timerTotal;
     timerEndTime = 0;
+    timerWarned = false;
   } else {
     // Recompute remaining from wall clock so the display is accurate
     // after a re-render (the timer was never actually paused).
@@ -3306,6 +3496,11 @@ function renderFocus(milestoneId, stepId) {
       <div class="focus-breadcrumb">${escapeHtml(getTrackLabel(track))} → ${escapeHtml(ms.title)} → ${escapeHtml(step.title)}</div>
       <div class="focus-step-title">${escapeHtml(step.title)}</div>
       ${step.desc ? `<div class="focus-step-desc">${escapeHtml(String(step.desc).length > 140 ? String(step.desc).slice(0, 140).trim() + '…' : step.desc)}</div>` : ''}
+      ${getResumeNote(stepId) ? `<div class="resume-note" role="note">
+        <span class="resume-note-label">Pick up here</span>
+        <span class="resume-note-text">${escapeHtml(getResumeNote(stepId))}</span>
+        <button type="button" class="resume-note-clear" aria-label="Clear note" title="Clear note" onclick="setResumeNote('${stepId}','');renderFocus('${milestoneId}','${stepId}')">${ICONS.xSm}</button>
+      </div>` : ''}
 
       <div class="timer-ring">
         <svg viewBox="0 0 180 180">
@@ -3335,8 +3530,9 @@ function renderFocus(milestoneId, stepId) {
       })()}
 
       <div class="focus-toggle">
-        <button class="${!timerIsWarmup ? 'active' : ''}" onclick="setTimerMode(false)">Full (${state.settings.blockDurationMin}m)</button>
-        <button class="${timerIsWarmup ? 'active' : ''}" onclick="setTimerMode(true)">Warm-up (${state.settings.warmupDurationMin}m)</button>
+        <button class="${timerMode() === 'full' ? 'active' : ''}" onclick="setTimerMode('full')">Full (${state.settings.blockDurationMin}m)</button>
+        <button class="${timerMode() === 'warmup' ? 'active' : ''}" onclick="setTimerMode('warmup')">Warm-up (${state.settings.warmupDurationMin}m)</button>
+        <button class="${timerMode() === 'starter' ? 'active' : ''}" onclick="setTimerMode('starter')" title="Can't get started? Just do 5 minutes.">Just ${STARTER_MIN} min</button>
       </div>
 
       <div class="focus-controls">
@@ -3437,21 +3633,51 @@ function formatTime(seconds) {
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
-function setTimerMode(warmup) {
+function timerMode() {
+  return timerIsStarter ? 'starter' : timerIsWarmup ? 'warmup' : 'full';
+}
+
+function timerDurationMin() {
+  if (timerIsStarter) return STARTER_MIN;
+  return timerIsWarmup ? state.settings.warmupDurationMin : state.settings.blockDurationMin;
+}
+
+// mode: 'full' | 'warmup' | 'starter' (true/false still mean warm-up/full
+// for older callers).
+function setTimerMode(mode) {
   if (timerRunning) return;
-  timerIsWarmup = warmup;
-  const duration = warmup ? state.settings.warmupDurationMin : state.settings.blockDurationMin;
-  timerTotal = duration * 60;
+  if (mode === true) mode = 'warmup';
+  if (mode === false) mode = 'full';
+  timerIsWarmup = mode === 'warmup';
+  timerIsStarter = mode === 'starter';
+  timerTotal = timerDurationMin() * 60;
   timerRemaining = timerTotal;
   timerRemainingMs = 0;
   timerEndTime = 0;
+  timerWarned = false;
   saveTimerToStorage();
   const display = document.getElementById('timerDisplay');
   if (display) display.textContent = formatTime(timerRemaining);
   updateTimerRing();
+  const order = ['full', 'warmup', 'starter'];
   document.querySelectorAll('.focus-toggle button').forEach((btn, i) => {
-    btn.classList.toggle('active', i === (warmup ? 1 : 0));
+    btn.classList.toggle('active', order[i] === mode);
   });
+}
+
+// Open the focus view on a step in a given mode, optionally starting
+// right away (used by "Just 5 min" buttons outside the focus view).
+function startFocus(milestoneId, stepId, mode, autostart) {
+  if (timerRunning && (timerStepId !== stepId)) return navigate(`#focus/${milestoneId}/${stepId}`);
+  closeDrawer();
+  if (!timerRunning) {
+    timerStepId = stepId;
+    timerMilestoneId = milestoneId;
+    timerRemainingMs = 0;
+    setTimerMode(mode || 'full');
+  }
+  navigate(`#focus/${milestoneId}/${stepId}`);
+  if (autostart && !timerRunning) setTimeout(() => { if (!timerRunning) toggleTimer(); }, 0);
 }
 
 function toggleTimer() {
@@ -3476,6 +3702,11 @@ function toggleTimer() {
     if (btn) btn.textContent = 'Pause';
     if (timerInterval) clearInterval(timerInterval);
     timerInterval = setInterval(timerTick, 1000);
+    // Feature 16: browsers only allow sound / permission prompts from a
+    // click, so get both ready now for the end-of-block alert.
+    unlockAudio();
+    maybeAskNotificationPermission();
+    if (getBreak()) cancelBreak();
   }
   saveTimerToStorage();
   updateTimerPill();
@@ -3486,8 +3717,8 @@ function resetTimer() {
   timerRunning = false;
   timerEndTime = 0;
   timerRemainingMs = 0;
-  const duration = timerIsWarmup ? state.settings.warmupDurationMin : state.settings.blockDurationMin;
-  timerTotal = duration * 60;
+  timerWarned = false;
+  timerTotal = timerDurationMin() * 60;
   timerRemaining = timerTotal;
   saveTimerToStorage();
   const display = document.getElementById('timerDisplay');
@@ -3502,6 +3733,11 @@ function timerTick() {
   // Phase 1a: recompute from wall clock so backgrounded tabs (which
   // throttle setInterval) and re-renders don't lose time.
   timerRemaining = computeTimerRemaining();
+  if (!timerWarned && !timerIsStarter && timerTotal >= 15 * 60 && timerRemaining > 0 && timerRemaining <= 5 * 60) {
+    timerWarned = true;
+    saveTimerToStorage();
+    warnBlockEnding();
+  }
   if (timerRemaining <= 0) {
     timerRemaining = 0;
     clearInterval(timerInterval);
@@ -3509,7 +3745,12 @@ function timerTick() {
     timerEndTime = 0;
     timerRemainingMs = 0;
     saveTimerToStorage();
-    completeBlock();
+    if (timerIsStarter) {
+      finishStarter();
+    } else {
+      completeBlock();
+      notifyBlockEnd(timerIsWarmup);
+    }
   }
   const display = document.getElementById('timerDisplay');
   if (display) display.textContent = formatTime(timerRemaining);
@@ -3522,7 +3763,21 @@ function updateTimerPill() {
   const pill = document.getElementById('timerPill');
   if (!pill) return;
   if (!timerRunning || !timerStepId || !timerMilestoneId) {
+    // Feature 18: between blocks, the pill counts down an active break.
+    const brk = getBreak();
+    if (brk && brk.endTime > Date.now()) {
+      const left = Math.ceil((brk.endTime - Date.now()) / 1000);
+      pill.hidden = false;
+      pill.href = `#focus/${brk.milestoneId}/${brk.stepId}`;
+      const timeEl = document.getElementById('timerPillTime');
+      const labelEl = document.getElementById('timerPillLabel');
+      if (timeEl) timeEl.textContent = formatTime(left);
+      if (labelEl) labelEl.textContent = 'Break';
+      document.title = `Break ${formatTime(left)}`;
+      return;
+    }
     pill.hidden = true;
+    document.title = BASE_TITLE;
     return;
   }
   pill.hidden = false;
@@ -3534,8 +3789,10 @@ function updateTimerPill() {
   const labelEl = document.getElementById('timerPillLabel');
   if (timeEl) timeEl.textContent = formatTime(timerRemaining);
   if (labelEl) labelEl.textContent = label;
+  // Countdown in the tab title, visible from any other tab.
+  document.title = `${formatTime(timerRemaining)} · ${label}`;
   const track = getTrackForMilestone(timerMilestoneId);
-  const color = track ? TRACK_COLORS[track] : null;
+  const color = track ? getTrackColor(track) : null;
   if (color) pill.style.setProperty('--pill-color', color);
 }
 
@@ -3595,6 +3852,234 @@ function completeBlock(opts) {
   if (hash.startsWith('#focus')) {
     renderFocus(timerMilestoneId, timerStepId);
   }
+}
+
+// ---- Feature 16: block-end alerts ----
+// A soft chime (Web Audio, so no sound file to ship), a system
+// notification when Soma isn't the visible tab, and a break nudge.
+const BASE_TITLE = document.title;
+const NOTIFY_ASKED_KEY = 'soma_notify_asked';
+let _audioCtx = null;
+
+function unlockAudio() {
+  try {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    if (!_audioCtx) _audioCtx = new AC();
+    if (_audioCtx.state === 'suspended') _audioCtx.resume();
+  } catch (e) { /* no audio */ }
+}
+
+// Default: three rising sine notes (E5, A5, E6), each fading out over ~1s.
+const CHIME_DONE = [[659.25, 0], [880, 0.18], [1318.5, 0.36]];
+// A single soft note for heads-ups (5 minutes left, break over).
+const CHIME_SOFT = [[880, 0]];
+
+function playChime(notes) {
+  unlockAudio();
+  const ctx = _audioCtx;
+  if (!ctx) return;
+  const now = ctx.currentTime;
+  (notes || CHIME_DONE).forEach(([freq, at]) => {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0.0001, now + at);
+    gain.gain.exponentialRampToValueAtTime(0.18, now + at + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + at + 1.2);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(now + at);
+    osc.stop(now + at + 1.3);
+  });
+}
+
+// Ask once, on the first Start, instead of on page load.
+function maybeAskNotificationPermission() {
+  try {
+    if (!('Notification' in window) || Notification.permission !== 'default') return;
+    if (localStorage.getItem(NOTIFY_ASKED_KEY)) return;
+    localStorage.setItem(NOTIFY_ASKED_KEY, '1');
+    Notification.requestPermission().catch(() => {});
+  } catch (e) { /* unsupported */ }
+}
+
+function showSystemNotification(title, body) {
+  try {
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+    const opts = { body, icon: 'icon-192.png', tag: 'soma-block' };
+    try {
+      new Notification(title, opts);
+    } catch (e) {
+      // Android Chrome only allows notifications through a service worker.
+      if (navigator.serviceWorker) navigator.serviceWorker.getRegistration().then(r => r && r.showNotification(title, opts));
+    }
+  } catch (e) { /* unsupported */ }
+}
+
+function notifyBlockEnd(warmup) {
+  const breakMin = warmup ? 5 : 15;
+  const step = getAllSteps(timerMilestoneId).find(s => s.id === timerStepId);
+  const title = warmup ? 'Warm-up done' : 'Focus block done';
+  if (state.settings.blockEndSound !== false) playChime();
+  if (document.visibilityState !== 'visible') {
+    showSystemNotification(title, `${step ? step.title + ': ' : ''}nice work. Take a ${breakMin}-minute break — stand up, stretch, drink some water.`);
+  }
+  openBlockDonePanel({ title, breakMin, milestoneId: timerMilestoneId, stepId: timerStepId });
+}
+
+// ---- Feature 18: smoother starts, stops and restarts ----
+
+// 5 minutes before the end: a soft heads-up to wrap up and leave a note.
+function warnBlockEnding() {
+  if (state.settings.blockEndSound !== false) playChime(CHIME_SOFT);
+  const msg = '5 minutes left. Start wrapping up, and think about where you’ll pick up next time.';
+  if (document.visibilityState !== 'visible') showSystemNotification('5 minutes left', msg);
+  qaToast(msg);
+}
+
+// "Just 5 minutes" finished: celebrate starting, then offer to keep going
+// with the 5 minutes already counted.
+function finishStarter() {
+  timerIsStarter = false;
+  if (state.settings.blockEndSound !== false) playChime();
+  state.points += 1;
+  saveState();
+  showPointsPopup(1);
+  if (document.visibilityState !== 'visible') {
+    showSystemNotification('You started!', 'That was the hardest part. Keep going?');
+  }
+  const overlay = openSmallModal('starterDoneOverlay', `
+    <div class="project-modal-title">You started — that’s the hardest part</div>
+    <p class="modal-copy">Keep the momentum? The 5 minutes you just did count toward the block.</p>
+    <div class="project-modal-actions">
+      <button type="button" class="btn btn-outline" data-act="stop">Stop here</button>
+      <button type="button" class="btn btn-outline" data-act="warmup">Keep going (${state.settings.warmupDurationMin}m)</button>
+      <button type="button" class="btn btn-primary" data-act="full">Keep going (${state.settings.blockDurationMin}m)</button>
+    </div>`);
+  overlay.addEventListener('click', (e) => {
+    const act = e.target.dataset && e.target.dataset.act;
+    if (!act) return;
+    overlay.remove();
+    if (act === 'stop') {
+      setTimerMode('full');
+      refreshFocusIfOpen();
+      return;
+    }
+    continueAfterStarter(act);
+  });
+}
+
+function continueAfterStarter(mode) {
+  setTimerMode(mode);
+  // Credit the starter minutes: the new block begins part-way through.
+  const left = Math.max(60, timerTotal - STARTER_MIN * 60);
+  timerRemaining = left;
+  timerRemainingMs = left * 1000;
+  toggleTimer();
+  refreshFocusIfOpen();
+}
+
+function refreshFocusIfOpen() {
+  if ((window.location.hash || '').startsWith('#focus')) renderFocus(timerMilestoneId, timerStepId);
+}
+
+// A dismissable dialog in the project-modal style. Returns the overlay.
+function openSmallModal(id, innerHtml) {
+  const old = document.getElementById(id);
+  if (old) old.remove();
+  const overlay = document.createElement('div');
+  overlay.id = id;
+  overlay.className = 'project-modal-overlay small-modal-overlay';
+  overlay.innerHTML = `<div class="project-modal" role="dialog" aria-modal="true">${innerHtml}</div>`;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+  const first = overlay.querySelector('textarea, input, .btn-primary');
+  if (first) setTimeout(() => first.focus(), 30);
+  return overlay;
+}
+
+// After a block: one line on where you left off (shown next time you open
+// the step), then an optional break timer.
+function openBlockDonePanel({ title, breakMin, milestoneId, stepId }) {
+  const step = getAllSteps(milestoneId).find(s => s.id === stepId);
+  const current = (getStepState(stepId).resumeNote || {}).text || '';
+  const overlay = openSmallModal('blockDoneOverlay', `
+    <div class="project-modal-title">${escapeHtml(title)} 🎉</div>
+    ${step ? `<p class="modal-copy">Nice work on <strong>${escapeHtml(step.title)}</strong>.</p>` : ''}
+    <label class="project-modal-field">
+      <span>Where did you leave off?</span>
+      <textarea id="resumeNoteInput" rows="2" maxlength="200" placeholder="e.g. Fix the labels on figure 2">${escapeHtml(current)}</textarea>
+    </label>
+    <p class="modal-hint">You’ll see this next time you open the task, so restarting is easy.</p>
+    <div class="project-modal-actions">
+      <button type="button" class="btn btn-outline" data-act="done">Done</button>
+      <button type="button" class="btn btn-primary" data-act="break">Start ${breakMin}-min break</button>
+    </div>`);
+  overlay.addEventListener('click', (e) => {
+    const act = e.target.dataset && e.target.dataset.act;
+    if (!act) return;
+    setResumeNote(stepId, overlay.querySelector('#resumeNoteInput').value);
+    overlay.remove();
+    refreshCurrentView();
+    if (act === 'break') startBreak(breakMin, milestoneId, stepId);
+  });
+  overlay.querySelector('#resumeNoteInput').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); overlay.querySelector('[data-act="break"]').click(); }
+  });
+}
+
+function setResumeNote(stepId, text) {
+  const ss = getStepState(stepId);
+  const clean = String(text || '').trim();
+  if (clean) ss.resumeNote = { text: clean, date: todayStr() };
+  else delete ss.resumeNote;
+  saveState();
+}
+
+function getResumeNote(stepId) {
+  const ss = state.steps[stepId];
+  return ss && ss.resumeNote ? ss.resumeNote.text : '';
+}
+
+// Break timer: counts down in the timer pill and tab title, then nudges
+// back to the same task. Starting a new block cancels it.
+const BREAK_KEY = 'soma_break';
+let _breakInterval = null;
+
+function getBreak() {
+  try { return JSON.parse(localStorage.getItem(BREAK_KEY) || 'null'); } catch (e) { return null; }
+}
+
+function startBreak(minutes, milestoneId, stepId) {
+  try { localStorage.setItem(BREAK_KEY, JSON.stringify({ endTime: Date.now() + minutes * 60000, milestoneId, stepId })); } catch (e) { /* ignore */ }
+  runBreakTicker();
+}
+
+function cancelBreak() {
+  try { localStorage.removeItem(BREAK_KEY); } catch (e) { /* ignore */ }
+  if (_breakInterval) clearInterval(_breakInterval);
+  _breakInterval = null;
+  updateTimerPill();
+}
+
+function runBreakTicker() {
+  if (_breakInterval) clearInterval(_breakInterval);
+  const tick = () => {
+    const b = getBreak();
+    if (!b) { cancelBreak(); return; }
+    if (Date.now() >= b.endTime) {
+      cancelBreak();
+      if (state.settings.blockEndSound !== false) playChime(CHIME_SOFT);
+      const msg = 'Break’s over. Ready for the next block?';
+      if (document.visibilityState !== 'visible') showSystemNotification('Break’s over', msg);
+      qaToast(msg, { view: `#focus/${b.milestoneId}/${b.stepId}`, viewLabel: 'Start' });
+      return;
+    }
+    updateTimerPill();
+  };
+  tick();
+  if (getBreak()) _breakInterval = setInterval(tick, 1000);
 }
 
 function showPointsPopup(pts) {
@@ -3672,7 +4157,7 @@ function renderScheduleReview() {
   if (Object.keys(breakdown).length > 0) {
     html += `<div class="review-breakdown">`;
     for (const [track, count] of Object.entries(breakdown)) {
-      const color = TRACK_COLORS[track] || '#5a5a66';
+      const color = getTrackColor(track);
       html += `<div class="review-breakdown-item"><span class="dot" style="background:${color}"></span> ${escapeHtml(getTrackLabel(track))}: ${count} blocks</div>`;
     }
     html += `</div>`;
@@ -3700,7 +4185,7 @@ function renderSchedulePlan() {
     <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px;">Pick 1–2 to reduce context switching. Only selected projects appear in your daily queue.</p>`;
 
   for (const track of getActiveTrackIds()) {
-    const color = TRACK_COLORS[track];
+    const color = getTrackColor(track);
     const label = getTrackLabel(track);
     const selected = fps.includes(track);
     const ms = getCurrentMilestone(track);
@@ -3817,7 +4302,7 @@ function renderIdeas() {
       <div class="idea-text">${escapeHtml(idea.text)}</div>
       <div class="idea-meta">
         <span class="idea-time">${timeAgo(idea.createdAt)}</span>
-        ${idea.promoted ? '<span class="badge">promoted</span>' : `<button class="idea-promote" onclick="promoteIdea('${idea.id}')">Promote to step</button>`}
+        ${idea.promoted ? '<span class="badge">promoted</span>' : `<button class="idea-promote" onclick="promoteIdea('${idea.id}')">Make it a task</button>`}
       </div>
     </div>`;
   }
@@ -3836,9 +4321,19 @@ function addIdea() {
   renderIdeas();
 }
 
+// Opens Quick Add prefilled with the idea; it's only marked promoted once
+// a task actually gets created from it.
 function promoteIdea(ideaId) {
   const idea = state.ideas.find(i => i.id === ideaId);
-  if (idea) { idea.promoted = true; saveState(); renderIdeas(); }
+  if (!idea) return;
+  openQuickAdd({
+    kind: 'task',
+    text: idea.text,
+    onAdded: () => {
+      const current = state.ideas.find(i => i.id === ideaId);
+      if (current) current.promoted = true;
+    }
+  });
 }
 
 // ---- RENDER: Admin (Feature 5) ----
@@ -4109,11 +4604,13 @@ function generateWeeklyPrompt() {
   const todayBlocks = getTodayBlocks();
   const s = state.settings;
 
-  let prompt = `You are helping a PhD student (computational biology, 5th year, Caltech) prioritize their week. They have ADHD and get overwhelmed seeing everything at once — keep your advice concrete, calm, and focused on "what to do next" rather than listing everything.\n\n`;
+  const intro = PROFILE.aiPromptIntro
+    || 'You are helping someone prioritize their week. They have ADHD and get overwhelmed seeing everything at once — keep your advice concrete, calm, and focused on "what to do next" rather than listing everything.';
+  let prompt = `${intro}\n\n`;
   prompt += `Today: ${formatDate(now)}\n`;
   prompt += `Weekly goal: ${s.weeklyGoal || 10} focus blocks (${s.blockDurationMin || 90} min each), max ${s.blocksPerDay?.max || 4}/day, weekends off\n`;
   prompt += `This week so far: ${weekBlocks.length} blocks completed\n`;
-  prompt += `Points: ${state.points} | Streak: ${state.streak.current} days\n\n`;
+  prompt += `Points: ${state.points} | Streak: ${getCurrentStreak()} days\n\n`;
 
   // Current weekly plan
   const fp = state.weeklyPlan.focusProjects || [];
@@ -4195,18 +4692,18 @@ function generateWeeklyPrompt() {
   }
 
   // Admin tasks
-  const pendingAdmin = (state.adminTasks || []).filter(t => !t.done);
+  const pendingAdmin = (state.adminTasks || []).filter(t => !t.completedDate);
   if (pendingAdmin.length > 0) {
     prompt += `--- ADMIN TASKS (misc, max 2/day) ---\n`;
     pendingAdmin.slice(0, 5).forEach(t => {
-      prompt += `  - ${t.title}\n`;
+      prompt += `  - ${t.text}\n`;
     });
     prompt += `\n`;
   }
 
   // Prep batches in progress
   const activeBatches = (state.prepBatches || []).filter(b => !b.steps.every(s => s.done));
-  if (activeBatches.length > 0) {
+  if (LAB_PREP_ENABLED && activeBatches.length > 0) {
     prompt += `--- SAMPLE PREP IN PROGRESS ---\n`;
     activeBatches.forEach(b => {
       const done = b.steps.filter(s => s.done).length;
@@ -4226,98 +4723,73 @@ function generateWeeklyPrompt() {
   return prompt;
 }
 
-async function copyWeeklyPrompt() {
-  const prompt = generateWeeklyPrompt();
+// Clipboard write with the old execCommand fallback (file:// pages and
+// some browsers refuse navigator.clipboard). Resolves true on success.
+async function copyText(text) {
   try {
-    await navigator.clipboard.writeText(prompt);
-    const btn = document.getElementById('planWeekBtn');
-    const orig = btn.innerHTML;
-    btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M20 6L9 17l-5-5"/></svg> Copied — paste into any AI chat`;
-    btn.classList.add('copied');
-    setTimeout(() => { btn.innerHTML = orig; btn.classList.remove('copied'); }, 3000);
+    await navigator.clipboard.writeText(text);
+    return true;
   } catch (e) {
-    // Fallback: open in modal
     const textarea = document.createElement('textarea');
-    textarea.value = prompt;
+    textarea.value = text;
     document.body.appendChild(textarea);
     textarea.select();
-    document.execCommand('copy');
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch (err) { ok = false; }
     document.body.removeChild(textarea);
-    const btn = document.getElementById('planWeekBtn');
-    const orig = btn.innerHTML;
-    btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M20 6L9 17l-5-5"/></svg> Copied`;
-    btn.classList.add('copied');
-    setTimeout(() => { btn.innerHTML = orig; btn.classList.remove('copied'); }, 3000);
+    return ok;
   }
 }
 
+async function copyWeeklyPrompt() {
+  if (!hasFeature('aiPlanner')) return showUpgrade('aiPlanner');
+  const ok = await copyText(generateWeeklyPrompt());
+  const btn = document.getElementById('planWeekBtn');
+  if (!btn) return;
+  const orig = btn.innerHTML;
+  btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M20 6L9 17l-5-5"/></svg> ${ok ? 'Copied — paste into any AI chat' : 'Copy failed — try again'}`;
+  btn.classList.add('copied');
+  setTimeout(() => { btn.innerHTML = orig; btn.classList.remove('copied'); }, 3000);
+}
+
+// Feature 15: "Break it down with AI". Copies a prompt asking the user's
+// own AI chat to split a step into small actions, then opens Quick Add on
+// the same milestone; pasting the reply adds one step per line, placed
+// right after the original. Nothing is sent anywhere by Soma itself.
+function generateBreakdownPrompt(milestoneId, stepId) {
+  const step = getAllSteps(milestoneId).find(s => s.id === stepId);
+  const ms = getMilestone(milestoneId);
+  const track = getTrackForMilestone(milestoneId);
+  const lines = [
+    'Break this task into 3–7 small, concrete next actions. Each one should take 15–45 minutes and start with a verb.',
+    'Reply with one action per line and nothing else: no numbering, headings or commentary.',
+    '',
+    `Task: ${step ? step.title : ''}`,
+    `Project: ${getTrackLabel(track)}${ms ? ' › ' + ms.title : ''}`
+  ];
+  if (step && step.desc) lines.push(`Details: ${step.desc}`);
+  return lines.join('\n');
+}
+
+async function breakDownWithAI(milestoneId, stepId) {
+  if (!hasFeature('aiPlanner')) { closeDrawer(); return showUpgrade('aiPlanner'); }
+  const ok = await copyText(generateBreakdownPrompt(milestoneId, stepId));
+  closeDrawer();
+  openQuickAdd({
+    kind: 'task',
+    trackId: getTrackForMilestone(milestoneId),
+    milestoneId,
+    insertAfter: stepId,
+    note: ok
+      ? 'Prompt copied. Paste it into ChatGPT, Claude or any AI chat, then paste the reply here. Each line becomes a step.'
+      : 'Couldn’t copy automatically. Ask your AI chat to break the task into small steps, one per line, then paste the reply here.'
+  });
+}
+
 // ---- RENDER: Docs ----
-const DOCS = [
-  {
-    id: 'master-strategy',
-    title: 'Master Analysis Strategy',
-    desc: 'Comprehensive methods and hypotheses for the seqFISH spatial transcriptomics pipeline across DLPFC, FIC, and DG regions.',
-    file: 'docs/master_analysis_strategy.md',
-    tags: ['dlpfc', 'bd2', 'dg', 'package'],
-    icon: 'strategy'
-  },
-  {
-    id: 'cursor-plan',
-    title: 'Cursor Coding Plan',
-    desc: 'Architect-reviewed, subagent-decomposed implementation plan for spatialpy. Phases P0 through P9 with acceptance criteria.',
-    file: 'docs/cursor_plan_improved.md',
-    tags: ['package', 'dlpfc'],
-    icon: 'code'
-  },
-  {
-    id: 'paper-prioritization',
-    title: 'Paper Prioritization',
-    desc: 'Framework for evaluating and prioritizing the portfolio of potential papers from seqFISH AD/FTD data.',
-    file: 'docs/paper_prioritization.md',
-    tags: ['dlpfc', 'bd2', 'dg'],
-    icon: 'papers'
-  },
-  {
-    id: 'gene-modules',
-    title: 'Gene Modules',
-    desc: 'Complete gene module reference for the 1,205-gene seqFISH probeset. Marker panels, cell typing modules, and pathway signatures.',
-    file: 'docs/gene_modules.md',
-    tags: ['dlpfc', 'bd2', 'dg', 'package'],
-    icon: 'dna'
-  },
-  {
-    id: 'robustness',
-    title: 'Robustness & Validation',
-    desc: 'Testing and wet lab validation guide. Statistical robustness gates, sensitivity analyses, and IF validation protocols.',
-    file: 'docs/robustness_and_validation.md',
-    tags: ['dlpfc', 'bd2', 'dg'],
-    icon: 'check'
-  },
-  {
-    id: 'singularity',
-    title: 'Singularity Recommendation',
-    desc: 'Technical recommendation for containerization of the txomics pipeline on HPC clusters.',
-    file: 'docs/singularity_recommendation.md',
-    tags: ['package'],
-    icon: 'server'
-  },
-  {
-    id: 'paper-plans',
-    title: 'Paper Plans',
-    desc: 'Detailed paper outlines and figure plans for all publications.',
-    file: 'docs/paper_plans.pdf',
-    tags: ['dlpfc', 'bd2', 'dg'],
-    icon: 'papers'
-  },
-  {
-    id: 'sample-processing',
-    title: 'Sample Processing Protocol',
-    desc: 'RNA Guide ASY-053.02-2 — wet lab sample processing protocol for seqFISH experiments.',
-    file: 'docs/Sample_Processing_for_RNA_Guide_ASY-053.02-2.pdf',
-    tags: ['dlpfc', 'bd2', 'dg'],
-    icon: 'lab'
-  }
-];
+// Reference docs are profile data (see SOMA_PROFILE.docs in data.js); each
+// entry is { id, title, desc, file, tags: [trackId…], icon: DOC_ICONS key }.
+const DOCS = Array.isArray(PROFILE.docs) ? PROFILE.docs : [];
 
 const DOC_ICONS = {
   strategy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>',
@@ -4333,23 +4805,32 @@ function renderDocs() {
   const el = document.getElementById('view-docs');
   let activeFilter = null;
 
+  if (!DOCS.length) {
+    el.innerHTML = `<div class="section-title">Reference Docs</div>
+      <p style="font-size:var(--text-sm);color:var(--text-secondary);">No reference docs yet.</p>`;
+    return;
+  }
+
+  // One filter per project that at least one doc is tagged with, in the
+  // same order projects appear everywhere else.
+  const taggedTracks = new Set(DOCS.flatMap(d => d.tags || []));
+  const filterTracks = getAllTrackIds().filter(t => taggedTracks.has(t));
+
   let html = `<div class="section-title">Reference Docs</div>
     <p style="font-size:var(--text-sm);color:var(--text-secondary);margin-bottom:var(--sp-5);">
-      Key documents from your research planning sessions. Tap to open.
+      Key documents from your planning sessions. Tap to open.
     </p>
     <div class="docs-filter" id="docsFilter">
       <button class="doc-filter-btn active" data-filter="all">All</button>
-      <button class="doc-filter-btn" data-filter="dlpfc" style="--fc:var(--c-dlpfc)">DLPFC</button>
-      <button class="doc-filter-btn" data-filter="package" style="--fc:var(--c-package)">txomics</button>
-      <button class="doc-filter-btn" data-filter="bd2" style="--fc:var(--c-bd2)">BD2</button>
-      <button class="doc-filter-btn" data-filter="dg" style="--fc:var(--c-dg)">DG</button>
+      ${filterTracks.map(t => `<button class="doc-filter-btn" data-filter="${t}" style="--fc:${getTrackColor(t)}">${escapeHtml(getTrackLabel(t).split(' ')[0])}</button>`).join('')}
     </div>
     <div class="docs-grid" id="docsGrid">`;
 
   DOCS.forEach(doc => {
+    doc.tags = doc.tags || [];
     const tagBadges = doc.tags.map(t => {
-      const color = TRACK_COLORS[t] || 'var(--text-muted)';
-      const label = TRACK_LABELS[t] || t;
+      const color = getTrackColor(t);
+      const label = getTrackLabel(t);
       return `<span class="doc-tag" style="color:${color};border-color:${color}30">${label.split(' ')[0]}</span>`;
     }).join('');
     const isPdf = doc.file.endsWith('.pdf');
@@ -4391,22 +4872,29 @@ function renderSettings() {
 
   const currentTheme = getTheme();
 
+  const guide = DOCS.find(d => d.id === 'guide');
   let html = `<div class="section-title">Settings</div>
+    ${guide ? `<a class="settings-guide-link" href="${guide.file}" target="_blank" rel="noopener">New here, or stuck? Read <strong>How to use Soma</strong> →</a>` : ''}
 
     <div class="settings-group">
       <h4>Theme</h4>
       <div class="theme-picker">
-        ${THEMES.map(t => `
-          <div class="theme-swatch ${t.id === currentTheme ? 'active' : ''}" onclick="applyTheme('${t.id}'); renderSettings();" title="${t.label}">
+        ${THEMES.map(t => {
+          const locked = !hasFeature('themes') && !FREE_THEMES.includes(t.id);
+          return `
+          <div class="theme-swatch ${t.id === currentTheme ? 'active' : ''}${locked ? ' theme-locked' : ''}" onclick="${locked ? "showUpgrade('themes')" : `applyTheme('${t.id}'); renderSettings();`}" title="${t.label}${locked ? ' (Pro)' : ''}">
             <div class="swatch-inner">
               <div class="swatch-top" style="background:${t.top}"></div>
               <div class="swatch-bot" style="background:${t.bot}"></div>
             </div>
-            <span class="swatch-label">${t.label}</span>
+            <span class="swatch-label">${t.label}${locked ? ' <span class="pro-badge">Pro</span>' : ''}</span>
           </div>
-        `).join('')}
+        `;
+        }).join('')}
       </div>
     </div>
+
+    ${renderProSettings()}
 
     <div class="settings-group" style="margin-top:var(--sp-6);">
       <h4>Focus blocks</h4>
@@ -4430,6 +4918,14 @@ function renderSettings() {
         <span class="setting-label">Weekly goal (blocks)</span>
         <input class="setting-input" type="number" id="settingWeeklyGoal" value="${s.weeklyGoal || 10}" min="1" max="30">
       </div>
+      <div class="setting-row">
+        <label class="setting-label" for="settingChime">Chime when a block ends</label>
+        <input type="checkbox" id="settingChime" ${s.blockEndSound !== false ? 'checked' : ''}>
+      </div>
+      <div class="setting-row">
+        <span class="setting-label">Notify me when a block ends</span>
+        ${notificationSettingHtml()}
+      </div>
     </div>
 
     <div class="settings-group">
@@ -4444,7 +4940,7 @@ function renderSettings() {
       </div>
       <div class="setting-row">
         <span class="setting-label">Current streak</span>
-        <span style="font-size:13px;color:var(--text-primary)">${state.streak.current} days</span>
+        <span style="font-size:13px;color:var(--text-primary)">${getCurrentStreak()} days (best ${getBestStreak()})</span>
       </div>
       <div class="setting-row">
         <span class="setting-label">Custom steps</span>
@@ -4454,10 +4950,10 @@ function renderSettings() {
         <span class="setting-label">Admin tasks</span>
         <span style="font-size:13px;color:var(--text-primary)">${(state.adminTasks || []).length}</span>
       </div>
-      <div class="setting-row">
+      ${LAB_PREP_ENABLED ? `<div class="setting-row">
         <span class="setting-label">Prep batches</span>
         <span style="font-size:13px;color:var(--text-primary)">${(state.prepBatches || []).length}</span>
-      </div>
+      </div>` : ''}
     </div>
 
     <div class="settings-group">
@@ -4471,7 +4967,7 @@ function renderSettings() {
       <input type="file" class="import-file-input" id="importFileInput" accept=".json" onchange="handleImportFile(this)">
     </div>
 
-    <div class="settings-group">
+    ${GITHUB_SYNC_ENABLED ? `<div class="settings-group">
       <h4>GitHub Sync</h4>
       <p style="font-size:var(--text-xs);color:var(--text-muted);margin-bottom:var(--sp-3);">Your progress auto-syncs to <code style="font-size:11px;background:rgba(255,255,255,0.06);padding:1px 4px;border-radius:3px;">state.json</code> in your repo 4 seconds after any change. Paste a classic GitHub PAT with <code style="font-size:11px;background:rgba(255,255,255,0.06);padding:1px 4px;border-radius:3px;">repo</code> scope.</p>
       <div class="setting-row" style="gap:8px;">
@@ -4494,7 +4990,7 @@ function renderSettings() {
           Pull from GitHub
         </button>
       </div>
-    </div>
+    </div>` : ''}
 
     <div class="settings-group">
       <button class="btn btn-outline" style="width:100%;" onclick="resetAllData()">Reset all data</button>
@@ -4502,7 +4998,7 @@ function renderSettings() {
 
   el.innerHTML = html;
 
-  ['settingBlockDur', 'settingWarmupDur', 'settingMinBlocks', 'settingMaxBlocks', 'settingWeeklyGoal'].forEach(id => {
+  ['settingBlockDur', 'settingWarmupDur', 'settingMinBlocks', 'settingMaxBlocks', 'settingWeeklyGoal', 'settingChime'].forEach(id => {
     const input = document.getElementById(id);
     if (input) input.addEventListener('change', saveSettings);
   });
@@ -4514,7 +5010,16 @@ function saveSettings() {
   state.settings.blocksPerDay.min = parseInt(document.getElementById('settingMinBlocks')?.value) || 2;
   state.settings.blocksPerDay.max = parseInt(document.getElementById('settingMaxBlocks')?.value) || 4;
   state.settings.weeklyGoal = parseInt(document.getElementById('settingWeeklyGoal')?.value) || 10;
+  const chime = document.getElementById('settingChime');
+  if (chime) state.settings.blockEndSound = chime.checked;
   saveState();
+}
+
+function notificationSettingHtml() {
+  if (!('Notification' in window)) return `<span class="setting-note">Not supported in this browser</span>`;
+  if (Notification.permission === 'granted') return `<span class="setting-note">On</span>`;
+  if (Notification.permission === 'denied') return `<span class="setting-note">Blocked — allow it in your browser's site settings</span>`;
+  return `<button class="btn btn-outline btn-sm" onclick="Notification.requestPermission().then(renderSettings).catch(() => {})">Turn on</button>`;
 }
 
 function resetAllData() {
@@ -4572,7 +5077,7 @@ function getNewlyEarnedRewards() {
   }
   for (const tier of REWARD_TIERS_STREAK) {
     const tierState = state.rewards.tiers[tier.id] || {};
-    if (state.streak.current >= tier.threshold && !tierState.claimed && !tierState.notified) {
+    if (getBestStreak() >= tier.threshold && !tierState.claimed && !tierState.notified) {
       earned.push(tier);
     }
   }
@@ -4580,7 +5085,8 @@ function getNewlyEarnedRewards() {
 }
 
 function isRewardEarned(tier, isStreak) {
-  if (isStreak) return state.streak.current >= tier.threshold;
+  // Best, not current: a reward reached stays earned after a break.
+  if (isStreak) return getBestStreak() >= tier.threshold;
   return state.points >= tier.threshold;
 }
 
@@ -4623,6 +5129,10 @@ function claimReward(tierId) {
 
 function renderRewards() {
   const el = document.getElementById('view-rewards');
+  if (!hasFeature('rewards')) {
+    el.innerHTML = `<div class="section-title">Rewards</div>` + proLockedCard('rewards', 'Pick real treats for each points tier and streak, and claim them as you earn them. Your points keep counting on the free plan.');
+    return;
+  }
   let html = `<div class="section-title">Rewards</div>
     <p style="font-size:var(--text-sm);color:var(--text-muted);margin-bottom:var(--sp-5);">Set a reward for each milestone. Claim it when you get there.</p>`;
 
@@ -4646,7 +5156,7 @@ function renderRewardCard(tier, isStreak) {
   const tierState = state.rewards.tiers[tier.id] || {};
   const claimed = tierState.claimed || false;
   const chosenText = tierState.text || '';
-  const current = isStreak ? state.streak.current : state.points;
+  const current = isStreak ? getBestStreak() : state.points;
   const pct = Math.min(100, Math.round((current / tier.threshold) * 100));
 
   let statusClass = 'locked';
@@ -4787,10 +5297,11 @@ function renderProgress() {
   const totalBlocks = allFull.length;
   const blockMin = state.settings.blockDurationMin || 90;
   const totalHours = Math.round(totalBlocks * blockMin / 60 * 10) / 10;
-  const streak = state.streak.current;
+  const streak = getCurrentStreak();
   const pts = state.points;
 
   let html = `<div class="section-title">Progress</div>
+    ${renderBoardLinks()}
     <div class="progress-stats-grid">
       <div class="progress-stat-card">
         <div class="progress-stat-value">${totalHours}</div>
@@ -4810,7 +5321,7 @@ function renderProgress() {
       </div>
     </div>
     ${renderWeeklyGoalTracker()}
-    <div class="chart-card">
+    ${hasFeature('progressCharts') ? `<div class="chart-card">
       <div class="chart-card-title">Weekly focus hours — last 12 weeks</div>
       <div class="chart-canvas-wrap" style="height:200px;">
         <canvas id="chartWeekly"></canvas>
@@ -4821,7 +5332,7 @@ function renderProgress() {
       <div class="chart-canvas-wrap" style="height:180px;">
         <canvas id="chartProject"></canvas>
       </div>
-    </div>`;
+    </div>` : proLockedCard('progressCharts', 'See your focus hours week by week and where your blocks went, project by project.')}`;
 
   el.innerHTML = html;
 
@@ -4887,7 +5398,7 @@ function renderProgress() {
     if (projectBlocks[track]) {
       projLabels.push(getTrackLabel(track));
       projData.push(projectBlocks[track]);
-      projColors.push(TRACK_COLORS[track] || '#5a5a66');
+      projColors.push(getTrackHexColor(track));
     }
   }
 
@@ -4976,7 +5487,7 @@ function renderWeeklyReviewStep(step) {
           <div class="review-stat-lbl">Projects</div>
         </div>
         <div class="review-stat">
-          <div class="review-stat-val">${state.streak.current}</div>
+          <div class="review-stat-val">${getCurrentStreak()}</div>
           <div class="review-stat-lbl">Streak</div>
         </div>
       </div>
@@ -4993,7 +5504,7 @@ function renderWeeklyReviewStep(step) {
     const fps = state.weeklyPlan.focusProjects || [];
     let projectPicker = '';
     for (const track of getActiveTrackIds()) {
-      const color = TRACK_COLORS[track];
+      const color = getTrackColor(track);
       const label = getTrackLabel(track);
       const selected = fps.includes(track);
       projectPicker += `<div class="focus-proj-toggle${selected ? ' selected' : ''}" data-track="${track}" style="${selected ? 'border-color:' + color : ''}" onclick="reviewToggleProject('${track}', this)">
@@ -5038,7 +5549,7 @@ function reviewToggleProject(track, el) {
   } else {
     fps.push(track);
     el.classList.add('selected');
-    el.style.borderColor = TRACK_COLORS[track] || '';
+    el.style.borderColor = getTrackColor(track);
   }
   state.weeklyPlan.focusProjects = fps;
   saveState();
@@ -5067,10 +5578,1384 @@ function reviewStep3() {
 }
 
 // ================================================================
+// FEATURE 14: TODAY
+// ================================================================
+// A short list of what to work on today, across every project. Picks
+// carry over until they're done, so nothing silently falls off, and
+// finished picks stay (struck through) for the rest of the day. Steps due
+// within a week show underneath; with nothing picked, the card suggests
+// each project's next open step.
+
+const TODAY_SOFT_CAP = 3;
+const DUE_SOON_DAYS = 7;
+
+// Read-only status lookup: getStepState() would create an entry for every
+// step these lists scan.
+function stepStatus(stepId) {
+  return (state.steps[stepId] && state.steps[stepId].status) || 'pending';
+}
+
+function isPickedForToday(stepId) {
+  return !!(state.todayPicks && state.todayPicks[stepId]);
+}
+
+function setTodayPick(stepId, milestoneId, picked) {
+  if (!state.todayPicks) state.todayPicks = {};
+  if (picked) state.todayPicks[stepId] = { milestoneId, date: todayStr() };
+  else delete state.todayPicks[stepId];
+}
+
+function toggleTodayPick(milestoneId, stepId) {
+  setTodayPick(stepId, milestoneId, !isPickedForToday(stepId));
+  saveState();
+  refreshCurrentView();
+}
+
+// when: 'today' | 'tomorrow' | 'nextweek' (next Monday) | 'clear'
+function rescheduleStep(stepId, when) {
+  const d = new Date(todayStr() + 'T00:00:00');
+  if (when === 'tomorrow') d.setDate(d.getDate() + 1);
+  if (when === 'nextweek') d.setDate(d.getDate() + (((8 - d.getDay()) % 7) || 7));
+  if (when === 'clear') delete state.dueDates[stepId];
+  else state.dueDates[stepId] = localDateStr(d);
+  saveState();
+  refreshCurrentView();
+}
+
+// Picks worth showing: open ones (including those carried over from
+// earlier days) and ones finished today. Picks whose step was finished on
+// an earlier day, archived or deleted are dropped.
+function getTodayItems() {
+  const today = todayStr();
+  const items = [];
+  let pruned = false;
+  for (const [stepId, pick] of Object.entries(state.todayPicks || {})) {
+    const step = getAllSteps(pick.milestoneId).find(s => s.id === stepId);
+    const ss = state.steps[stepId] || {};
+    if (!step || (ss.status === 'done' && ss.doneDate !== today)) {
+      delete state.todayPicks[stepId];
+      pruned = true;
+      continue;
+    }
+    items.push({ step, milestoneId: pick.milestoneId, trackId: getTrackForMilestone(pick.milestoneId), done: ss.status === 'done', date: pick.date });
+  }
+  if (pruned) saveState();
+  items.sort((a, b) => (a.done - b.done) || a.date.localeCompare(b.date));
+  return items;
+}
+
+// Open steps on active projects due within DUE_SOON_DAYS (or overdue).
+function getDueSoonItems(excludeIds) {
+  const limit = new Date(todayStr() + 'T00:00:00');
+  limit.setDate(limit.getDate() + DUE_SOON_DAYS);
+  const limitStr = localDateStr(limit);
+  const out = [];
+  for (const trackId of getActiveTrackIds()) {
+    for (const ms of getMilestonesForTrack(trackId)) {
+      for (const step of getAllSteps(ms.id)) {
+        const due = state.dueDates[step.id];
+        if (!due || due > limitStr || excludeIds.has(step.id) || stepStatus(step.id) === 'done') continue;
+        out.push({ step, milestoneId: ms.id, trackId, due });
+      }
+    }
+  }
+  return out.sort((a, b) => a.due.localeCompare(b.due));
+}
+
+// Each project's next open step, this week's focus projects first.
+function getTodaySuggestions(excludeIds) {
+  const active = getActiveTrackIds();
+  const focus = (state.weeklyPlan.focusProjects || []).filter(t => active.includes(t));
+  const out = [];
+  for (const trackId of [...focus, ...active.filter(t => !focus.includes(t))]) {
+    const ms = getCurrentMilestone(trackId);
+    if (!ms) continue;
+    const step = getAllSteps(ms.id).find(s => stepStatus(s.id) !== 'done' && !excludeIds.has(s.id));
+    if (step) out.push({ step, milestoneId: ms.id, trackId });
+    if (out.length >= TODAY_SOFT_CAP) break;
+  }
+  return out;
+}
+
+// "Slipped", not "overdue": dates move, and a past date is a cue to pick
+// a new one, not a failure.
+function formatDueLabel(due) {
+  const days = Math.round((new Date(due + 'T00:00:00') - new Date(todayStr() + 'T00:00:00')) / 86400000);
+  if (days < 0) return { text: days === -1 ? 'Slipped since yesterday' : `Slipped ${-days} days`, cls: 'slipped' };
+  if (days === 0) return { text: 'Due today', cls: 'today' };
+  if (days === 1) return { text: 'Due tomorrow', cls: 'soon' };
+  return { text: 'Due ' + qaFormatDue(due), cls: '' };
+}
+
+function todayRowHtml({ step, milestoneId, trackId }, picked) {
+  const done = stepStatus(step.id) === 'done';
+  const ms = getMilestone(milestoneId);
+  const due = state.dueDates[step.id];
+  const dueInfo = due && !done ? formatDueLabel(due) : null;
+  // The date comes before the milestone so it survives truncation.
+  const meta = `<span class="today-proj" style="--pc:${getTrackColor(trackId)}">${escapeHtml(getTrackLabel(trackId))}</span>`
+    + (dueInfo ? ` · <span class="today-due ${dueInfo.cls}">${dueInfo.text}</span>` : '')
+    + (ms ? ` · ${escapeHtml(ms.title)}` : '');
+  let actions;
+  if (picked) {
+    actions = (done ? '' : `<button type="button" class="today-act" title="Start focus" aria-label="Start focus" onclick="navigate('#focus/${milestoneId}/${step.id}')">${ICONS.play}</button>`)
+      + `<button type="button" class="today-act" title="Remove from Today" aria-label="Remove from Today" onclick="toggleTodayPick('${milestoneId}','${step.id}')">${ICONS.xSm}</button>`;
+  } else {
+    actions = `<button type="button" class="today-act today-pick" title="Add to Today" onclick="toggleTodayPick('${milestoneId}','${step.id}')">${ICONS.plus}<span>Today</span></button>`;
+  }
+  // One tap to give a slipped date a new home.
+  if (dueInfo && dueInfo.cls === 'slipped') {
+    actions += `<button type="button" class="today-act" title="Move to tomorrow" onclick="rescheduleStep('${step.id}','tomorrow')">Tomorrow</button>`
+      + `<button type="button" class="today-act" title="Move to next Monday" onclick="rescheduleStep('${step.id}','nextweek')">Next week</button>`;
+  }
+  const next = getResumeNote(step.id);
+  return `<li class="today-row${done ? ' done' : ''}" style="--node-accent:${getTrackColor(trackId)}">
+    ${stepCheckHtml(milestoneId, step.id, done)}
+    <div class="today-main" role="button" tabindex="0" onclick="openStepDrawer('${milestoneId}','${step.id}')">
+      <div class="today-title">${escapeHtml(step.title)}</div>
+      <div class="today-meta">${meta}</div>
+      ${next && !done ? `<div class="today-next">Next: ${escapeHtml(next.replace(/^next\s*[:\-–]\s*/i, ''))}</div>` : ''}
+    </div>
+    <div class="today-actions">${actions}</div>
+  </li>`;
+}
+
+function renderTodayCard() {
+  const items = getTodayItems();
+  const open = items.filter(i => !i.done);
+  const pickedIds = new Set(items.map(i => i.step.id));
+  const due = getDueSoonItems(pickedIds);
+
+  let html = `<section class="card today-card" aria-labelledby="todayTitle">
+    <div class="today-head">
+      <h2 class="today-heading" id="todayTitle">Today</h2>
+      ${items.length ? `<span class="today-count">${items.length - open.length} of ${items.length} done</span>` : ''}
+      <button type="button" class="btn btn-ghost btn-sm today-add-btn" onclick="openQuickAdd({ kind: 'task', today: true })">${ICONS.plus} Add</button>
+    </div>`;
+  if (items.length) {
+    html += `<ul class="today-list">${items.map(i => todayRowHtml(i, true)).join('')}</ul>`;
+    if (open.length > TODAY_SOFT_CAP) {
+      html += `<p class="today-hint">That's a full day. ${TODAY_SOFT_CAP} things finished beats ${open.length} things started.</p>`;
+    } else if (!open.length) {
+      html += `<p class="today-hint">All done for today. Rest is productive too.</p>`;
+    }
+  } else {
+    const suggestions = getTodaySuggestions(new Set(due.map(d => d.step.id)));
+    html += `<p class="today-empty">Pick up to ${TODAY_SOFT_CAP} things to do today.${suggestions.length ? ' Some ideas:' : ''}</p>`;
+    if (suggestions.length) html += `<ul class="today-list">${suggestions.map(i => todayRowHtml(i, false)).join('')}</ul>`;
+  }
+  if (due.length) {
+    html += `<div class="today-sub">Due soon</div><ul class="today-list">${due.slice(0, 5).map(i => todayRowHtml(i, false)).join('')}</ul>`;
+    if (due.length > 5) html += `<p class="today-hint">+ ${due.length - 5} more due in the next ${DUE_SOON_DAYS} days</p>`;
+  }
+  html += `</section>`;
+  return html;
+}
+
+// ================================================================
+// FEATURE 17: BOARD
+// ================================================================
+// A Candy Land–style board for one project: a winding road from Start to
+// Finish where every space is a milestone. Each space is filled with
+// small squares, one per focus block the milestone is estimated to take
+// (grouped by step), that fill in as blocks are logged. The game piece
+// sits on the first unfinished milestone. Tapping a space opens a drawer
+// with that milestone's steps.
+
+const BOARD_TRACK_KEY = 'soma_board_track';
+const BOARD_MAX_SQUARES = 48;
+// Candy colors cycled along the road (cherry, orange, lemon, mint,
+// blueberry, grape, bubblegum). Spaces mix them into the theme surface,
+// so the board stays readable on light and dark themes alike.
+const BOARD_CANDY = ['#e8647c', '#f0a830', '#e2b93b', '#5fb98a', '#4fa3d9', '#9b7fd4', '#ef8fb4'];
+let _boardTrack = null;
+let _boardCols = 0;
+let _boardObserver = null;
+
+function boardColumns() {
+  const main = document.getElementById('mainContent');
+  const w = main ? main.clientWidth : window.innerWidth;
+  return w >= 900 ? 4 : w >= 600 ? 3 : 2;
+}
+
+function boardDefaultTrack() {
+  const active = getActiveTrackIds();
+  let remembered = null;
+  try { remembered = localStorage.getItem(BOARD_TRACK_KEY); } catch (e) { /* ignore */ }
+  const focus = (state.weeklyPlan.focusProjects || [])[0];
+  return [remembered, focus, active[0]].find(t => t && active.includes(t)) || null;
+}
+
+// One group per step (plus one per QC check), each with its block squares.
+// A finished step counts as fully filled even if fewer blocks were logged;
+// blocks logged beyond the estimate show as gold "extra" squares.
+function milestoneBlockGroups(milestoneId) {
+  const groups = getAllSteps(milestoneId).map(step => {
+    const est = step.estimated_blocks || 1;
+    const logged = getBlocksForStep(step.id);
+    const done = stepStatus(step.id) === 'done';
+    return { step, label: step.title, est, filled: done ? est : Math.min(logged, est), extra: Math.max(0, logged - est), done };
+  });
+  getQcItems(milestoneId).forEach(qc => {
+    const checked = isQcChecked(milestoneId, qc.index);
+    groups.push({ label: 'QC: ' + qc.label, est: 1, filled: checked ? 1 : 0, extra: 0, done: checked });
+  });
+  return groups;
+}
+
+function blockSquaresHtml(groups, cap) {
+  let shown = 0;
+  let hidden = 0;
+  const parts = [];
+  for (const g of groups) {
+    const squares = [];
+    const count = g.est + g.extra;
+    for (let i = 0; i < count; i++) {
+      if (cap && shown >= cap) { hidden++; continue; }
+      const cls = i < g.filled ? ' f' : i >= g.est ? ' x' : '';
+      squares.push(`<span class="bb${cls}"></span>`);
+      shown++;
+    }
+    if (squares.length) parts.push(`<span class="board-group" title="${escapeHtml(g.label)}: ${g.filled}/${g.est} block${g.est === 1 ? '' : 's'}${g.extra ? ` (+${g.extra} extra)` : ''}">${squares.join('')}</span>`);
+  }
+  if (hidden) parts.push(`<span class="board-more">+${hidden}</span>`);
+  return parts.join('');
+}
+
+function renderBoard(trackId) {
+  const el = document.getElementById('view-board');
+  if (!trackId || !getAllTrackIds().includes(trackId)) trackId = boardDefaultTrack();
+  _boardTrack = trackId;
+  if (!trackId) {
+    el.innerHTML = `<div class="section-title">Board</div>
+      <p class="today-empty">No active projects yet. Add one with the + button and its board appears here.</p>`;
+    return;
+  }
+  try { localStorage.setItem(BOARD_TRACK_KEY, trackId); } catch (e) { /* ignore */ }
+
+  const milestones = getMilestonesForTrack(trackId);
+  const color = getTrackColor(trackId);
+  const curIdx = milestones.findIndex(m => getMilestoneState(m.id).status !== 'done');
+  const allDone = milestones.length > 0 && curIdx === -1;
+  const sum = getTrackProgressSummary(trackId);
+
+  const options = getActiveTrackIds();
+  if (!options.includes(trackId)) options.push(trackId);
+  let html = `<div class="board-header">
+      <div class="section-title">Board</div>
+      <select class="idea-input board-project-select" aria-label="Project" onchange="navigate('#board/' + this.value)">
+        ${options.map(t => `<option value="${t}"${t === trackId ? ' selected' : ''}>${escapeHtml(getTrackLabel(t))}</option>`).join('')}
+      </select>
+      <button class="btn btn-outline btn-sm" onclick="navigate('#track/${trackId}')">Manage milestones</button>
+    </div>`;
+
+  if (!milestones.length) {
+    el.innerHTML = html + `<p class="today-empty">This project has no milestones yet.</p>
+      <button class="btn btn-primary" onclick="openQuickAdd({ kind: 'milestone', trackId: '${trackId}' })">${ICONS.plus} Add milestones</button>`;
+    return;
+  }
+
+  const where = allDone
+    ? 'You reached the finish!'
+    : `You're on milestone ${curIdx + 1} of ${milestones.length}`;
+  const pct = sum.blocksTotal ? Math.round((sum.blocksDone / sum.blocksTotal) * 100) : 0;
+  html += `<div class="board-summary"><strong>${where}</strong> · ${sum.blocksDone} / ${sum.blocksTotal} blocks · ${pct}%</div>
+    <div class="board-legend" aria-hidden="true" style="--candy:${color}">
+      <span><span class="bb f"></span> block done</span>
+      <span><span class="bb"></span> to do</span>
+      <span><span class="bb x"></span> extra</span>
+    </div>`;
+
+  // Spaces snake back and forth: even rows run left → right, odd rows
+  // right → left, so each row's last space sits above the next row's first.
+  const cols = boardColumns();
+  _boardCols = cols;
+  const items = [{ kind: 'start' }, ...milestones.map((ms, i) => ({ kind: 'ms', ms, i })), { kind: 'finish' }];
+  const reached = allDone ? items.length - 1 : curIdx + 1;
+  const cell = (order) => {
+    const row = Math.floor(order / cols);
+    const pos = order % cols;
+    return `grid-row:${row + 1};grid-column:${(row % 2 === 0 ? pos : cols - 1 - pos) + 1}`;
+  };
+
+  let spaces = '';
+  items.forEach((it, order) => {
+    if (it.kind === 'start') {
+      spaces += `<div class="board-space board-end" data-board-order="${order}" style="${cell(order)}">
+        <span class="board-end-icon" aria-hidden="true">${MILESTONE_ICONS.flag}</span><span class="board-end-label">Start</span>
+      </div>`;
+      return;
+    }
+    if (it.kind === 'finish') {
+      spaces += `<div class="board-space board-end board-finish${allDone ? ' reached' : ''}" data-board-order="${order}" style="${cell(order)}">
+        <span class="board-end-icon" aria-hidden="true">${MILESTONE_ICONS.trophy}</span><span class="board-end-label">${allDone ? 'Finished!' : 'Finish'}</span>
+        ${allDone ? `<span class="board-token" style="background:${color}" aria-hidden="true"></span>` : ''}
+      </div>`;
+      return;
+    }
+    const { ms, i } = it;
+    const done = getMilestoneState(ms.id).status === 'done';
+    const current = i === curIdx;
+    const groups = milestoneBlockGroups(ms.id);
+    const est = groups.reduce((a, g) => a + g.est, 0);
+    const filled = groups.reduce((a, g) => a + g.filled, 0);
+    const due = state.dueDates[ms.id];
+    const status = done ? 'done' : current ? 'current' : 'upcoming';
+    const label = `Milestone ${i + 1} of ${milestones.length}: ${ms.title}. ${filled} of ${est} blocks.${done ? ' Done.' : current ? ' You are here.' : ''}`;
+    spaces += `<div class="board-space board-ms ${status}" role="button" tabindex="0" data-board-order="${order}"
+        style="${cell(order)};--candy:${BOARD_CANDY[i % BOARD_CANDY.length]}" aria-label="${escapeHtml(label)}"
+        onclick="openBoardSpace('${trackId}','${ms.id}')">
+      <div class="board-space-top">
+        <span class="board-space-num">${i + 1}</span>
+        ${done ? `<span class="board-space-badge">${ICONS.check}</span>` : current ? `<span class="board-here">You are here</span>` : ''}
+      </div>
+      <div class="board-space-title">${escapeHtml(ms.title)}</div>
+      <div class="board-blocks" aria-hidden="true">${blockSquaresHtml(groups, BOARD_MAX_SQUARES)}</div>
+      <div class="board-space-meta">${filled}/${est} blocks${due && !done ? ` · due ${escapeHtml(qaFormatDue(due))}` : ''}</div>
+      ${current ? `<span class="board-token" style="background:${color}" aria-hidden="true"></span>` : ''}
+    </div>`;
+  });
+
+  html += `<div class="board-wrap">
+    <div class="board-grid" id="boardGrid" data-reached="${reached}" style="grid-template-columns:repeat(${cols}, minmax(0, 1fr));--road-trail:${color}">
+      <svg class="board-road-svg" id="boardRoad" aria-hidden="true"></svg>
+      ${spaces}
+    </div>
+  </div>`;
+  el.innerHTML = html;
+  // Free plan: show the real board, softened, under an unlock card.
+  if (!hasFeature('board')) {
+    const wrap = el.querySelector('.board-wrap');
+    wrap.classList.add('pro-preview');
+    wrap.insertAdjacentHTML('beforeend', proLockedCard('board', 'Watch each project as a road from Start to Finish: every milestone is a space, and its squares fill in as you do focus blocks.'));
+  }
+
+  // The road is drawn from the spaces' real positions, once they're laid
+  // out, and redrawn whenever the board changes size.
+  requestAnimationFrame(drawBoardRoad);
+  if (_boardObserver) _boardObserver.disconnect();
+  if (window.ResizeObserver) {
+    _boardObserver = new ResizeObserver(() => drawBoardRoad());
+    _boardObserver.observe(document.getElementById('boardGrid'));
+  }
+}
+
+function drawBoardRoad() {
+  const grid = document.getElementById('boardGrid');
+  const svg = document.getElementById('boardRoad');
+  if (!grid || !svg) return;
+  const box = grid.getBoundingClientRect();
+  if (!box.width) return;
+  const pts = [...grid.querySelectorAll('[data-board-order]')]
+    .sort((a, b) => a.dataset.boardOrder - b.dataset.boardOrder)
+    .map(s => {
+      const r = s.getBoundingClientRect();
+      return [r.left - box.left + r.width / 2, r.top - box.top + r.height / 2];
+    });
+  const path = (list) => list.map((p, i) => `${i ? 'L' : 'M'}${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join(' ');
+  const reached = Number(grid.dataset.reached || 0);
+  svg.setAttribute('viewBox', `0 0 ${box.width.toFixed(1)} ${box.height.toFixed(1)}`);
+  svg.setAttribute('width', box.width);
+  svg.setAttribute('height', box.height);
+  svg.innerHTML = `<path class="board-road" d="${path(pts)}"/>`
+    + (reached > 0 ? `<path class="board-trail" d="${path(pts.slice(0, reached + 1))}"/>` : '')
+    + `<path class="board-road-dash" d="${path(pts)}"/>`;
+}
+
+window.addEventListener('resize', () => {
+  const view = document.getElementById('view-board');
+  if (!view || !view.classList.contains('active')) return;
+  if (boardColumns() !== _boardCols) renderBoard(_boardTrack);
+});
+
+// The drawer for one space: progress, the next block, and every step.
+function openBoardSpace(trackId, milestoneId) {
+  if (!hasFeature('board')) return showUpgrade('board');
+  const ms = getMilestone(milestoneId);
+  if (!ms) return;
+  const milestones = getMilestonesForTrack(trackId);
+  const idx = milestones.findIndex(m => m.id === milestoneId);
+  const color = getTrackColor(trackId);
+  const steps = getAllSteps(milestoneId);
+  const groups = milestoneBlockGroups(milestoneId);
+  const est = groups.reduce((a, g) => a + g.est, 0);
+  const filled = groups.reduce((a, g) => a + g.filled, 0);
+  const stepsDone = steps.filter(s => stepStatus(s.id) === 'done').length;
+  const next = getActiveStep(milestoneId);
+
+  let html = `<button class="drawer-close" onclick="closeDrawer()" aria-label="Close">${ICONS.x}</button>
+    <h3>${escapeHtml(ms.title)}</h3>
+    <div class="board-drawer-sub">Milestone ${idx + 1} of ${milestones.length} · ${stepsDone}/${steps.length} steps · ${filled}/${est} blocks</div>
+    ${ms.desc ? `<p class="board-drawer-desc">${escapeHtml(ms.desc)}</p>` : ''}
+    <div class="drawer-quick-actions">
+      ${next ? `<button class="btn btn-primary" style="background:${color}" onclick="closeDrawer();navigate('#focus/${milestoneId}/${next.id}')">${ICONS.play} Start next block</button>` : ''}
+      <button class="btn btn-outline" onclick="closeDrawer();navigate('#path/${trackId}/${milestoneId}')">Open milestone</button>
+    </div>
+    <div class="drawer-section-title">Steps</div>
+    <ul class="board-step-list" style="--node-accent:${color};--candy:${color}">`;
+  groups.forEach(g => {
+    if (!g.step) {
+      html += `<li class="board-step${g.done ? ' done' : ''}"><span class="board-step-qc">QC</span>
+        <div class="board-step-main"><div class="board-step-title">${escapeHtml(g.label.replace(/^QC: /, ''))}</div>
+        <div class="board-blocks">${blockSquaresHtml([g])}</div></div></li>`;
+      return;
+    }
+    const s = g.step;
+    html += `<li class="board-step${g.done ? ' done' : ''}">
+      ${stepCheckHtml(milestoneId, s.id, g.done, `toggleBoardStep('${trackId}','${milestoneId}','${s.id}')`)}
+      <div class="board-step-main" role="button" tabindex="0" onclick="openStepDrawer('${milestoneId}','${s.id}')">
+        <div class="board-step-title">${escapeHtml(s.title)}</div>
+        <div class="board-blocks">${blockSquaresHtml([g])}</div>
+      </div>
+      ${g.done ? '' : `<button type="button" class="today-act" title="Start focus" aria-label="Start focus" onclick="closeDrawer();navigate('#focus/${milestoneId}/${s.id}')">${ICONS.play}</button>`}
+    </li>`;
+  });
+  html += `</ul>
+    <button class="btn btn-outline btn-sm" style="margin-top:var(--sp-3)" onclick="closeDrawer();openQuickAdd({ kind: 'task', trackId: '${trackId}', milestoneId: '${milestoneId}' })">${ICONS.plus} Add steps</button>`;
+
+  const drawer = document.getElementById('drawer');
+  drawer.setAttribute('data-drawer-kind', 'board');
+  drawer.innerHTML = html;
+  document.getElementById('drawerOverlay').classList.add('open');
+}
+
+// Ticking a step inside the board drawer updates the board behind it and
+// the drawer itself.
+function toggleBoardStep(trackId, milestoneId, stepId) {
+  toggleStepDone(milestoneId, stepId);
+  openBoardSpace(trackId, milestoneId);
+}
+
+// Progress view: one link per active project's board.
+function renderBoardLinks() {
+  const tracks = getActiveTrackIds();
+  if (!tracks.length) return '';
+  return `<div class="board-links"><span class="board-links-label">Boards</span>
+    ${tracks.map(t => {
+      const s = getTrackProgressSummary(t);
+      return `<button class="board-link" style="--pc:${getTrackColor(t)}" onclick="navigate('#board/${t}')">
+        <span class="dot" style="background:${getTrackColor(t)}"></span>${escapeHtml(getTrackLabel(t))}<span class="board-link-count">${s.msDone}/${s.msTotal}</span>
+      </button>`;
+    }).join('')}
+  </div>`;
+}
+
+// ================================================================
+// FEATURE 19: INSTALL PROMPT
+// ================================================================
+// Installed web apps open in their own window and keep their data more
+// reliably (Safari's 7-day storage cleanup skips Home Screen apps). From
+// the second day of use, Home suggests installing; "Not now" hides it
+// for 30 days.
+const INSTALL_DISMISS_KEY = 'soma_install_dismissed';
+const VISITS_KEY = 'soma_visit_days';
+let _installEvent = null;
+
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  _installEvent = e;
+  if ((window.location.hash || '#home').startsWith('#home')) renderHome();
+});
+window.addEventListener('appinstalled', () => {
+  _installEvent = null;
+  try { localStorage.setItem(INSTALL_DISMISS_KEY, 'installed'); } catch (e) { /* ignore */ }
+});
+
+// Counts distinct days the app was opened.
+function countVisitDay() {
+  try {
+    const v = JSON.parse(localStorage.getItem(VISITS_KEY) || '{"days":0,"last":null}');
+    if (v.last !== todayStr()) {
+      v.days++;
+      v.last = todayStr();
+      localStorage.setItem(VISITS_KEY, JSON.stringify(v));
+    }
+    return v.days;
+  } catch (e) { return 0; }
+}
+
+function isInstalledApp() {
+  return (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
+}
+
+// Browsers without an install event need instructions instead of a button.
+function manualInstallHint() {
+  const ua = navigator.userAgent;
+  if (/iPhone|iPad|iPod/.test(ua)) return 'Tap the Share button, then “Add to Home Screen”.';
+  if (/Macintosh/.test(ua) && /Safari\//.test(ua) && !/Chrome|Chromium|Edg|Firefox/.test(ua)) return 'In Safari’s menu bar, choose File → Add to Dock.';
+  return null;
+}
+
+function renderInstallPrompt() {
+  if (!location.protocol.startsWith('http') || isInstalledApp()) return '';
+  let dismissed = null;
+  try { dismissed = localStorage.getItem(INSTALL_DISMISS_KEY); } catch (e) { return ''; }
+  if (dismissed === 'installed' || (dismissed && daysSince(dismissed) < 30)) return '';
+  if (countVisitDay() < 2) return '';
+  const hint = _installEvent ? null : manualInstallHint();
+  if (!_installEvent && !hint) return '';
+  return `<div class="backup-reminder install-prompt" role="status">
+    <span>Install Soma as an app: it opens in its own window and keeps your plans safer.${hint ? ' ' + hint : ''}</span>
+    <span class="backup-reminder-actions">
+      ${_installEvent ? '<button class="btn btn-outline btn-sm" onclick="installApp()">Install</button>' : ''}
+      <button class="btn btn-ghost btn-sm" onclick="dismissInstallPrompt()">Not now</button>
+    </span>
+  </div>`;
+}
+
+async function installApp() {
+  if (!_installEvent) return;
+  _installEvent.prompt();
+  try {
+    const choice = await _installEvent.userChoice;
+    if (choice && choice.outcome === 'accepted') localStorage.setItem(INSTALL_DISMISS_KEY, 'installed');
+  } catch (e) { /* ignore */ }
+  _installEvent = null;
+  renderHome();
+}
+
+function dismissInstallPrompt() {
+  try { localStorage.setItem(INSTALL_DISMISS_KEY, todayStr()); } catch (e) { /* ignore */ }
+  renderHome();
+}
+
+// ================================================================
+// FEATURE 20: SOMA PRO (license key)
+// ================================================================
+// Product builds can reserve some features for paying customers. The
+// edition's edition.json (copied into SOMA_PROFILE.edition by
+// tools/build-edition.mjs) names the license provider, its IDs, and which
+// features are Pro. With no licensing config, or one still holding
+// YOUR-… placeholders, everything is unlocked (the personal site, and
+// test builds). Core features (Quick Add, Today, the timer, export) are
+// never gated.
+//
+// The check runs in the browser against the provider's public license
+// endpoint, and the result is cached so Soma keeps working offline. It
+// keeps honest people honest; it is not DRM.
+const EDITION = PROFILE.edition || {};
+const LICENSING = EDITION.licensing || null;
+const LICENSE_STORE_KEY = 'soma_license';
+const LICENSE_RECHECK_DAYS = 14;
+const FREE_THEMES = ['rose-pine-dawn', 'catppuccin-mocha'];
+const PRO_FEATURES = {
+  unlimitedProjects: 'Unlimited projects',
+  board: 'The Board',
+  weeklyPlan: 'Weekly block planning',
+  rewards: 'Rewards',
+  aiPlanner: 'AI planning helpers',
+  themes: 'All 9 themes',
+  progressCharts: 'Progress charts'
+};
+
+// Licensing is on once the provider's own IDs are filled in (fields for
+// the other provider are ignored).
+function licensingActive() {
+  if (!LICENSING || !LICENSING.provider) return false;
+  const ids = LICENSING.provider === 'lemonsqueezy' ? [LICENSING.storeId] : [LICENSING.organizationId];
+  return ids.every(v => v && !String(v).includes('YOUR-'));
+}
+
+function getLicense() {
+  try { return JSON.parse(localStorage.getItem(LICENSE_STORE_KEY) || 'null'); } catch (e) { return null; }
+}
+
+function isPro() {
+  if (!licensingActive()) return true;
+  const lic = getLicense();
+  return !!(lic && lic.valid);
+}
+
+// Is this feature available to the current user?
+function hasFeature(feature) {
+  if (!licensingActive() || !(LICENSING.proFeatures || []).includes(feature)) return true;
+  return isPro();
+}
+
+function freeProjectLimit() {
+  return (LICENSING && LICENSING.freeProjectLimit) || 3;
+}
+
+// Custom projects count toward the free limit; built-in examples don't.
+function canCreateProjects(n = 1) {
+  if (hasFeature('unlimitedProjects')) return true;
+  const own = Object.values(state.customProjects || {}).filter(p => !p.archived).length;
+  return own + n <= freeProjectLimit();
+}
+
+// Ask the provider whether a key is valid. Resolves { valid, reason };
+// rejects on network trouble (so callers can keep a cached result).
+async function checkLicenseKey(key) {
+  if (LICENSING.provider === 'lemonsqueezy') {
+    const res = await fetch('https://api.lemonsqueezy.com/v1/licenses/validate', {
+      method: 'POST',
+      headers: { 'Accept': 'application/json', 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ license_key: key }).toString()
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok && res.status >= 500) throw new Error('HTTP ' + res.status);
+    const meta = data.meta || {};
+    const status = data.license_key && data.license_key.status;
+    if (!data.valid) return { valid: false, reason: 'That key wasn’t recognised.' };
+    // A key from any other Lemon Squeezy store or product must not unlock Soma.
+    if (String(meta.store_id) !== String(LICENSING.storeId)
+      || (LICENSING.productId && String(meta.product_id) !== String(LICENSING.productId))) {
+      return { valid: false, reason: 'That key is for a different product.' };
+    }
+    if (status === 'expired' || status === 'disabled') return { valid: false, reason: `This key is ${status}.` };
+    return { valid: true };
+  }
+  // Polar (default): the customer-portal endpoint is meant for public clients.
+  const base = LICENSING.apiBase || 'https://api.polar.sh';
+  const res = await fetch(`${base}/v1/customer-portal/license-keys/validate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+    body: JSON.stringify({ key, organization_id: LICENSING.organizationId })
+  });
+  if (res.status === 404 || res.status === 422 || res.status === 400) return { valid: false, reason: 'That key wasn’t recognised.' };
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  const data = await res.json();
+  if (data.status && data.status !== 'granted') return { valid: false, reason: `This key has been ${data.status}.` };
+  if (data.expires_at && new Date(data.expires_at) < new Date()) return { valid: false, reason: 'This key has expired.' };
+  return { valid: true };
+}
+
+async function activateLicense(key) {
+  const clean = String(key || '').trim();
+  if (!clean) return { valid: false, reason: 'Paste the license key from your purchase email.' };
+  let result;
+  try {
+    result = await checkLicenseKey(clean);
+  } catch (e) {
+    return { valid: false, reason: 'Couldn’t reach the license server. Check your connection and try again.' };
+  }
+  if (result.valid) {
+    try { localStorage.setItem(LICENSE_STORE_KEY, JSON.stringify({ key: clean, valid: true, checkedAt: todayStr() })); } catch (e) { /* ignore */ }
+  }
+  return result;
+}
+
+function removeLicense() {
+  if (!confirm('Remove the Pro license from this device? You can paste the key again any time.')) return;
+  try { localStorage.removeItem(LICENSE_STORE_KEY); } catch (e) { /* ignore */ }
+  refreshCurrentView();
+}
+
+// Every couple of weeks, quietly re-check a stored key. Only a definite
+// "no" from the provider locks Pro again; being offline never does.
+async function recheckLicenseIfDue() {
+  if (!licensingActive() || !navigator.onLine) return;
+  const lic = getLicense();
+  if (!lic || !lic.valid || daysSince(lic.checkedAt) < LICENSE_RECHECK_DAYS) return;
+  try {
+    const result = await checkLicenseKey(lic.key);
+    if (result.valid) {
+      lic.checkedAt = todayStr();
+      localStorage.setItem(LICENSE_STORE_KEY, JSON.stringify(lic));
+    } else {
+      localStorage.setItem(LICENSE_STORE_KEY, JSON.stringify({ ...lic, valid: false, reason: result.reason }));
+      qaToast('Your Soma Pro license is no longer active. ' + result.reason);
+      refreshCurrentView();
+    }
+  } catch (e) { /* offline or provider down: keep the cached result */ }
+}
+
+// The upgrade dialog, shown when a Pro feature is used on the free plan.
+function showUpgrade(feature) {
+  const label = PRO_FEATURES[feature] || 'This';
+  const list = (LICENSING.proFeatures || []).map(f => `<li>${escapeHtml(f === 'unlimitedProjects' ? `More than ${freeProjectLimit()} projects` : PRO_FEATURES[f] || f)}</li>`).join('');
+  const overlay = openSmallModal('upgradeOverlay', `
+    <div class="project-modal-title">Unlock ${escapeHtml(EDITION.productName || 'Soma')} Pro</div>
+    <p class="modal-copy">${escapeHtml(feature === 'unlimitedProjects' ? `The free plan includes ${freeProjectLimit()} projects of your own.` : `${label} is part of Pro.`)}
+      Pay once and keep it, including every 1.x update. No subscription.</p>
+    <ul class="pro-list">${list}</ul>
+    <label class="project-modal-field">
+      <span>Already bought it? Paste your license key</span>
+      <input type="text" id="licenseKeyInput" autocomplete="off" spellcheck="false" placeholder="License key from your purchase email">
+    </label>
+    <div class="license-msg" id="licenseMsg" role="status"></div>
+    <div class="project-modal-actions">
+      <button type="button" class="btn btn-outline" data-act="activate">Activate</button>
+      ${EDITION.buyUrl ? `<a class="btn btn-primary" href="${escapeHtml(EDITION.buyUrl)}" target="_blank" rel="noopener">Get Pro${EDITION.priceLabel ? ' — ' + escapeHtml(EDITION.priceLabel) : ''}</a>` : ''}
+    </div>`);
+  const input = overlay.querySelector('#licenseKeyInput');
+  const msg = overlay.querySelector('#licenseMsg');
+  const activate = async () => {
+    msg.textContent = 'Checking…';
+    const result = await activateLicense(input.value);
+    if (result.valid) {
+      overlay.remove();
+      qaToast('Soma Pro unlocked. Thank you for supporting it!');
+      refreshCurrentView();
+    } else {
+      msg.textContent = result.reason;
+    }
+  };
+  overlay.querySelector('[data-act="activate"]').addEventListener('click', activate);
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); activate(); } });
+  setTimeout(() => input.focus(), 30);
+}
+
+// Gate helper for buttons: runs `fn` if the feature is available,
+// otherwise shows the upgrade dialog.
+function withFeature(feature, fn) {
+  if (hasFeature(feature)) return fn();
+  showUpgrade(feature);
+}
+
+// A locked placeholder card for whole views or panels.
+function proLockedCard(feature, blurb) {
+  return `<div class="pro-locked" role="note">
+    <div class="pro-locked-title">${escapeHtml(PRO_FEATURES[feature] || 'Pro feature')} <span class="pro-badge">Pro</span></div>
+    <p class="pro-locked-copy">${escapeHtml(blurb)}</p>
+    <button class="btn btn-primary btn-sm" onclick="showUpgrade('${feature}')">Unlock Pro</button>
+  </div>`;
+}
+
+function renderProSettings() {
+  if (!licensingActive()) return '';
+  const lic = getLicense();
+  if (isPro()) {
+    const tail = lic && lic.key ? lic.key.slice(-4) : '';
+    return `<div class="settings-group">
+      <h4>${escapeHtml(EDITION.productName || 'Soma')} Pro</h4>
+      <div class="setting-row"><span class="setting-label">Status</span><span class="setting-note">Active${tail ? ` · key ending ${escapeHtml(tail)}` : ''}</span></div>
+      <button class="btn btn-ghost btn-sm" onclick="removeLicense()">Remove license from this device</button>
+    </div>`;
+  }
+  return `<div class="settings-group">
+    <h4>${escapeHtml(EDITION.productName || 'Soma')} Pro</h4>
+    <p class="setting-note" style="text-align:left;margin-bottom:var(--sp-3)">You're on the free plan.${lic && lic.reason ? ' ' + escapeHtml(lic.reason) : ''}</p>
+    <button class="btn btn-primary btn-sm" onclick="showUpgrade('board')">Unlock Pro or enter a key</button>
+  </div>`;
+}
+
+// ================================================================
+// FEATURE 13: QUICK ADD
+// ================================================================
+// One capture box for tasks, milestones, projects, ideas and admin,
+// reachable from every view via the + button or the N key, so adding
+// work never means drilling Projects → project → milestone first.
+// Pasting several lines adds one item per line (brain dump). Optional
+// per-line shortcuts: #project  ~3 (blocks)  ! / !! (urgency)  @fri (due).
+// Every add can be undone from the toast.
+
+const QA_KINDS = [
+  { id: 'task',      label: 'Task',      noun: 'task',       placeholder: 'What needs doing? Paste a list to add several at once.' },
+  { id: 'milestone', label: 'Milestone', noun: 'milestone',  placeholder: 'A checkpoint, e.g. "Finish first draft"' },
+  { id: 'project',   label: 'Project',   noun: 'project',    placeholder: 'Project name' },
+  { id: 'idea',      label: 'Idea',      noun: 'idea',       placeholder: 'Park a thought for later' },
+  { id: 'admin',     label: 'Admin',     noun: 'admin task', placeholder: 'Email, form, errand…' }
+];
+const QA_NEW = '__new__';
+const QA_LAST_KEY = 'soma_quickadd_last';
+let qa = null; // selection state while the Quick Add modal is open
+
+function qaCount(n, noun) { return `${n} ${noun}${n === 1 ? '' : 's'}`; }
+
+// Where the user is decides the default destination.
+function qaRouteContext() {
+  const parts = (window.location.hash || '').slice(1).split('/');
+  switch (parts[0]) {
+    case 'track': return { trackId: parts[1] };
+    case 'path': return { trackId: parts[1], milestoneId: parts[2] };
+    case 'blocks': return { trackId: getTrackForMilestone(parts[1]), milestoneId: parts[1] };
+    case 'focus': {
+      const msId = parts[1] || timerMilestoneId;
+      return msId ? { trackId: getTrackForMilestone(msId), milestoneId: msId } : {};
+    }
+    default: return {};
+  }
+}
+
+// First milestone that isn't done yet — where new tasks land by default.
+// null when there are none open (Quick Add then makes a fresh one).
+function qaDefaultMilestone(trackId) {
+  const ms = getMilestonesForTrack(trackId).find(m => getMilestoneState(m.id).status !== 'done');
+  return ms ? ms.id : null;
+}
+
+function qaNormalize(s) { return String(s || '').toLowerCase().replace(/[^a-z0-9]/g, ''); }
+
+// "#thesis" → the active project whose id or label, or any word of the
+// label, starts with "thesis".
+function qaMatchProject(token) {
+  const tok = qaNormalize(token);
+  if (!tok) return null;
+  const tracks = getActiveTrackIds();
+  return tracks.find(t => qaNormalize(t) === tok || qaNormalize(getTrackLabel(t)) === tok)
+    || tracks.find(t => qaNormalize(getTrackLabel(t)).startsWith(tok)
+      || getTrackLabel(t).split(/\s+/).some(w => qaNormalize(w).startsWith(tok)))
+    || null;
+}
+
+function qaValidDate(y, mo, da) {
+  const d = new Date(y, mo - 1, da);
+  if (d.getFullYear() !== y || d.getMonth() !== mo - 1 || d.getDate() !== da) return null;
+  return localDateStr(d);
+}
+
+// "today", "tomorrow", "nextweek", "fri", "2026-11-03", "11/3" → YYYY-MM-DD (or null).
+// Weekdays mean the next one, counting today.
+function qaParseDate(token) {
+  const t = String(token).toLowerCase();
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  if (t === 'today' || t === 'tod') return localDateStr(d);
+  if (t === 'tomorrow' || t === 'tom' || t === 'tmr') { d.setDate(d.getDate() + 1); return localDateStr(d); }
+  // Next Monday, same as the "Next week" reschedule button.
+  if (t === 'nextweek' || t === 'next-week' || t === 'nw') { d.setDate(d.getDate() + (((8 - d.getDay()) % 7) || 7)); return localDateStr(d); }
+  const weekdays = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+  const wd = t.length >= 3 ? weekdays.findIndex(w => w.startsWith(t)) : -1;
+  if (wd >= 0) { d.setDate(d.getDate() + ((wd - d.getDay() + 7) % 7)); return localDateStr(d); }
+  let m = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (m) return qaValidDate(+m[1], +m[2], +m[3]);
+  m = t.match(/^(\d{1,2})[\/.](\d{1,2})$/);
+  if (m) {
+    const thisYear = qaValidDate(d.getFullYear(), +m[1], +m[2]);
+    if (thisYear && thisYear < localDateStr(d)) return qaValidDate(d.getFullYear() + 1, +m[1], +m[2]);
+    return thisYear;
+  }
+  return null;
+}
+
+// Strip list bullets/checkboxes from pasted lists, then pull out inline
+// shortcuts. Tokens that don't resolve (e.g. "#12" when no project
+// matches) stay in the title untouched.
+function qaParseLine(line) {
+  const out = { title: '', trackId: null, blocks: null, urgency: null, due: null };
+  let text = ' ' + line.replace(/^\s*(?:(?:[-*•–]|\d+[.)])\s+)?(?:\[[ xX]?\]\s*)?/, '') + ' ';
+  text = text.replace(/\s~(\d{1,2})(?=\s)/, (m, n) => {
+    out.blocks = Math.min(20, Math.max(1, +n));
+    return ' ';
+  });
+  text = text.replace(/\s(!!|!(?:critical|crit|high|urgent)|!(?:important|imp)?)(?=\s)/i, (m, tok) => {
+    out.urgency = (tok === '!!' || /crit|high|urgent/i.test(tok)) ? 'critical' : 'important';
+    return ' ';
+  });
+  text = text.replace(/\s@([\w\/.-]+)(?=\s)/, (m, tok) => {
+    const due = qaParseDate(tok);
+    if (!due) return m;
+    out.due = due;
+    return ' ';
+  });
+  text = text.replace(/\s#([\w-]+)(?=\s)/, (m, tok) => {
+    const t = qaMatchProject(tok);
+    if (!t) return m;
+    out.trackId = t;
+    return ' ';
+  });
+  out.title = text.replace(/\s+/g, ' ').trim();
+  return out;
+}
+
+function qaFormatDue(d) {
+  return new Date(d + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+}
+
+function qaLines() {
+  const el = document.getElementById('qaText');
+  return (el ? el.value : '').split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+}
+
+// opts: { kind, trackId, milestoneId, text, onAdded, note,
+//         today (pick new tasks for Today), insertAfter (stepId to place
+//         new tasks right after, in the same milestone) }
+function openQuickAdd(opts = {}) {
+  const returnFocus = document.activeElement;
+  closeQuickAdd();
+  const ctx = qaRouteContext();
+  const active = getActiveTrackIds();
+  const explicit = opts.trackId || ctx.trackId;
+  // An archived project can still be the target when the user is looking
+  // right at it; it's just not offered otherwise.
+  const extraTrack = explicit && !active.includes(explicit) && getAllTrackIds().includes(explicit) ? explicit : null;
+  let remembered = null;
+  try { remembered = localStorage.getItem(QA_LAST_KEY); } catch (e) { /* ignore */ }
+  const trackId = [explicit, remembered, (state.weeklyPlan.focusProjects || [])[0], active[0]]
+    .find(t => t && (active.includes(t) || t === extraTrack)) || QA_NEW;
+  let milestoneId = opts.milestoneId || (ctx.trackId === trackId ? ctx.milestoneId : null);
+  if (!milestoneId || trackId === QA_NEW || getTrackForMilestone(milestoneId) !== trackId) {
+    milestoneId = trackId === QA_NEW ? null : qaDefaultMilestone(trackId);
+  }
+
+  qa = {
+    kind: opts.kind || (timerRunning ? 'idea' : 'task'),
+    trackId,
+    milestoneId: milestoneId || QA_NEW,
+    extraTrack,
+    blocks: 1,
+    urgency: null,
+    due: '',
+    newProjectName: '',
+    newMilestoneName: '',
+    note: opts.note || (opts.today ? 'These go on today’s list.' : ''),
+    today: !!opts.today,
+    insertAfter: opts.insertAfter || null,
+    onAdded: opts.onAdded || null,
+    returnFocus
+  };
+
+  const overlay = document.createElement('div');
+  overlay.id = 'qaOverlay';
+  overlay.className = 'project-modal-overlay qa-overlay';
+  overlay.innerHTML = `
+    <div class="project-modal qa-modal" role="dialog" aria-modal="true" aria-labelledby="qaTitle">
+      <div class="qa-head">
+        <div class="project-modal-title" id="qaTitle">Quick add</div>
+        <button type="button" class="btn btn-ghost qa-close" id="qaClose" aria-label="Close">${ICONS.x}</button>
+      </div>
+      <div class="qa-kinds" role="radiogroup" aria-label="What are you adding?">
+        ${QA_KINDS.map(k => `<button type="button" class="qa-kind" role="radio" data-kind="${k.id}">${k.label}</button>`).join('')}
+      </div>
+      <div class="qa-note" id="qaNote" hidden></div>
+      <textarea id="qaText" class="qa-text" rows="2" aria-label="Title"></textarea>
+      <div id="qaFields"></div>
+      <div id="qaPreview" class="qa-preview" aria-live="polite"></div>
+      <div class="qa-foot">
+        <span class="qa-hint"><kbd>Enter</kbd> add · <kbd>Shift</kbd>+<kbd>Enter</kbd> new line · <kbd>Esc</kbd> close</span>
+        <button type="button" class="btn btn-primary" id="qaSubmit">Add</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+
+  const text = overlay.querySelector('#qaText');
+  if (opts.text) text.value = opts.text;
+
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) closeQuickAdd(); });
+  // Esc closes only this modal, not a drawer underneath it.
+  overlay.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' || e.key === 'Esc') { e.stopPropagation(); closeQuickAdd(); }
+  });
+  overlay.querySelector('#qaClose').addEventListener('click', closeQuickAdd);
+  overlay.querySelector('#qaSubmit').addEventListener('click', qaSubmit);
+  overlay.querySelectorAll('.qa-kind').forEach(btn => {
+    btn.addEventListener('click', () => {
+      qa.kind = btn.dataset.kind;
+      qa.note = '';
+      qaRender();
+      text.focus();
+    });
+  });
+  text.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); qaSubmit(); }
+  });
+  text.addEventListener('input', () => { qaAutoGrow(text); qaRenderPreview(); });
+
+  // Fields are re-rendered on every project/kind change, so listen once
+  // on the container instead of rebinding each time.
+  const fields = overlay.querySelector('#qaFields');
+  fields.addEventListener('change', (e) => {
+    const t = e.target;
+    if (t.id === 'qaProject') {
+      qa.trackId = t.value;
+      qa.milestoneId = t.value === QA_NEW ? QA_NEW : (qaDefaultMilestone(t.value) || QA_NEW);
+      qaRender();
+    } else if (t.id === 'qaMilestone') {
+      qa.milestoneId = t.value;
+      qaRender();
+    } else if (t.id === 'qaDue') {
+      qa.due = t.value;
+      qaRenderPreview();
+    }
+  });
+  fields.addEventListener('input', (e) => {
+    if (e.target.id === 'qaNewProject') qa.newProjectName = e.target.value;
+    if (e.target.id === 'qaNewMilestone') qa.newMilestoneName = e.target.value;
+  });
+  fields.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && e.target.matches('input[type="text"]')) { e.preventDefault(); qaSubmit(); }
+  });
+  fields.addEventListener('click', (e) => {
+    const step = e.target.closest('[data-step]');
+    if (step) {
+      qa.blocks = Math.min(20, Math.max(1, qa.blocks + parseInt(step.dataset.step, 10)));
+      const val = document.getElementById('qaBlocksVal');
+      if (val) val.textContent = qa.blocks;
+      qaRenderPreview();
+      return;
+    }
+    const chip = e.target.closest('[data-urgency]');
+    if (chip) {
+      qa.urgency = chip.dataset.urgency || null;
+      fields.querySelectorAll('[data-urgency]').forEach(c => c.classList.toggle('active', c === chip));
+      qaRenderPreview();
+    }
+  });
+
+  qaRender();
+  qaAutoGrow(text);
+  setTimeout(() => { text.focus(); text.setSelectionRange(text.value.length, text.value.length); }, 30);
+}
+
+function closeQuickAdd() {
+  const overlay = document.getElementById('qaOverlay');
+  if (overlay) overlay.remove();
+  if (qa && qa.returnFocus && document.contains(qa.returnFocus)) {
+    try { qa.returnFocus.focus(); } catch (e) { /* ignore */ }
+  }
+  qa = null;
+}
+
+function qaAutoGrow(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 240) + 'px';
+}
+
+function qaRender() {
+  const overlay = document.getElementById('qaOverlay');
+  if (!overlay || !qa) return;
+  const kind = QA_KINDS.find(k => k.id === qa.kind);
+  overlay.querySelectorAll('.qa-kind').forEach(btn => {
+    const on = btn.dataset.kind === qa.kind;
+    btn.classList.toggle('active', on);
+    btn.setAttribute('aria-checked', on ? 'true' : 'false');
+  });
+  overlay.querySelector('#qaText').placeholder = kind.placeholder;
+  const note = overlay.querySelector('#qaNote');
+  note.hidden = !qa.note;
+  note.textContent = qa.note;
+  overlay.querySelector('#qaFields').innerHTML = qaFieldsHtml();
+  qaRenderPreview();
+}
+
+function qaProjectSelectHtml() {
+  const tracks = getActiveTrackIds();
+  if (qa.extraTrack) tracks.push(qa.extraTrack);
+  const opts = tracks.map(t =>
+    `<option value="${t}"${t === qa.trackId ? ' selected' : ''}>${escapeHtml(getTrackLabel(t))}${isTrackActive(t) ? '' : ' (archived)'}</option>`
+  ).join('');
+  return `<label class="qa-field"><span>Project</span>
+    <select id="qaProject" class="idea-input">${opts}<option value="${QA_NEW}"${qa.trackId === QA_NEW ? ' selected' : ''}>+ New project…</option></select>
+  </label>`;
+}
+
+function qaMilestoneSelectHtml() {
+  let opts = '';
+  if (qa.trackId !== QA_NEW) {
+    opts = getMilestonesForTrack(qa.trackId).map(m => {
+      const done = getMilestoneState(m.id).status === 'done';
+      return `<option value="${m.id}"${m.id === qa.milestoneId ? ' selected' : ''}>${escapeHtml(m.title)}${done ? ' ✓' : ''}</option>`;
+    }).join('');
+  }
+  return `<label class="qa-field"><span>Milestone</span>
+    <select id="qaMilestone" class="idea-input">${opts}<option value="${QA_NEW}"${qa.milestoneId === QA_NEW ? ' selected' : ''}>+ New milestone…</option></select>
+  </label>`;
+}
+
+function qaFieldsHtml() {
+  const k = qa.kind;
+  if (k === 'idea') {
+    return `<p class="qa-help">${timerRunning
+      ? 'Parked in Ideas, so you can get straight back to your block.'
+      : 'Saved to Ideas. Turn it into a task whenever you’re ready.'}</p>`;
+  }
+  if (k === 'admin') return `<p class="qa-help">Small chores live in Admin, capped at 2 a day so they don’t eat your focus time.</p>`;
+  if (k === 'project') return `<p class="qa-help">One project per line. Add one and you can give it tasks straight away.</p>`;
+
+  const dueField = `<label class="qa-field"><span>Due</span><input type="date" id="qaDue" class="drawer-due-date" value="${qa.due || ''}"></label>`;
+  let html = `<div class="qa-row">${qaProjectSelectHtml()}${k === 'task' ? qaMilestoneSelectHtml() : dueField}</div>`;
+  if (qa.trackId === QA_NEW) {
+    html += `<label class="qa-field qa-field-wide"><span>New project name</span>
+      <input type="text" id="qaNewProject" class="idea-input" maxlength="60" value="${escapeHtml(qa.newProjectName)}" placeholder="e.g. Side business">
+    </label>`;
+  }
+  if (k !== 'task') return html;
+
+  if (qa.milestoneId === QA_NEW) {
+    html += `<label class="qa-field qa-field-wide"><span>New milestone name</span>
+      <input type="text" id="qaNewMilestone" class="idea-input" maxlength="80" value="${escapeHtml(qa.newMilestoneName)}" placeholder="Tasks">
+    </label>`;
+  }
+  const mins = state.settings.blockDurationMin || 90;
+  const urgencyChips = [[null, 'None'], ['important', 'Important'], ['critical', 'Critical']].map(([v, l]) =>
+    `<button type="button" class="qa-chip${qa.urgency === v ? ' active' : ''}" data-urgency="${v || ''}">${v ? `<span class="urgency-dot ${v}"></span>` : ''}${l}</button>`
+  ).join('');
+  html += `<div class="qa-row">
+      <div class="qa-field qa-field-fit"><span>Focus blocks</span>
+        <div class="qa-stepper" title="${mins} min each">
+          <button type="button" class="qa-step" data-step="-1" aria-label="Fewer blocks">−</button>
+          <span class="qa-step-val" id="qaBlocksVal">${qa.blocks}</span>
+          <button type="button" class="qa-step" data-step="1" aria-label="More blocks">+</button>
+        </div>
+      </div>
+      <div class="qa-field qa-field-fit"><span>Urgency</span><div class="qa-chips">${urgencyChips}</div></div>
+      ${dueField}
+    </div>
+    <div class="qa-tips">Per-line shortcuts: <code>#project</code> <code>~2</code> blocks <code>!</code> important <code>!!</code> critical <code>@fri</code> due</div>`;
+  return html;
+}
+
+function qaRenderPreview() {
+  const el = document.getElementById('qaPreview');
+  const submit = document.getElementById('qaSubmit');
+  if (!el || !submit || !qa) return;
+  const kind = QA_KINDS.find(k => k.id === qa.kind);
+  const lines = qaLines();
+  submit.textContent = lines.length > 1 ? `Add ${qaCount(lines.length, kind.noun)}` : `Add ${kind.noun}`;
+  if (qa.kind !== 'task') {
+    el.innerHTML = lines.length > 1 ? `<div class="qa-preview-count">${qaCount(lines.length, kind.noun)}, one per line</div>` : '';
+    return;
+  }
+  // Only worth showing once it says something the fields don't: several
+  // lines, or a line using shortcuts.
+  const parsed = lines.map(qaParseLine).filter(p => p.title);
+  if (!(parsed.length > 1 || parsed.some(p => p.trackId || p.blocks || p.urgency || p.due))) {
+    el.innerHTML = '';
+    return;
+  }
+  const rows = parsed.slice(0, 8).map(p => {
+    const bits = [];
+    if (p.trackId) bits.push(`<span class="qa-pv-proj" style="--pv:${getTrackColor(p.trackId)}">${escapeHtml(getTrackLabel(p.trackId))}</span>`);
+    const blocks = p.blocks || qa.blocks;
+    bits.push(qaCount(blocks, 'block'));
+    const urg = p.urgency || qa.urgency;
+    if (urg) bits.push(`<span class="urgency-dot ${urg}"></span>${urg}`);
+    const due = p.due || qa.due;
+    if (due) bits.push('due ' + escapeHtml(qaFormatDue(due)));
+    return `<li><span class="qa-pv-title">${escapeHtml(p.title)}</span><span class="qa-pv-meta">${bits.join(' · ')}</span></li>`;
+  }).join('');
+  const more = parsed.length > 8 ? `<li class="qa-pv-more">+ ${parsed.length - 8} more</li>` : '';
+  el.innerHTML = `<ul class="qa-preview-list">${rows}${more}</ul>`;
+}
+
+// Applies the add to `state` (unsaved). Returns
+// { message, view, trackId, continueWith } or null when nothing was added
+// or a required field is missing — qaSubmit rolls state back on null.
+function qaApply(lines) {
+  const kind = qa.kind;
+  if (kind === 'idea') {
+    lines.forEach(text => state.ideas.push({ id: makeId('idea-'), text, createdAt: Date.now(), promoted: false }));
+    return { message: `${qaCount(lines.length, 'idea')} parked in Ideas`, view: '#ideas' };
+  }
+  if (kind === 'admin') {
+    if (!state.adminTasks) state.adminTasks = [];
+    lines.forEach(text => state.adminTasks.push({ id: makeId('admin-'), text, createdAt: localDateStr(new Date()), completedDate: null }));
+    return { message: `${qaCount(lines.length, 'admin task')} added`, view: '#admin' };
+  }
+  if (kind === 'project') {
+    if (!canCreateProjects(lines.length)) { showUpgrade('unlimitedProjects'); return null; }
+    const ids = lines.map(label => createProject({ label: label.slice(0, 60) }));
+    const one = ids.length === 1;
+    return {
+      message: one ? `Created ${getTrackLabel(ids[0])}` : `Created ${qaCount(ids.length, 'project')}`,
+      view: one ? `#track/${ids[0]}` : '#projects',
+      trackId: one ? ids[0] : null,
+      continueWith: one ? ids[0] : null
+    };
+  }
+
+  // Tasks and milestones both need a project.
+  let trackId = qa.trackId;
+  if (trackId === QA_NEW) {
+    const name = qa.newProjectName.trim();
+    if (!name) {
+      const input = document.getElementById('qaNewProject');
+      if (input) input.focus();
+      return null;
+    }
+    if (!canCreateProjects()) { showUpgrade('unlimitedProjects'); return null; }
+    trackId = createProject({ label: name });
+  }
+
+  if (kind === 'milestone') {
+    lines.forEach(title => {
+      const id = createMilestone(trackId, title);
+      if (qa.due) state.dueDates[id] = qa.due;
+    });
+    return { message: `${qaCount(lines.length, 'milestone')} added to ${getTrackLabel(trackId)}`, view: `#track/${trackId}`, trackId };
+  }
+
+  let milestoneId = qa.trackId === trackId ? qa.milestoneId : QA_NEW;
+  if (milestoneId === QA_NEW) milestoneId = createMilestone(trackId, qa.newMilestoneName.trim() || 'Tasks');
+  // Lines tagged with another #project go to that project's open
+  // milestone, created on first use.
+  const otherTargets = {};
+  const placed = new Map(); // "track/milestone" → new step ids
+  for (const line of lines) {
+    const p = qaParseLine(line);
+    if (!p.title) continue;
+    let t = trackId;
+    let m = milestoneId;
+    if (p.trackId && p.trackId !== trackId) {
+      t = p.trackId;
+      m = otherTargets[t] || (otherTargets[t] = qaDefaultMilestone(t) || createMilestone(t, 'Tasks'));
+    }
+    const stepId = createStep(t, m, {
+      title: p.title,
+      estimated_blocks: p.blocks || qa.blocks,
+      urgency: p.urgency || qa.urgency,
+      due: p.due || qa.due
+    });
+    if (!stepId) continue;
+    if (!placed.has(t + '/' + m)) placed.set(t + '/' + m, []);
+    placed.get(t + '/' + m).push(stepId);
+    if (qa.today) setTodayPick(stepId, m, true);
+  }
+  const total = [...placed.values()].reduce((a, ids) => a + ids.length, 0);
+  if (!total) return null;
+  // Break-it-down: the new steps follow the step they came from.
+  const sameMs = placed.get(trackId + '/' + milestoneId);
+  if (qa.insertAfter && sameMs) placeStepsAfter(milestoneId, qa.insertAfter, sameMs);
+  const [firstKey] = placed.keys();
+  const [ft, fm] = firstKey.split('/');
+  const msTitle = (getMilestone(fm) || {}).title || '';
+  const message = placed.size === 1
+    ? `Added ${qaCount(total, 'task')} to ${getTrackLabel(ft)} › ${msTitle}`
+    : `Added ${qaCount(total, 'task')} across ${placed.size} milestones`;
+  return { message, view: `#path/${ft}/${fm}`, trackId };
+}
+
+// Move `ids` to sit right after `anchorId` in a milestone's step order
+// (a pure stepOrder overlay, like moveStep).
+function placeStepsAfter(milestoneId, anchorId, ids) {
+  const order = getAllStepsRaw(milestoneId).map(s => s.id).filter(id => !ids.includes(id));
+  const at = order.indexOf(anchorId);
+  if (at < 0) return;
+  order.splice(at + 1, 0, ...ids);
+  if (!state.stepOrder) state.stepOrder = {};
+  state.stepOrder[milestoneId] = order;
+}
+
+// Re-render whatever is on screen so new items show up. The focus view is
+// left alone: re-rendering it can re-pick the queued step mid-block.
+function refreshCurrentView() {
+  if ((window.location.hash || '').startsWith('#focus')) return;
+  handleRoute();
+}
+
+function qaSubmit() {
+  if (!qa) return;
+  const lines = qaLines();
+  if (!lines.length) { document.getElementById('qaText').focus(); return; }
+  const snapshot = JSON.stringify(state);
+  let result = null;
+  try {
+    result = qaApply(lines);
+  } catch (e) {
+    console.warn('Quick add failed', e);
+  }
+  if (!result) { state = JSON.parse(snapshot); return; }
+  if (qa.onAdded) { qa.onAdded(); qa.onAdded = null; }
+  saveState();
+  if (result.trackId) {
+    try { localStorage.setItem(QA_LAST_KEY, result.trackId); } catch (e) { /* ignore */ }
+  }
+
+  qaToast(result.message, { view: result.view, snapshot });
+  if (result.continueWith) {
+    // A brand-new project is empty; roll straight into adding its tasks.
+    Object.assign(qa, {
+      kind: 'task', trackId: result.continueWith, milestoneId: QA_NEW,
+      newMilestoneName: '', note: `${getTrackLabel(result.continueWith)} is ready. What are its first tasks?`
+    });
+    const text = document.getElementById('qaText');
+    text.value = '';
+    qaAutoGrow(text);
+    qaRender();
+    text.focus();
+    refreshCurrentView();
+    return;
+  }
+  closeQuickAdd();
+  refreshCurrentView();
+}
+
+function qaToast(message, { view, snapshot, viewLabel } = {}) {
+  document.querySelectorAll('.qa-toast').forEach(t => t.remove());
+  const toast = document.createElement('div');
+  toast.className = 'qa-toast';
+  toast.setAttribute('role', 'status');
+  toast.innerHTML = `<span class="qa-toast-msg">${escapeHtml(message)}</span>
+    ${view ? `<button type="button" class="qa-toast-btn" data-act="view">${escapeHtml(viewLabel || 'View')}</button>` : ''}
+    ${snapshot ? '<button type="button" class="qa-toast-btn" data-act="undo">Undo</button>' : ''}`;
+  document.body.appendChild(toast);
+  const timer = setTimeout(() => toast.remove(), 7000);
+  toast.addEventListener('click', (e) => {
+    const act = e.target.dataset && e.target.dataset.act;
+    if (!act) return;
+    clearTimeout(timer);
+    toast.remove();
+    if (act === 'view') {
+      closeQuickAdd();
+      navigate(view);
+    } else if (act === 'undo') {
+      closeQuickAdd();
+      state = JSON.parse(snapshot);
+      saveState();
+      refreshCurrentView();
+      qaToast('Undone');
+    }
+  });
+}
+
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'n' && e.key !== 'N') return;
+  if (e.metaKey || e.ctrlKey || e.altKey || e.defaultPrevented) return;
+  if (document.getElementById('qaOverlay') || document.getElementById('projectModalOverlay') || document.querySelector('.small-modal-overlay')) return;
+  const t = e.target;
+  if (t && t.closest && t.closest('input, textarea, select, [contenteditable=""], [contenteditable="true"]')) return;
+  e.preventDefault();
+  openQuickAdd();
+});
+
+// ================================================================
 // FEATURE 12: EXPORT / IMPORT
 // ================================================================
 
+// Everything lives in this browser's localStorage, which a cleared cache
+// (or Safari's 7-day eviction for sites not added to the Home Screen) can
+// wipe. Ask the browser to keep it, and nudge for a backup file weekly.
+const BACKUP_KEY = 'soma_last_backup';
+const BACKUP_SNOOZE_KEY = 'soma_backup_snooze';
+const BACKUP_INTERVAL_DAYS = 7;
+
+function requestPersistentStorage() {
+  try {
+    if (navigator.storage && navigator.storage.persist) {
+      navigator.storage.persisted().then(p => { if (!p) navigator.storage.persist(); }).catch(() => {});
+    }
+  } catch (e) { /* unsupported */ }
+}
+
+function hasUserData() {
+  return state.focusLog.length > 0
+    || Object.keys(state.customProjects || {}).length > 0
+    || Object.values(state.customSteps || {}).some(a => a.length > 0)
+    || Object.entries(state.steps || {}).some(([id, s]) =>
+      s.status === 'done' && !((PROFILE.seedDone && PROFILE.seedDone.steps) || []).includes(id));
+}
+
+function daysSince(dateStr) {
+  if (!dateStr) return Infinity;
+  return (new Date(todayStr() + 'T00:00:00') - new Date(dateStr + 'T00:00:00')) / 86400000;
+}
+
+function isBackupDue() {
+  if (getGithubToken() || !hasUserData()) return false;
+  let last = null, snooze = null;
+  try { last = localStorage.getItem(BACKUP_KEY); snooze = localStorage.getItem(BACKUP_SNOOZE_KEY); } catch (e) { return false; }
+  return daysSince(last) >= BACKUP_INTERVAL_DAYS && daysSince(snooze) >= BACKUP_INTERVAL_DAYS;
+}
+
+function renderBackupReminder() {
+  if (!isBackupDue()) return '';
+  return `<div class="backup-reminder" role="status">
+    <span>Your plans live only in this browser. Save a backup file so clearing your browser can't erase them.</span>
+    <span class="backup-reminder-actions">
+      <button class="btn btn-outline btn-sm" onclick="exportData(); renderHome();">Back up now</button>
+      <button class="btn btn-ghost btn-sm" onclick="snoozeBackupReminder()">Later</button>
+    </span>
+  </div>`;
+}
+
+function snoozeBackupReminder() {
+  try { localStorage.setItem(BACKUP_SNOOZE_KEY, todayStr()); } catch (e) { /* ignore */ }
+  renderHome();
+}
+
 function exportData() {
+  try { localStorage.setItem(BACKUP_KEY, todayStr()); } catch (e) { /* ignore */ }
   const json = JSON.stringify(state, null, 2);
   const today = localDateStr(new Date());
   const filename = `soma-data-${today}.json`;
@@ -5147,9 +7032,14 @@ document.getElementById('drawerOverlay').addEventListener('click', (e) => {
   if (e.target === document.getElementById('drawerOverlay')) closeDrawer();
 });
 
-// Round 2 Task C: Esc key closes any open drawer.
+// Round 2 Task C: Esc key closes any open drawer. Modals sit above the
+// drawer, so they close first (even before focus has moved into them).
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' || e.key === 'Esc') {
+    const small = document.querySelector('.small-modal-overlay');
+    if (small) { small.remove(); return; }
+    if (document.getElementById('qaOverlay')) { closeQuickAdd(); return; }
+    if (document.getElementById('projectModalOverlay')) { _closeProjectModal(); return; }
     const overlay = document.getElementById('drawerOverlay');
     if (overlay && overlay.classList.contains('open')) {
       closeDrawer();
@@ -5157,8 +7047,22 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
+// Clickable cards are divs with role="button"; make Enter and Space work
+// on them like a real button when they have keyboard focus.
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter' && e.key !== ' ') return;
+  const t = e.target;
+  if (!t || t.getAttribute('role') !== 'button' || /^(BUTTON|A|INPUT|SELECT|TEXTAREA)$/.test(t.tagName)) return;
+  e.preventDefault();
+  t.click();
+});
+
 // Hash change
 window.addEventListener('hashchange', handleRoute);
+
+// Feature 13: Quick add button (the N shortcut is bound with the feature).
+const quickAddFab = document.getElementById('quickAddFab');
+if (quickAddFab) quickAddFab.addEventListener('click', () => openQuickAdd());
 
 // Round 5: Weekly plan rollover runs inside loadState(). This hook remains
 // as a safety net to catch the (rare) case where the module was imported
@@ -5170,6 +7074,14 @@ window.addEventListener('hashchange', handleRoute);
 // Phase 1a: restore any in-flight timer block before the first render so
 // the timer pill / focus view show the correct elapsed time immediately.
 loadTimerFromStorage();
+if (getBreak()) runBreakTicker();
+requestPersistentStorage();
+recheckLicenseIfDue();
+// Product builds work offline once loaded (sw.js). Service workers need
+// http(s), so this is skipped when index.html is opened from disk.
+if (PROFILE.offline && 'serviceWorker' in navigator && location.protocol.startsWith('http')) {
+  navigator.serviceWorker.register('sw.js').catch(e => console.warn('Offline support unavailable', e));
+}
 
 // Init
 handleRoute();
