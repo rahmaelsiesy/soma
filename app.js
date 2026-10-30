@@ -1388,6 +1388,9 @@ function renderWeeklyPlanPanel(opts) {
   const placement = opts.placement || 'top'; // 'top' or 'bottom'
   const activeIds = getActiveTrackIds();
   if (activeIds.length === 0) return '';
+  if (!hasFeature('weeklyPlan')) {
+    return placement === 'top' ? proLockedCard('weeklyPlan', 'Split your weekly block goal across projects, and roll unfinished blocks into next week automatically.') : '';
+  }
 
   const weeklyGoal = getEffectiveWeeklyGoal();
   const perProject = state.weeklyPlan.perProjectBlocks || {};
@@ -1815,7 +1818,8 @@ function renderHome() {
     <div class="points-badge">${state.points} pts</div>
   </div>`;
 
-  html += renderBackupReminder();
+  const backupHtml = renderBackupReminder();
+  html += backupHtml || renderInstallPrompt();
 
   // Feature 11: Review done badge
   if (dayOfWeek() === 0 && isReviewDoneThisWeek()) {
@@ -2198,6 +2202,7 @@ function _openProjectModal(titleText, {label, description, iconKey, color, mode,
       return;
     }
     const desc = (document.getElementById('projectModalDesc').value || '').trim();
+    if (mode === 'create' && !canCreateProjects()) { _closeProjectModal(); showUpgrade('unlimitedProjects'); return; }
     if (mode === 'create') {
       _createCustomProject({label: name, description: desc, icon: selIcon, color: selColor});
     } else {
@@ -4737,6 +4742,7 @@ async function copyText(text) {
 }
 
 async function copyWeeklyPrompt() {
+  if (!hasFeature('aiPlanner')) return showUpgrade('aiPlanner');
   const ok = await copyText(generateWeeklyPrompt());
   const btn = document.getElementById('planWeekBtn');
   if (!btn) return;
@@ -4766,6 +4772,7 @@ function generateBreakdownPrompt(milestoneId, stepId) {
 }
 
 async function breakDownWithAI(milestoneId, stepId) {
+  if (!hasFeature('aiPlanner')) { closeDrawer(); return showUpgrade('aiPlanner'); }
   const ok = await copyText(generateBreakdownPrompt(milestoneId, stepId));
   closeDrawer();
   openQuickAdd({
@@ -4872,17 +4879,22 @@ function renderSettings() {
     <div class="settings-group">
       <h4>Theme</h4>
       <div class="theme-picker">
-        ${THEMES.map(t => `
-          <div class="theme-swatch ${t.id === currentTheme ? 'active' : ''}" onclick="applyTheme('${t.id}'); renderSettings();" title="${t.label}">
+        ${THEMES.map(t => {
+          const locked = !hasFeature('themes') && !FREE_THEMES.includes(t.id);
+          return `
+          <div class="theme-swatch ${t.id === currentTheme ? 'active' : ''}${locked ? ' theme-locked' : ''}" onclick="${locked ? "showUpgrade('themes')" : `applyTheme('${t.id}'); renderSettings();`}" title="${t.label}${locked ? ' (Pro)' : ''}">
             <div class="swatch-inner">
               <div class="swatch-top" style="background:${t.top}"></div>
               <div class="swatch-bot" style="background:${t.bot}"></div>
             </div>
-            <span class="swatch-label">${t.label}</span>
+            <span class="swatch-label">${t.label}${locked ? ' <span class="pro-badge">Pro</span>' : ''}</span>
           </div>
-        `).join('')}
+        `;
+        }).join('')}
       </div>
     </div>
+
+    ${renderProSettings()}
 
     <div class="settings-group" style="margin-top:var(--sp-6);">
       <h4>Focus blocks</h4>
@@ -5117,6 +5129,10 @@ function claimReward(tierId) {
 
 function renderRewards() {
   const el = document.getElementById('view-rewards');
+  if (!hasFeature('rewards')) {
+    el.innerHTML = `<div class="section-title">Rewards</div>` + proLockedCard('rewards', 'Pick real treats for each points tier and streak, and claim them as you earn them. Your points keep counting on the free plan.');
+    return;
+  }
   let html = `<div class="section-title">Rewards</div>
     <p style="font-size:var(--text-sm);color:var(--text-muted);margin-bottom:var(--sp-5);">Set a reward for each milestone. Claim it when you get there.</p>`;
 
@@ -5305,7 +5321,7 @@ function renderProgress() {
       </div>
     </div>
     ${renderWeeklyGoalTracker()}
-    <div class="chart-card">
+    ${hasFeature('progressCharts') ? `<div class="chart-card">
       <div class="chart-card-title">Weekly focus hours — last 12 weeks</div>
       <div class="chart-canvas-wrap" style="height:200px;">
         <canvas id="chartWeekly"></canvas>
@@ -5316,7 +5332,7 @@ function renderProgress() {
       <div class="chart-canvas-wrap" style="height:180px;">
         <canvas id="chartProject"></canvas>
       </div>
-    </div>`;
+    </div>` : proLockedCard('progressCharts', 'See your focus hours week by week and where your blocks went, project by project.')}`;
 
   el.innerHTML = html;
 
@@ -5907,6 +5923,12 @@ function renderBoard(trackId) {
     </div>
   </div>`;
   el.innerHTML = html;
+  // Free plan: show the real board, softened, under an unlock card.
+  if (!hasFeature('board')) {
+    const wrap = el.querySelector('.board-wrap');
+    wrap.classList.add('pro-preview');
+    wrap.insertAdjacentHTML('beforeend', proLockedCard('board', 'Watch each project as a road from Start to Finish: every milestone is a space, and its squares fill in as you do focus blocks.'));
+  }
 
   // The road is drawn from the spaces' real positions, once they're laid
   // out, and redrawn whenever the board changes size.
@@ -5948,6 +5970,7 @@ window.addEventListener('resize', () => {
 
 // The drawer for one space: progress, the next block, and every step.
 function openBoardSpace(trackId, milestoneId) {
+  if (!hasFeature('board')) return showUpgrade('board');
   const ms = getMilestone(milestoneId);
   if (!ms) return;
   const milestones = getMilestonesForTrack(trackId);
@@ -6014,6 +6037,296 @@ function renderBoardLinks() {
         <span class="dot" style="background:${getTrackColor(t)}"></span>${escapeHtml(getTrackLabel(t))}<span class="board-link-count">${s.msDone}/${s.msTotal}</span>
       </button>`;
     }).join('')}
+  </div>`;
+}
+
+// ================================================================
+// FEATURE 19: INSTALL PROMPT
+// ================================================================
+// Installed web apps open in their own window and keep their data more
+// reliably (Safari's 7-day storage cleanup skips Home Screen apps). From
+// the second day of use, Home suggests installing; "Not now" hides it
+// for 30 days.
+const INSTALL_DISMISS_KEY = 'soma_install_dismissed';
+const VISITS_KEY = 'soma_visit_days';
+let _installEvent = null;
+
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  _installEvent = e;
+  if ((window.location.hash || '#home').startsWith('#home')) renderHome();
+});
+window.addEventListener('appinstalled', () => {
+  _installEvent = null;
+  try { localStorage.setItem(INSTALL_DISMISS_KEY, 'installed'); } catch (e) { /* ignore */ }
+});
+
+// Counts distinct days the app was opened.
+function countVisitDay() {
+  try {
+    const v = JSON.parse(localStorage.getItem(VISITS_KEY) || '{"days":0,"last":null}');
+    if (v.last !== todayStr()) {
+      v.days++;
+      v.last = todayStr();
+      localStorage.setItem(VISITS_KEY, JSON.stringify(v));
+    }
+    return v.days;
+  } catch (e) { return 0; }
+}
+
+function isInstalledApp() {
+  return (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
+}
+
+// Browsers without an install event need instructions instead of a button.
+function manualInstallHint() {
+  const ua = navigator.userAgent;
+  if (/iPhone|iPad|iPod/.test(ua)) return 'Tap the Share button, then “Add to Home Screen”.';
+  if (/Macintosh/.test(ua) && /Safari\//.test(ua) && !/Chrome|Chromium|Edg|Firefox/.test(ua)) return 'In Safari’s menu bar, choose File → Add to Dock.';
+  return null;
+}
+
+function renderInstallPrompt() {
+  if (!location.protocol.startsWith('http') || isInstalledApp()) return '';
+  let dismissed = null;
+  try { dismissed = localStorage.getItem(INSTALL_DISMISS_KEY); } catch (e) { return ''; }
+  if (dismissed === 'installed' || (dismissed && daysSince(dismissed) < 30)) return '';
+  if (countVisitDay() < 2) return '';
+  const hint = _installEvent ? null : manualInstallHint();
+  if (!_installEvent && !hint) return '';
+  return `<div class="backup-reminder install-prompt" role="status">
+    <span>Install Soma as an app: it opens in its own window and keeps your plans safer.${hint ? ' ' + hint : ''}</span>
+    <span class="backup-reminder-actions">
+      ${_installEvent ? '<button class="btn btn-outline btn-sm" onclick="installApp()">Install</button>' : ''}
+      <button class="btn btn-ghost btn-sm" onclick="dismissInstallPrompt()">Not now</button>
+    </span>
+  </div>`;
+}
+
+async function installApp() {
+  if (!_installEvent) return;
+  _installEvent.prompt();
+  try {
+    const choice = await _installEvent.userChoice;
+    if (choice && choice.outcome === 'accepted') localStorage.setItem(INSTALL_DISMISS_KEY, 'installed');
+  } catch (e) { /* ignore */ }
+  _installEvent = null;
+  renderHome();
+}
+
+function dismissInstallPrompt() {
+  try { localStorage.setItem(INSTALL_DISMISS_KEY, todayStr()); } catch (e) { /* ignore */ }
+  renderHome();
+}
+
+// ================================================================
+// FEATURE 20: SOMA PRO (license key)
+// ================================================================
+// Product builds can reserve some features for paying customers. The
+// edition's edition.json (copied into SOMA_PROFILE.edition by
+// tools/build-edition.mjs) names the license provider, its IDs, and which
+// features are Pro. With no licensing config, or one still holding
+// YOUR-… placeholders, everything is unlocked (the personal site, and
+// test builds). Core features (Quick Add, Today, the timer, export) are
+// never gated.
+//
+// The check runs in the browser against the provider's public license
+// endpoint, and the result is cached so Soma keeps working offline. It
+// keeps honest people honest; it is not DRM.
+const EDITION = PROFILE.edition || {};
+const LICENSING = EDITION.licensing || null;
+const LICENSE_STORE_KEY = 'soma_license';
+const LICENSE_RECHECK_DAYS = 14;
+const FREE_THEMES = ['rose-pine-dawn', 'catppuccin-mocha'];
+const PRO_FEATURES = {
+  unlimitedProjects: 'Unlimited projects',
+  board: 'The Board',
+  weeklyPlan: 'Weekly block planning',
+  rewards: 'Rewards',
+  aiPlanner: 'AI planning helpers',
+  themes: 'All 9 themes',
+  progressCharts: 'Progress charts'
+};
+
+// Licensing is on once the provider's own IDs are filled in (fields for
+// the other provider are ignored).
+function licensingActive() {
+  if (!LICENSING || !LICENSING.provider) return false;
+  const ids = LICENSING.provider === 'lemonsqueezy' ? [LICENSING.storeId] : [LICENSING.organizationId];
+  return ids.every(v => v && !String(v).includes('YOUR-'));
+}
+
+function getLicense() {
+  try { return JSON.parse(localStorage.getItem(LICENSE_STORE_KEY) || 'null'); } catch (e) { return null; }
+}
+
+function isPro() {
+  if (!licensingActive()) return true;
+  const lic = getLicense();
+  return !!(lic && lic.valid);
+}
+
+// Is this feature available to the current user?
+function hasFeature(feature) {
+  if (!licensingActive() || !(LICENSING.proFeatures || []).includes(feature)) return true;
+  return isPro();
+}
+
+function freeProjectLimit() {
+  return (LICENSING && LICENSING.freeProjectLimit) || 3;
+}
+
+// Custom projects count toward the free limit; built-in examples don't.
+function canCreateProjects(n = 1) {
+  if (hasFeature('unlimitedProjects')) return true;
+  const own = Object.values(state.customProjects || {}).filter(p => !p.archived).length;
+  return own + n <= freeProjectLimit();
+}
+
+// Ask the provider whether a key is valid. Resolves { valid, reason };
+// rejects on network trouble (so callers can keep a cached result).
+async function checkLicenseKey(key) {
+  if (LICENSING.provider === 'lemonsqueezy') {
+    const res = await fetch('https://api.lemonsqueezy.com/v1/licenses/validate', {
+      method: 'POST',
+      headers: { 'Accept': 'application/json', 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ license_key: key }).toString()
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok && res.status >= 500) throw new Error('HTTP ' + res.status);
+    const meta = data.meta || {};
+    const status = data.license_key && data.license_key.status;
+    if (!data.valid) return { valid: false, reason: 'That key wasn’t recognised.' };
+    // A key from any other Lemon Squeezy store or product must not unlock Soma.
+    if (String(meta.store_id) !== String(LICENSING.storeId)
+      || (LICENSING.productId && String(meta.product_id) !== String(LICENSING.productId))) {
+      return { valid: false, reason: 'That key is for a different product.' };
+    }
+    if (status === 'expired' || status === 'disabled') return { valid: false, reason: `This key is ${status}.` };
+    return { valid: true };
+  }
+  // Polar (default): the customer-portal endpoint is meant for public clients.
+  const base = LICENSING.apiBase || 'https://api.polar.sh';
+  const res = await fetch(`${base}/v1/customer-portal/license-keys/validate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+    body: JSON.stringify({ key, organization_id: LICENSING.organizationId })
+  });
+  if (res.status === 404 || res.status === 422 || res.status === 400) return { valid: false, reason: 'That key wasn’t recognised.' };
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  const data = await res.json();
+  if (data.status && data.status !== 'granted') return { valid: false, reason: `This key has been ${data.status}.` };
+  if (data.expires_at && new Date(data.expires_at) < new Date()) return { valid: false, reason: 'This key has expired.' };
+  return { valid: true };
+}
+
+async function activateLicense(key) {
+  const clean = String(key || '').trim();
+  if (!clean) return { valid: false, reason: 'Paste the license key from your purchase email.' };
+  let result;
+  try {
+    result = await checkLicenseKey(clean);
+  } catch (e) {
+    return { valid: false, reason: 'Couldn’t reach the license server. Check your connection and try again.' };
+  }
+  if (result.valid) {
+    try { localStorage.setItem(LICENSE_STORE_KEY, JSON.stringify({ key: clean, valid: true, checkedAt: todayStr() })); } catch (e) { /* ignore */ }
+  }
+  return result;
+}
+
+function removeLicense() {
+  if (!confirm('Remove the Pro license from this device? You can paste the key again any time.')) return;
+  try { localStorage.removeItem(LICENSE_STORE_KEY); } catch (e) { /* ignore */ }
+  refreshCurrentView();
+}
+
+// Every couple of weeks, quietly re-check a stored key. Only a definite
+// "no" from the provider locks Pro again; being offline never does.
+async function recheckLicenseIfDue() {
+  if (!licensingActive() || !navigator.onLine) return;
+  const lic = getLicense();
+  if (!lic || !lic.valid || daysSince(lic.checkedAt) < LICENSE_RECHECK_DAYS) return;
+  try {
+    const result = await checkLicenseKey(lic.key);
+    if (result.valid) {
+      lic.checkedAt = todayStr();
+      localStorage.setItem(LICENSE_STORE_KEY, JSON.stringify(lic));
+    } else {
+      localStorage.setItem(LICENSE_STORE_KEY, JSON.stringify({ ...lic, valid: false, reason: result.reason }));
+      qaToast('Your Soma Pro license is no longer active. ' + result.reason);
+      refreshCurrentView();
+    }
+  } catch (e) { /* offline or provider down: keep the cached result */ }
+}
+
+// The upgrade dialog, shown when a Pro feature is used on the free plan.
+function showUpgrade(feature) {
+  const label = PRO_FEATURES[feature] || 'This';
+  const list = (LICENSING.proFeatures || []).map(f => `<li>${escapeHtml(f === 'unlimitedProjects' ? `More than ${freeProjectLimit()} projects` : PRO_FEATURES[f] || f)}</li>`).join('');
+  const overlay = openSmallModal('upgradeOverlay', `
+    <div class="project-modal-title">Unlock ${escapeHtml(EDITION.productName || 'Soma')} Pro</div>
+    <p class="modal-copy">${escapeHtml(feature === 'unlimitedProjects' ? `The free plan includes ${freeProjectLimit()} projects of your own.` : `${label} is part of Pro.`)}
+      Pay once and keep it, including every 1.x update. No subscription.</p>
+    <ul class="pro-list">${list}</ul>
+    <label class="project-modal-field">
+      <span>Already bought it? Paste your license key</span>
+      <input type="text" id="licenseKeyInput" autocomplete="off" spellcheck="false" placeholder="License key from your purchase email">
+    </label>
+    <div class="license-msg" id="licenseMsg" role="status"></div>
+    <div class="project-modal-actions">
+      <button type="button" class="btn btn-outline" data-act="activate">Activate</button>
+      ${EDITION.buyUrl ? `<a class="btn btn-primary" href="${escapeHtml(EDITION.buyUrl)}" target="_blank" rel="noopener">Get Pro${EDITION.priceLabel ? ' — ' + escapeHtml(EDITION.priceLabel) : ''}</a>` : ''}
+    </div>`);
+  const input = overlay.querySelector('#licenseKeyInput');
+  const msg = overlay.querySelector('#licenseMsg');
+  const activate = async () => {
+    msg.textContent = 'Checking…';
+    const result = await activateLicense(input.value);
+    if (result.valid) {
+      overlay.remove();
+      qaToast('Soma Pro unlocked. Thank you for supporting it!');
+      refreshCurrentView();
+    } else {
+      msg.textContent = result.reason;
+    }
+  };
+  overlay.querySelector('[data-act="activate"]').addEventListener('click', activate);
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); activate(); } });
+  setTimeout(() => input.focus(), 30);
+}
+
+// Gate helper for buttons: runs `fn` if the feature is available,
+// otherwise shows the upgrade dialog.
+function withFeature(feature, fn) {
+  if (hasFeature(feature)) return fn();
+  showUpgrade(feature);
+}
+
+// A locked placeholder card for whole views or panels.
+function proLockedCard(feature, blurb) {
+  return `<div class="pro-locked" role="note">
+    <div class="pro-locked-title">${escapeHtml(PRO_FEATURES[feature] || 'Pro feature')} <span class="pro-badge">Pro</span></div>
+    <p class="pro-locked-copy">${escapeHtml(blurb)}</p>
+    <button class="btn btn-primary btn-sm" onclick="showUpgrade('${feature}')">Unlock Pro</button>
+  </div>`;
+}
+
+function renderProSettings() {
+  if (!licensingActive()) return '';
+  const lic = getLicense();
+  if (isPro()) {
+    const tail = lic && lic.key ? lic.key.slice(-4) : '';
+    return `<div class="settings-group">
+      <h4>${escapeHtml(EDITION.productName || 'Soma')} Pro</h4>
+      <div class="setting-row"><span class="setting-label">Status</span><span class="setting-note">Active${tail ? ` · key ending ${escapeHtml(tail)}` : ''}</span></div>
+      <button class="btn btn-ghost btn-sm" onclick="removeLicense()">Remove license from this device</button>
+    </div>`;
+  }
+  return `<div class="settings-group">
+    <h4>${escapeHtml(EDITION.productName || 'Soma')} Pro</h4>
+    <p class="setting-note" style="text-align:left;margin-bottom:var(--sp-3)">You're on the free plan.${lic && lic.reason ? ' ' + escapeHtml(lic.reason) : ''}</p>
+    <button class="btn btn-primary btn-sm" onclick="showUpgrade('board')">Unlock Pro or enter a key</button>
   </div>`;
 }
 
@@ -6421,6 +6734,7 @@ function qaApply(lines) {
     return { message: `${qaCount(lines.length, 'admin task')} added`, view: '#admin' };
   }
   if (kind === 'project') {
+    if (!canCreateProjects(lines.length)) { showUpgrade('unlimitedProjects'); return null; }
     const ids = lines.map(label => createProject({ label: label.slice(0, 60) }));
     const one = ids.length === 1;
     return {
@@ -6440,6 +6754,7 @@ function qaApply(lines) {
       if (input) input.focus();
       return null;
     }
+    if (!canCreateProjects()) { showUpgrade('unlimitedProjects'); return null; }
     trackId = createProject({ label: name });
   }
 
@@ -6721,9 +7036,9 @@ document.getElementById('drawerOverlay').addEventListener('click', (e) => {
 // drawer, so they close first (even before focus has moved into them).
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' || e.key === 'Esc') {
-    if (document.getElementById('qaOverlay')) { closeQuickAdd(); return; }
     const small = document.querySelector('.small-modal-overlay');
     if (small) { small.remove(); return; }
+    if (document.getElementById('qaOverlay')) { closeQuickAdd(); return; }
     if (document.getElementById('projectModalOverlay')) { _closeProjectModal(); return; }
     const overlay = document.getElementById('drawerOverlay');
     if (overlay && overlay.classList.contains('open')) {
@@ -6761,6 +7076,7 @@ if (quickAddFab) quickAddFab.addEventListener('click', () => openQuickAdd());
 loadTimerFromStorage();
 if (getBreak()) runBreakTicker();
 requestPersistentStorage();
+recheckLicenseIfDue();
 // Product builds work offline once loaded (sw.js). Service workers need
 // http(s), so this is skipped when index.html is opened from disk.
 if (PROFILE.offline && 'serviceWorker' in navigator && location.protocol.startsWith('http')) {

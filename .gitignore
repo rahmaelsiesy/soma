@@ -8,3 +8,5 @@ __pycache__/
 !icon-*.png
 # Product build output (tools/build-edition.mjs)
 dist/
+# Landing-page screenshots
+!editions/*/site/img/*.png

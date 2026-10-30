@@ -25,6 +25,10 @@ Export your board state from the Quest Board → paste into that day's snapshot 
 ## Product build
 The app code is shared; everything personal lives in `SOMA_PROFILE` in `data.js`.
 `node tools/build-edition.mjs` builds the sellable starter edition from `editions/starter/`
-into `dist/starter/` (plus a zip) without any personal data. See `product/STRATEGY.md`.
+into `dist/starter/` (plus a zip) and the website (landing page + app) into `dist/starter-site/`,
+without any personal data. Seller details and licensing live in `editions/starter/edition.json`.
+See `product/LAUNCH-CHECKLIST.md` and `product/STRATEGY.md`.
+
+How to use the app: `guide.html` (also under More → Guide & docs).
 
 Quick add: press **N** or tap **+** anywhere to add tasks, milestones, projects, ideas or admin items.

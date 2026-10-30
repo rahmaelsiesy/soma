@@ -1,6 +1,6 @@
-SOMA — PERSONAL LICENSE
+{{productName}} — PERSONAL LICENSE
 
-Copyright (c) 2026 YOUR-NAME-OR-STUDIO. All rights reserved.
+Copyright (c) {{year}} {{sellerName}}. All rights reserved.
 
 When you buy Soma you get a license, not ownership of the software.
 
@@ -16,7 +16,7 @@ You may NOT:
   - Use Soma, or a changed version of it, to make a competing product
     or template.
 
-Team or classroom licenses are available. Ask at YOUR-SUPPORT-EMAIL-HERE.
+Team or classroom licenses are available. Ask at {{supportEmail}}.
 
 Soma is provided "as is", without warranty of any kind. Your data is
 stored only in your browser. You are responsible for backing it up.

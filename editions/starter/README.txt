@@ -1,14 +1,14 @@
-SOMA — calm focus planner
+{{productName}} — calm focus planner
 =========================
 
-Thanks for buying Soma. This takes about two minutes.
+Thanks for buying {{productName}}. This takes about two minutes.
 
 
 1. OPEN IT
 ----------
 Easiest: open your Soma link in Chrome, Edge or Safari:
 
-    https://YOUR-DOMAIN-HERE
+    {{appUrl}}
 
 Or run this copy on your own computer: unzip the folder and double-click
 index.html. (Chrome or Edge work best when opening it from a file.)
@@ -54,6 +54,6 @@ That also means clearing your browser's site data erases it. So:
 
 5. HELP
 -------
-Questions, bugs or ideas: YOUR-SUPPORT-EMAIL-HERE
+Questions, bugs or ideas: {{supportEmail}}
 
 Updates for version 1.x are free. You'll get an email when one is out.

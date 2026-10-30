@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Privacy · {{productName}}</title>
+  <link rel="icon" href="app/icon.svg" type="image/svg+xml">
+  <style>
+    :root { --bg: #faf4ed; --text: #4b4766; --muted: #797593; --border: #eadfd3; }
+    @media (prefers-color-scheme: dark) { :root { --bg: #1e1e2e; --text: #e2e4f3; --muted: #a6a8c2; --border: #3a3a50; } }
+    body { font-family: Inter, -apple-system, BlinkMacSystemFont, sans-serif; background: var(--bg); color: var(--text); line-height: 1.65; margin: 0; }
+    main { max-width: 720px; margin: 0 auto; padding: 40px 20px 80px; }
+    h1 { font-size: 30px; margin: 24px 0 8px; }
+    h2 { font-size: 19px; margin: 28px 0 6px; }
+    p, li { color: var(--muted); }
+    a { color: inherit; }
+  </style>
+</head>
+<body>
+<main>
+  <a href="index.html">← {{productName}}</a>
+  <h1>Privacy</h1>
+  <p>Short version: {{productName}} doesn't collect your personal data. Your plans stay on your device.</p>
+
+  <h2>Your plans</h2>
+  <p>Everything you enter in {{productName}} (projects, tasks, notes, focus history) is stored in your browser on your own device. It is never sent to us or to any server we run. We can't see it, and we can't recover it if it's deleted, so keep a backup (Settings → Export).</p>
+
+  <h2>License check</h2>
+  <p>If you activate {{productName}} Pro, your license key is sent to our payment provider to check that it's valid, and it's checked again occasionally. Nothing else is sent.</p>
+
+  <h2>Purchases</h2>
+  <p>Payments are handled by our payment provider, which acts as the merchant of record. They receive your payment details and email address to process the order and send your license key. We receive your email address and order details from them, which we use only to support you and to send product updates.</p>
+
+  <h2>AI helpers</h2>
+  <p>The AI features only copy a prompt to your clipboard. Nothing is sent anywhere unless you paste it into an AI service yourself, under that service's own terms.</p>
+
+  <h2>This website</h2>
+  <p>This website and the app have no analytics, ads or tracking cookies. They load a font from Google Fonts, and the app loads its chart library from jsDelivr, so those services see a standard request from your browser. Our hosting provider may keep standard server logs.</p>
+
+  <h2>Contact</h2>
+  <p>Questions: <a href="mailto:{{supportEmail}}">{{supportEmail}}</a></p>
+</main>
+</body>
+</html>

@@ -244,12 +244,12 @@ Packs and bundles add on top of this. Many indie launches sell very little after
 ## 8. What to build next
 
 **Before launch (P0)**
-- [ ] **License unlock and free-tier limit.** Validate a Polar key from the browser, cache it, and gate the Pro features listed in section 3. Never gate export.
-- [ ] **Move the product to a private repo** and deploy `dist/starter/` to your domain. Keep your personal site separate.
-- [ ] **Landing page:** a hero video of Quick Add plus a timer block, the "pay once / private" promise, pricing, an FAQ including "where's my data?", and a "Try it free" button.
-- [ ] **"Install the app" prompt** after a few visits (it protects data on Safari).
+- [x] **License unlock and free-tier limit.** Done: Polar or Lemon Squeezy keys are checked in the browser and cached (works offline, re-checked every 2 weeks). The Pro features and free project limit are set in `editions/starter/edition.json`. Export is never gated. **Test once with a real key before launch** (see `LAUNCH-CHECKLIST.md`).
+- [ ] **Make the repo private** and deploy `dist/starter-site/` (landing page plus app at `/app/`) to your domain. Steps in `LAUNCH-CHECKLIST.md`.
+- [x] **Landing page.** Done: `editions/starter/site/` has the hero, how it works, real screenshots, the privacy promise, founder note, Free vs Pro pricing, FAQ and a privacy page. Still worth adding: a short screen-recording video of Quick Add and a focus block.
+- [x] **"Install the app" prompt.** Done: from the second day of use, an Install button (Chrome, Edge, Android) or instructions (iPhone, Mac Safari); "Not now" hides it for 30 days.
 - [x] **Forgiving streaks.** Done: one missed weekday a week is a free rest day, the best streak is remembered, and streak rewards stay earned.
-- [ ] Fill in the `YOUR-…` placeholders in `editions/starter/README.txt` and `LICENSE.txt`. Have the license and a short privacy policy looked over; these are templates, not legal advice.
+- [ ] Fill in `editions/starter/edition.json` (one file now feeds the README, LICENSE, landing page and licensing; the build lists anything missing). Have the license, privacy page and refund policy looked over; these are templates, not legal advice.
 - [ ] Delete the broken legacy pages and the unused weekly-review Action.
 
 **Soon after (P1)**
@@ -269,7 +269,9 @@ Packs and bundles add on top of this. Many indie launches sell very little after
 
 - **`data.js`** holds your projects (`QUEST_DATA`) plus `SOMA_PROFILE`: active and archived projects, labels, colors, docs, GitHub sync, AI persona and the lab-prep template. Edit your own setup here.
 - **`editions/starter/`** is the product's data file plus the buyer README and LICENSE. To make a new edition or pack, copy this folder and edit its `data.js`. Keep ids stable once released, because saved progress is keyed by id.
-- **`node tools/build-edition.mjs [edition]`** builds `dist/<edition>/` and `dist/soma-<edition>.zip`. It never copies your docs, protocol, legacy pages, `state.json` or snapshots, and it stops if a personal marker appears. To publish, drag `dist/starter/` into Cloudflare Pages or Netlify.
+- **`editions/starter/edition.json`** holds your seller details, price and licensing (provider, IDs, free project limit, Pro features). **`editions/starter/site/`** is the landing page.
+- **`node tools/build-edition.mjs [edition]`** builds `dist/<edition>/`, `dist/soma-<edition>.zip` and `dist/<edition>-site/` (the website, with the app at `/app/`). It fills in your details, never copies your docs, protocol, legacy pages, `state.json` or snapshots, stops if a personal marker appears, and lists any `YOUR-…` values still to fill. To publish, drag `dist/starter-site/` into Cloudflare Pages or Netlify.
+- **`product/LAUNCH-CHECKLIST.md`** walks through store setup, testing a real purchase, deploying and launch.
 - **`sw.js`** provides offline support. It's only switched on for editions whose profile sets `offline: true`, so your GitHub Pages site is unchanged.
 
 ---
