@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Soma guide</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <script>
+    // Match the theme picked in the app (or the computer's light/dark setting).
+    (function () {
+      try {
+        var t = localStorage.getItem('soma_theme');
+        if (!t) t = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches ? 'catppuccin-mocha' : 'rose-pine-dawn';
+        document.documentElement.setAttribute('data-theme', t);
+      } catch (e) { document.documentElement.setAttribute('data-theme', 'rose-pine-dawn'); }
+    })();
+  </script>
+  <style>
+    body { background: var(--bg); }
+    .guide { max-width: 760px; margin: 0 auto; padding: 32px 20px 80px; color: var(--text-primary); line-height: 1.65; font-size: 15px; }
+    .guide-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 28px; }
+    .guide-back { font-size: 13px; color: var(--text-secondary); text-decoration: none; border: 1px solid var(--border); border-radius: 999px; padding: 6px 12px; }
+    .guide-back:hover { color: var(--text-primary); border-color: var(--text-muted); }
+    .guide h1 { font-size: 28px; line-height: 1.25; font-weight: 600; margin-bottom: 8px; }
+    .guide .lede { font-size: 17px; color: var(--text-secondary); margin-bottom: 24px; }
+    .guide h2 { font-size: 20px; font-weight: 600; margin: 44px 0 10px; padding-top: 8px; border-top: 1px solid var(--border); }
+    .guide h3 { font-size: 16px; font-weight: 600; margin: 24px 0 6px; }
+    .guide p { margin: 0 0 12px; }
+    .guide ul, .guide ol { margin: 0 0 14px 22px; }
+    .guide li { margin-bottom: 4px; }
+    .guide strong { font-weight: 600; }
+    .guide a { color: var(--text-primary); text-decoration: underline; text-underline-offset: 2px; }
+    .guide code, .guide kbd {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px;
+      background: var(--surface); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px;
+    }
+    .guide pre {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; line-height: 1.6;
+      background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+      padding: 12px 14px; margin: 8px 0 16px; overflow-x: auto; white-space: pre-wrap;
+    }
+    .callout {
+      background: var(--surface); border: 1px solid var(--border); border-left: 4px solid var(--c-dlpfc);
+      border-radius: 8px; padding: 14px 16px; margin: 16px 0 20px;
+    }
+    .callout p:last-child, .callout ul:last-child { margin-bottom: 0; }
+    .toc { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 14px 18px; margin-bottom: 8px; }
+    .toc-title { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 6px; }
+    .toc ol { margin: 0 0 0 20px; columns: 2; column-gap: 28px; }
+    .toc a { text-decoration: none; }
+    .toc a:hover { text-decoration: underline; }
+    .recipe { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 4px 18px 10px; margin: 16px 0; }
+    .recipe h3 { margin-top: 16px; }
+    .label { display: inline-block; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin: 10px 0 2px; }
+    table { width: 100%; border-collapse: collapse; margin: 8px 0 18px; font-size: 14px; }
+    th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+    th { font-weight: 600; color: var(--text-secondary); font-size: 13px; }
+    @media (max-width: 600px) {
+      .guide { padding: 20px 16px 64px; }
+      .guide h1 { font-size: 24px; }
+      .toc ol { columns: 1; }
+    }
+  </style>
+</head>
+<body>
+<main class="guide">
+  <div class="guide-top">
+    <a class="guide-back" href="index.html">← Back to Soma</a>
+  </div>
+
+  <h1>How to use Soma</h1>
+  <p class="lede">A calm planner for brains that get overwhelmed by everything at once. This guide shows how Soma fits together, a simple daily and weekly routine, and ready-made setups for common kinds of work.</p>
+
+  <div class="callout">
+    <p><strong>If you only read one thing:</strong> press <kbd>N</kbd> (or tap <strong>+</strong>) to get things out of your head, pick up to 3 for <strong>Today</strong>, then press <strong>Start</strong> on one of them. If starting feels impossible, choose <strong>Just 5 min</strong>. That's the whole method; everything else is optional.</p>
+  </div>
+
+  <nav class="toc" aria-label="Contents">
+    <div class="toc-title">Contents</div>
+    <ol>
+      <li><a href="#idea">The idea in one minute</a></li>
+      <li><a href="#setup">Set up in 5 minutes</a></li>
+      <li><a href="#daily">Your daily routine</a></li>
+      <li><a href="#weekly">Your weekly routine</a></li>
+      <li><a href="#features">What everything does</a></li>
+      <li><a href="#recipes">Setups for different kinds of work</a></li>
+      <li><a href="#stuck">When you're stuck</a></li>
+      <li><a href="#data">Your data, backups and devices</a></li>
+      <li><a href="#shortcuts">Shortcuts</a></li>
+    </ol>
+  </nav>
+
+  <h2 id="idea">1. The idea in one minute</h2>
+  <p>Soma organizes work in four sizes, from big to small:</p>
+  <table>
+    <tr><th>Level</th><th>What it is</th><th>Example</th></tr>
+    <tr><td><strong>Project</strong></td><td>An area or big goal you'll work on for weeks or months.</td><td>Thesis · Client: Acme · Job search</td></tr>
+    <tr><td><strong>Milestone</strong></td><td>A checkpoint inside a project. Finishing one should feel like progress.</td><td>"Draft chapter 2" · "Website live"</td></tr>
+    <tr><td><strong>Step</strong> (task)</td><td>A concrete thing to do. Starts with a verb.</td><td>"Outline the methods section"</td></tr>
+    <tr><td><strong>Focus block</strong></td><td>One timed session of work on a step: 90 minutes by default (you can change it).</td><td>A step estimated at 2 blocks takes about two sessions.</td></tr>
+  </table>
+  <p>You plan in <strong>blocks</strong>, not hours. Blocks are easier to count, easier to protect, and they make progress visible: every finished block earns points and fills a square on your project's <strong>Board</strong>.</p>
+  <p>You don't need to plan everything up front. A project with one milestone called "Tasks" is perfectly fine. Add structure only when it helps.</p>
+
+  <h2 id="setup">2. Set up in 5 minutes</h2>
+  <ol>
+    <li><strong>Brain dump.</strong> Press <kbd>N</kbd> and paste or type everything on your mind, one item per line. Don't sort it yet. Things that aren't tasks can go in <strong>Idea</strong> or <strong>Admin</strong> (switch the type at the top of Quick Add).</li>
+    <li><strong>Make 1–3 projects.</strong> In Quick Add, choose <strong>Project</strong> and type a name; you'll go straight to adding its first tasks. Fewer projects is better. You can archive the example projects any time.</li>
+    <li><strong>Set your block length.</strong> More → Settings. 90 minutes is the default; many people start with 45 or 60 and a 25-minute warm-up.</li>
+    <li><strong>Pick a weekly goal.</strong> On Home, the <em>This week</em> panel shows your block goal (10 by default, which is 2 a day on weekdays). Start lower than you think. You can always beat it.</li>
+    <li><strong>Choose your rewards.</strong> More → Rewards. Pick real, small treats for each points tier.</li>
+    <li><strong>Install the app and back up.</strong> See <a href="#data">Your data</a>. Two minutes now can save you a lot later.</li>
+  </ol>
+
+  <h2 id="daily">3. Your daily routine</h2>
+  <h3>Morning (2 minutes)</h3>
+  <ul>
+    <li>Open <strong>Home</strong>. Look at <strong>Today</strong>: anything you didn't finish yesterday is already there.</li>
+    <li>Pick <strong>up to 3</strong> things. Use the suggestions, the <em>Due soon</em> list, or <em>Add to Today</em> from any task. Three finished beats eight started.</li>
+    <li>Anything <em>Slipped</em>? Tap <strong>Tomorrow</strong> or <strong>Next week</strong> to give it a new date. No guilt: dates move.</li>
+  </ul>
+  <h3>During the day</h3>
+  <ul>
+    <li>Press ▶ on a Today item to open the focus timer, then <strong>Start</strong>. You can switch tabs; the timer keeps going and shows in the tab title.</li>
+    <li>Thought pops up mid-block? Press <kbd>N</kbd>. During a block, Quick Add files it under <strong>Ideas</strong> so you can get straight back to work.</li>
+    <li>You'll hear a soft chime <strong>5 minutes before the end</strong>: start wrapping up.</li>
+    <li>When the block ends, write one line in <strong>"Where did you leave off?"</strong> and start a break. Next time you open that task, the note is waiting for you.</li>
+    <li>Finished a task? Tap its round check. Finishing the last task in a milestone completes it.</li>
+  </ul>
+  <h3>End of the day</h3>
+  <ul>
+    <li>Check <em>This week at a glance</em> on Home. Showing up counts more than the number.</li>
+    <li>Done your planned blocks? Stop. <em>Rest is productive too.</em></li>
+  </ul>
+
+  <h2 id="weekly">4. Your weekly routine (Sunday or Monday, 10 minutes)</h2>
+  <ol>
+    <li><strong>Review.</strong> Soma offers a short review on Sundays: what got done, what stalled, what to drop.</li>
+    <li><strong>Plan blocks.</strong> In the <em>This week</em> panel, give blocks to 1–2 projects with + and −, then <strong>Approve plan</strong>. Unfinished blocks roll over automatically.</li>
+    <li><strong>Optional: plan with AI.</strong> Press <strong>Plan my week with AI</strong> on Home. It copies a prompt with your projects, deadlines and capacity; paste it into ChatGPT, Claude or any AI chat and pick what feels right from its suggestions. Soma itself never sends your data anywhere.</li>
+    <li><strong>Look at your Board.</strong> Each project's board shows how far along the road you are. It's a good place to notice which project needs love.</li>
+  </ol>
+
+  <h2 id="features">5. What everything does</h2>
+  <table>
+    <tr><th>Feature</th><th>Where</th><th>What it's for</th></tr>
+    <tr><td>Quick Add</td><td><kbd>N</kbd> or the + button, anywhere</td><td>Add tasks, milestones, projects, ideas or admin items. Paste a list to add many at once. Per-line shortcuts: <code>#project</code>, <code>~2</code> (blocks), <code>!</code> / <code>!!</code> (important / critical), <code>@today</code>, <code>@tomorrow</code>, <code>@fri</code>, <code>@nextweek</code> or <code>@11/3</code> (due date). Every add can be undone.</td></tr>
+    <tr><td>Today</td><td>Top of Home</td><td>Your short list for the day. Unfinished picks carry over. Due-soon items and suggestions show underneath.</td></tr>
+    <tr><td>Focus timer</td><td>Focus tab, or ▶ on any task</td><td>Full block, 25-minute warm-up, or <strong>Just 5 min</strong>. Chimes at 5 minutes left and at the end; offers a break timer afterwards.</td></tr>
+    <tr><td>Pick up here</td><td>Focus screen, task panel, Today</td><td>The one-line note you leave at the end of a block, so restarting is easy.</td></tr>
+    <tr><td>Board</td><td>Board tab</td><td>A Candy Land road for each project. Each space is a milestone; its small squares are focus blocks that fill in as you work. Tap a space to see its tasks.</td></tr>
+    <tr><td>Projects</td><td>Projects tab</td><td>Manage projects and milestones: rename, reorder, set due dates, archive. Archiving never deletes history.</td></tr>
+    <tr><td>Break it down with AI</td><td>Open any task</td><td>For big, vague tasks. Copies a prompt for your AI chat; paste the reply into Quick Add and each line becomes a step right after the original.</td></tr>
+    <tr><td>Ideas</td><td>More → Ideas</td><td>A parking lot for thoughts. Turn one into a task when you're ready.</td></tr>
+    <tr><td>Admin</td><td>More → Admin</td><td>Small chores (emails, forms). Capped at 2 a day on purpose, so they don't eat your focus time.</td></tr>
+    <tr><td>Points, rewards, streaks</td><td>Home, More → Rewards</td><td>Every block earns points toward rewards you choose. Streaks count weekdays; one missed weekday a week is a free rest day, and rewards stay earned after a break.</td></tr>
+    <tr><td>Progress</td><td>Progress tab</td><td>Hours, blocks and trends over time, plus links to every board.</td></tr>
+    <tr><td>Settings</td><td>More → Settings</td><td>Theme, block lengths, weekly goal, chime and notifications, backups.</td></tr>
+  </table>
+
+  <h2 id="recipes">6. Setups for different kinds of work</h2>
+  <p>Each setup below is a starting point. Paste the example into Quick Add (pick the project first, or use <code>#project</code> tags) and adjust from there.</p>
+
+  <div class="recipe">
+    <h3>Thesis, dissertation or a big paper</h3>
+    <span class="label">Structure</span>
+    <ul>
+      <li>One project per thesis (or per paper). Milestones are chapters or paper stages: <em>Outline → Draft → Figures → Advisor feedback → Revise → Submit</em>.</li>
+      <li>Give the milestone a due date for the next meeting with your advisor or committee; the project page then shows the pace you need (blocks per week).</li>
+    </ul>
+    <span class="label">Example paste</span>
+<pre>Outline chapter 3 ~1
+Draft the results section ~3 !
+Make figure 3.2 ~2
+Send draft to advisor @fri</pre>
+    <span class="label">Tips</span>
+    <ul>
+      <li>Protect 2 writing blocks a day, ideally your sharpest hours. Admin and email go in the Admin tab.</li>
+      <li>Always leave a <strong>Pick up here</strong> note. Writing restarts are where whole days disappear.</li>
+      <li>"Write chapter 3" is not a task. Use <strong>Break it down with AI</strong> until each step fits in 1–3 blocks.</li>
+    </ul>
+  </div>
+
+  <div class="recipe">
+    <h3>Research and lab work (experiments with waiting time)</h3>
+    <span class="label">Structure</span>
+    <ul>
+      <li>One project per study or aim; one milestone per experiment or analysis.</li>
+      <li>Make waiting steps visible ("Incubate overnight", "Sequencing run, ~3 days") and give them due dates, so the next step shows up in <em>Due soon</em> exactly when it's ready.</li>
+    </ul>
+    <span class="label">Example paste</span>
+<pre>Order reagents for batch 2 @mon
+Prepare samples ~2
+Run imaging ~3
+Analyse batch 2 ~2 @nextweek
+Write up results ~2</pre>
+    <span class="label">Tips</span>
+    <ul>
+      <li>Count lab days in blocks too. A 3-hour protocol is 2 blocks; that keeps your weekly goal honest.</li>
+      <li>Use the Board as a lab-meeting progress picture: what's done, what's next.</li>
+    </ul>
+  </div>
+
+  <div class="recipe">
+    <h3>Students: courses, assignments and exams</h3>
+    <span class="label">Structure</span>
+    <ul>
+      <li>One project per course this term. Milestones are assignments and exams, each with its due date.</li>
+      <li>Archive each course project at the end of term; nothing is lost.</li>
+    </ul>
+    <span class="label">Example paste</span>
+<pre>Read chapter 4 ~1
+Problem set 3 ~2 @thu
+Make flashcards for midterm ~1
+Practice exam 1 ~2 !</pre>
+    <span class="label">Tips</span>
+    <ul>
+      <li>Shorter blocks work well for studying: try 45-minute blocks and 25-minute warm-ups in Settings.</li>
+      <li>Start exam prep milestones 2 weeks out; the pace label tells you if you're behind before it's a crisis.</li>
+    </ul>
+  </div>
+
+  <div class="recipe">
+    <h3>Freelancers and client work</h3>
+    <span class="label">Structure</span>
+    <ul>
+      <li>One project per client. Milestones are deliverables or phases: <em>Discovery → First draft → Revisions → Handoff</em>.</li>
+      <li>Invoices, follow-ups and quotes go in <strong>Admin</strong> (switch Quick Add to Admin), not in client projects.</li>
+      <li>Working on several clients at once? Add <code>#clientname</code> to a line and it goes to that client's project.</li>
+    </ul>
+    <span class="label">Example paste</span>
+<pre>Kickoff notes ~1
+Homepage design v1 ~3 @fri
+Collect feedback from the client @mon</pre>
+    <span class="label">Tips</span>
+    <ul>
+      <li>Your weekly block plan is your capacity plan. If the blocks don't fit, the deadline needs to move: say so early.</li>
+      <li>Block estimates become your pricing data. After a few projects you'll know what "a homepage" really costs you.</li>
+    </ul>
+  </div>
+
+  <div class="recipe">
+    <h3>Job search</h3>
+    <span class="label">Structure</span>
+    <ul>
+      <li>One project, "Job search". Milestones: <em>Materials ready → Applications (this week) → Interview prep</em>. Start a fresh "Applications" milestone each week.</li>
+    </ul>
+    <span class="label">Example paste</span>
+<pre>Update CV for product roles ~2
+Write a cover letter template ~1
+Apply: 3 roles from my list ~2
+Follow up with Sam about the referral @tomorrow</pre>
+    <span class="label">Tips</span>
+    <ul>
+      <li>Set a small, steady weekly goal (5 blocks). Job searching is a marathon; forgiving streaks and rest days are there for a reason.</li>
+      <li>Pick one reward tier just for this project. Rejections are part of the process, not a verdict.</li>
+    </ul>
+  </div>
+
+  <div class="recipe">
+    <h3>Side project or small business launch</h3>
+    <span class="label">Structure</span>
+    <ul>
+      <li>See the example project <em>Launch a side project</em>: check the idea, then ship the smallest useful version, then tell people.</li>
+      <li>Every "what if we also…" goes in <strong>Ideas</strong>, not the current milestone.</li>
+    </ul>
+    <span class="label">Example paste</span>
+<pre>Write a one-paragraph pitch ~1
+Talk to 5 potential customers ~3
+Build the smallest useful version ~4
+Make a simple landing page ~2</pre>
+  </div>
+
+  <div class="recipe">
+    <h3>Creative work: a book, art, music</h3>
+    <span class="label">Structure</span>
+    <ul>
+      <li>One project per piece. Milestones are chapters, songs or pieces; steps are sessions ("Draft scene 4", "Mix the bridge").</li>
+    </ul>
+    <span class="label">Tips</span>
+    <ul>
+      <li>Use warm-up blocks to start creative sessions; you can always keep going.</li>
+      <li>Watching the Board fill up is great motivation on long projects with no outside deadline.</li>
+    </ul>
+  </div>
+
+  <div class="recipe">
+    <h3>Home and life admin: moving, taxes, health</h3>
+    <span class="label">Structure</span>
+    <ul>
+      <li>One "Life" project with milestones for the big things ("Move flat", "Taxes 2026"). Quick chores go in <strong>Admin</strong>.</li>
+    </ul>
+    <span class="label">Example paste</span>
+<pre>Find last year's tax documents ~1
+Book dentist appointment @tomorrow
+Compare 3 moving companies ~1
+Change address with the bank</pre>
+    <span class="label">Tips</span>
+    <ul>
+      <li>Dreaded tasks are usually just vague. Open it and press <strong>Break it down with AI</strong>, then do only the first step, with <strong>Just 5 min</strong> if needed.</li>
+    </ul>
+  </div>
+
+  <div class="recipe">
+    <h3>Learning a new skill</h3>
+    <span class="label">Structure</span>
+    <ul>
+      <li>See the example project <em>Learn a new skill</em>: one resource, its modules as milestones, then a small practice project.</li>
+    </ul>
+    <span class="label">Tips</span>
+    <ul>
+      <li>Questions that pop up during a block go in Ideas, so they don't derail the session.</li>
+    </ul>
+  </div>
+
+  <h2 id="stuck">7. When you're stuck</h2>
+  <ul>
+    <li><strong>Can't start?</strong> Choose <strong>Just 5 min</strong>. When it ends you can stop (it still counts) or keep going, and those 5 minutes count toward the block.</li>
+    <li><strong>The task feels huge or foggy?</strong> Break it down with AI, or ask yourself "what's the very first physical action?" and add that as its own step.</li>
+    <li><strong>Overwhelmed by the list?</strong> Stay on Home and look only at Today. Everything else can wait.</li>
+    <li><strong>Lost a few days?</strong> That's normal. Your best streak is remembered, your rewards stay earned, and slipped dates are one tap away from a fresh start.</li>
+    <li><strong>Bored of the task?</strong> Switch to a different project for one block, then come back. Variety is fuel, not failure.</li>
+    <li><strong>Working too long without a break?</strong> Use the break timer after each block. Your daily max (Settings) is there to stop hyperfocus burnout.</li>
+  </ul>
+
+  <h2 id="data">8. Your data, backups and devices</h2>
+  <p>Soma has <strong>no account and no server</strong>. Everything you type stays in this browser on this device. That's what makes it private, and it's also why backups matter.</p>
+  <ul>
+    <li><strong>Install it as an app.</strong> Chrome or Edge: the install icon in the address bar. Safari on Mac: File → Add to Dock. iPhone or iPad: Share → Add to Home Screen. Android: menu → Install app. Installed apps keep their data more reliably.</li>
+    <li><strong>Back up.</strong> More → Settings → Export JSON saves a file with everything. Soma reminds you once a week.</li>
+    <li><strong>Move to another device</strong> by exporting on the old one and choosing Import JSON on the new one.</li>
+    <li><strong>Clearing your browser's site data erases Soma's data</strong> on that device. Keep a recent backup.</li>
+    <li><strong>Notifications not showing?</strong> Settings → "Notify me when a block ends" shows the status. If it says blocked, allow notifications for this site in your browser's settings.</li>
+    <li><strong>Want to start over?</strong> Settings → Reset all data (export a backup first).</li>
+  </ul>
+
+  <h2 id="shortcuts">9. Shortcuts</h2>
+  <table>
+    <tr><th>Key</th><th>What it does</th></tr>
+    <tr><td><kbd>N</kbd></td><td>Open Quick Add from anywhere (when you're not typing in a field)</td></tr>
+    <tr><td><kbd>Enter</kbd></td><td>Add, in Quick Add</td></tr>
+    <tr><td><kbd>Shift</kbd> + <kbd>Enter</kbd></td><td>New line in Quick Add (add several items at once)</td></tr>
+    <tr><td><kbd>Esc</kbd></td><td>Close the current dialog or panel</td></tr>
+    <tr><td><kbd>Tab</kbd>, then <kbd>Enter</kbd> or <kbd>Space</kbd></td><td>Move between cards and open the focused one</td></tr>
+  </table>
+
+  <p style="margin-top:40px;color:var(--text-muted);font-size:13px">Soma is a planning tool, not a medical device. It isn't meant to diagnose or treat ADHD or any other condition.</p>
+</main>
+</body>
+</html>

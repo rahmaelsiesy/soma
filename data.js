@@ -2079,3 +2079,126 @@ const QUEST_DATA = {
     },
   ],
 };
+
+// ============================================================
+// PROFILE — what makes this install Rahma's rather than generic.
+// app.js reads SOMA_PROFILE and falls back to neutral defaults, so
+// editions/starter/data.js (a different data file with its own
+// profile) turns the same app.js into the sellable product build.
+// ============================================================
+const SOMA_PROFILE = {
+  // Tracks that start active / archived (users can flip either later).
+  activeTracks: ['dlpfc', 'package', 'bd2', 'dg'],
+  archivedTracks: ['fic', 'eef2', 'network', 'cursor', 'learning', 'career', 'concord_sae', 'assortativity', 'dementia_review'],
+
+  // Board-game color pass: every track gets its own distinct hue.
+  // Values mirror the --c-* custom properties in style.css so the
+  // candy-path board and every other UI surface agree on one palette.
+  trackColors: {
+    dlpfc: '#e07a5f', package: '#a3c586', bd2: '#8e7cc3', dg: '#4f8fc0',
+    fic: '#d98c3f', eef2: '#e6b422', network: '#9ca3af', cursor: '#5c8a7a',
+    learning: '#3f6b8b', career: '#b84a62',
+    concord_sae: '#7c6fc9', assortativity: '#a3874a', dementia_review: '#6b8fa3',
+    ml_curriculum: '#5b8f7a', antibodies: '#c1638a', ucsf_fic: '#d1495b'
+  },
+  trackLabels: {
+    dlpfc: 'DLPFC AD Project', package: 'txomics Package', bd2: 'BD2 ACC', dg: 'DG Neurogenesis',
+    fic: 'RUSH FIC AD', eef2: 'EEF2 Methods', network: 'Network & ML', cursor: 'Cursor Plan',
+    learning: 'Learning Plan', career: 'Career Path',
+    concord_sae: 'CONCORD SAE', assortativity: 'Tissue Assortativity', dementia_review: 'Dementia Review'
+  },
+
+  // Task 12: dementia_review is a completed retrospective track — seed it
+  // done once. The flag name is kept from the original migration so
+  // existing saved state isn't re-seeded.
+  seedDone: {
+    flag: '_demReviewSeeded',
+    steps: ['dem-ad', 'dem-ftd-als', 'dem-lewy-vasc', 'dem-prion-cte', 'dem-molecular', 'dem-convergence'],
+    milestones: ['dem-review-1']
+  },
+
+  // Auto-sync state.json to this repo (Settings → GitHub Sync).
+  githubSync: { repo: 'rahmaelsiesy/soma', file: 'state.json' },
+
+  // Persona line that opens the "Plan my week with AI" prompt.
+  aiPromptIntro: 'You are helping a PhD student (computational biology, 5th year, Caltech) prioritize their week. They have ADHD and get overwhelmed seeing everything at once — keep your advice concrete, calm, and focused on "what to do next" rather than listing everything.',
+
+  // Sample-prep batch template (protocol_data.js).
+  labPrep: true,
+
+  // Reference docs shown under More → Guide & docs.
+  docs: [
+    {
+      id: 'guide',
+      title: 'How to use Soma',
+      desc: 'Daily and weekly routines, what every feature does, and setups for thesis, lab, coursework, client and other kinds of work.',
+      file: 'guide.html',
+      tags: [],
+      icon: 'strategy'
+    },
+    {
+      id: 'master-strategy',
+      title: 'Master Analysis Strategy',
+      desc: 'Comprehensive methods and hypotheses for the seqFISH spatial transcriptomics pipeline across DLPFC, FIC, and DG regions.',
+      file: 'docs/master_analysis_strategy.md',
+      tags: ['dlpfc', 'bd2', 'dg', 'package'],
+      icon: 'strategy'
+    },
+    {
+      id: 'cursor-plan',
+      title: 'Cursor Coding Plan',
+      desc: 'Architect-reviewed, subagent-decomposed implementation plan for spatialpy. Phases P0 through P9 with acceptance criteria.',
+      file: 'docs/cursor_plan_improved.md',
+      tags: ['package', 'dlpfc'],
+      icon: 'code'
+    },
+    {
+      id: 'paper-prioritization',
+      title: 'Paper Prioritization',
+      desc: 'Framework for evaluating and prioritizing the portfolio of potential papers from seqFISH AD/FTD data.',
+      file: 'docs/paper_prioritization.md',
+      tags: ['dlpfc', 'bd2', 'dg'],
+      icon: 'papers'
+    },
+    {
+      id: 'gene-modules',
+      title: 'Gene Modules',
+      desc: 'Complete gene module reference for the 1,205-gene seqFISH probeset. Marker panels, cell typing modules, and pathway signatures.',
+      file: 'docs/gene_modules.md',
+      tags: ['dlpfc', 'bd2', 'dg', 'package'],
+      icon: 'dna'
+    },
+    {
+      id: 'robustness',
+      title: 'Robustness & Validation',
+      desc: 'Testing and wet lab validation guide. Statistical robustness gates, sensitivity analyses, and IF validation protocols.',
+      file: 'docs/robustness_and_validation.md',
+      tags: ['dlpfc', 'bd2', 'dg'],
+      icon: 'check'
+    },
+    {
+      id: 'singularity',
+      title: 'Singularity Recommendation',
+      desc: 'Technical recommendation for containerization of the txomics pipeline on HPC clusters.',
+      file: 'docs/singularity_recommendation.md',
+      tags: ['package'],
+      icon: 'server'
+    },
+    {
+      id: 'paper-plans',
+      title: 'Paper Plans',
+      desc: 'Detailed paper outlines and figure plans for all publications.',
+      file: 'docs/paper_plans.pdf',
+      tags: ['dlpfc', 'bd2', 'dg'],
+      icon: 'papers'
+    },
+    {
+      id: 'sample-processing',
+      title: 'Sample Processing Protocol',
+      desc: 'RNA Guide ASY-053.02-2 — wet lab sample processing protocol for seqFISH experiments.',
+      file: 'docs/Sample_Processing_for_RNA_Guide_ASY-053.02-2.pdf',
+      tags: ['dlpfc', 'bd2', 'dg'],
+      icon: 'lab'
+    }
+  ]
+};

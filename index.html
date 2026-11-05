@@ -31,6 +31,10 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
         <span class="tooltip">Projects</span>
       </div>
+      <div class="nav-item" data-nav="board">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="19" r="2"/><circle cx="19" cy="5" r="2"/><path d="M7 19h8a3 3 0 000-6H9a3 3 0 010-6h8"/></svg>
+        <span class="tooltip">Board</span>
+      </div>
       <div class="nav-item" data-nav="focus">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
         <span class="tooltip">Focus</span>
@@ -55,6 +59,10 @@
       <div class="nav-item" data-nav="projects">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
         <span>Projects</span>
+      </div>
+      <div class="nav-item" data-nav="board">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="19" r="2"/><circle cx="19" cy="5" r="2"/><path d="M7 19h8a3 3 0 000-6H9a3 3 0 010-6h8"/></svg>
+        <span>Board</span>
       </div>
       <div class="nav-item" data-nav="focus">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
@@ -81,6 +89,9 @@
 
       <!-- TRACK (milestones for a project) -->
       <section class="view" id="view-track"></section>
+
+      <!-- BOARD (Candy Land progress board, Feature 17) -->
+      <section class="view" id="view-board"></section>
 
       <!-- PATH (board-game step path) -->
       <section class="view" id="view-path"></section>
@@ -127,6 +138,11 @@
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
     <span class="timer-pill-text"><span class="timer-pill-time" id="timerPillTime">00:00</span><span class="timer-pill-label" id="timerPillLabel"></span></span>
   </a>
+
+  <!-- Quick add (Feature 13) — also opens with the N key -->
+  <button class="btn btn-primary qa-fab" id="quickAddFab" type="button" aria-label="Quick add (N)" title="Quick add (N)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="22" height="22"><path d="M12 5v14M5 12h14"/></svg>
+  </button>
 
   <!-- Anti-switch modal (hidden — timer now persists across routes) -->
   <div class="modal-overlay" id="antiSwitchModal" hidden>
